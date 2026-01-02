@@ -1,5 +1,5 @@
 import React from 'react'
-import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings } from 'lucide-react'
+import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText } from 'lucide-react'
 import { useAppStore } from './store/appStore'
 import { UploadPanel } from './components/UploadPanel'
 import { Overview } from './components/Overview'
@@ -8,6 +8,9 @@ import { DreamPnLTable } from './components/DreamPnLTable'
 import { MappingEditor } from './components/MappingEditor'
 import { TemplateEditor } from './components/TemplateEditor'
 import { Help } from './components/Help'
+import { SettingsPage } from './components/SettingsPage'
+import { SavedExports } from './components/SavedExports'
+import { Reports } from './components/Reports'
 import { DrilldownDrawer } from './components/DrilldownDrawer'
 import { Card } from './components/ui'
 
@@ -21,6 +24,9 @@ export function App() {
     { id: 'dream', label: 'Dream P&L', icon: LayoutGrid },
     { id: 'mapping', label: 'Mapping', icon: Wand2 },
     { id: 'scenario', label: 'Layout editor', icon: Settings },
+    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'exports', label: 'Saved Exports', icon: Database },
+    { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'help', label: 'Help', icon: HelpCircle },
   ] as const
 
@@ -75,6 +81,9 @@ export function App() {
             {view === 'dream' && <DreamPnLTable />}
             {view === 'mapping' && <MappingEditor />}
             {view === 'scenario' && <TemplateEditor />}
+            {view === 'settings' && <SettingsPage />}
+            {view === 'exports' && <SavedExports />}
+            {view === 'reports' && <Reports />}
             {view === 'help' && <Help />}
           </div>
         </div>
