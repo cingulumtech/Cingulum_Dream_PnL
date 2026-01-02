@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../store/appStore'
 import { applyBundledScenario, computeXeroTotals } from '../lib/dream/compute'
@@ -14,6 +14,13 @@ function avg(arr: number[]) {
 
 function money(n: number) {
   return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+}
+
+function moneyShort(n: number) {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return money(n)
 }
 
 function toNum(v: string) {
@@ -38,6 +45,20 @@ function compileMatchers(matchers: string[], fallback?: RegExp[]) {
   } catch {
     return null
   }
+}
+
+function compileList(patterns: string[]) {
+  return (patterns ?? [])
+    .map(s => {
+      const trimmed = String(s ?? '').trim()
+      if (!trimmed) return null
+      try {
+        return new RegExp(trimmed, 'i')
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean) as RegExp[]
 }
 
 function OverviewTooltip({ active, payload, label, showScenario }: any) {
@@ -66,32 +87,20 @@ function OverviewTooltip({ active, payload, label, showScenario }: any) {
   )
 }
 
-function suggestedCbaPrice(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Draft totals from the bundled pricing framework doc
-  if (state === 'WA') return 1475
-  if (state === 'VIC') return 925
-  return 1325
+function suggestedCbaPrice(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.suggestedCbaPrice[state]
 }
 
-function suggestedProgramPrice(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Draft totals from the bundled pricing framework doc
-  if (state === 'WA') return 11110
-  if (state === 'VIC') return 10560
-  return 10960
+function suggestedProgramPrice(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.suggestedProgramPrice[state]
 }
 
-function mriDefaultForState(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Actual cost to clinic (defaults)
-  if (state === 'WA') return 750
-  if (state === 'VIC') return 0
-  return 380
+function mriDefaultForState(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.mriCostByState[state]
 }
 
-function mriPatientForState(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Price to patient (defaults)
-  if (state === 'WA') return 770
-  if (state === 'VIC') return 0
-  return 400
+function mriPatientForState(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.mriPatientByState[state]
 }
 
 function ToggleSwitch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
@@ -129,8 +138,20 @@ function CostItem(props: {
   patientFee: number
   onPatientFee: (n: number) => void
   toggleable?: boolean
+  showPatientFee?: boolean
 }) {
-  const { title, subtitle, checked, onChecked, actual, onActual, patientFee, onPatientFee, toggleable = true } = props
+  const {
+    title,
+    subtitle,
+    checked,
+    onChecked,
+    actual,
+    onActual,
+    patientFee,
+    onPatientFee,
+    toggleable = true,
+    showPatientFee = true,
+  } = props
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -140,17 +161,19 @@ function CostItem(props: {
         </div>
         {toggleable ? <ToggleSwitch checked={checked} onChange={onChecked} /> : null}
       </div>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <Label>Patient fee (shown to patient)</Label>
-          <Input
-            className="mt-2"
-            type="number"
-            value={patientFee}
-            onChange={(e) => onPatientFee(toNum(e.target.value))}
-            disabled={toggleable ? !checked : false}
-          />
-        </div>
+      <div className={'mt-3 grid grid-cols-1 gap-3 ' + (showPatientFee ? 'sm:grid-cols-2' : '')}>
+        {showPatientFee ? (
+          <div>
+            <Label>Patient fee (shown to patient)</Label>
+            <Input
+              className="mt-2"
+              type="number"
+              value={patientFee}
+              onChange={(e) => onPatientFee(toNum(e.target.value))}
+              disabled={toggleable ? !checked : false}
+            />
+          </div>
+        ) : null}
         <div>
           <Label>Actual cost (your cost)</Label>
           <Input
@@ -237,8 +260,13 @@ function ConsultCostItem(props: {
 
 export function Overview() {
   const pl = useAppStore(s => s.pl)
+  const gl = useAppStore(s => s.gl)
+  const plLoadedAt = useAppStore(s => s.plLoadedAt)
+  const glLoadedAt = useAppStore(s => s.glLoadedAt)
   const scenario = useAppStore(s => s.scenario)
   const setScenario = useAppStore(s => s.setScenario)
+  const defaults = useAppStore(s => s.defaults)
+  const [consultModalOpen, setConsultModalOpen] = useState(false)
 
   const baseTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
 
@@ -251,24 +279,78 @@ export function Overview() {
     return machines * perWeek * weeksPerMonth * util
   }, [scenario.machinesEnabled, scenario.tmsMachines, scenario.patientsPerMachinePerWeek, scenario.utilisation, scenario.weeksPerYear])
 
-  const baseRentByMonth = useMemo(() => {
+  const baseRentLatest = useMemo(() => {
     if (!pl) return null
     const rx = compileMatchers(scenario.rentAccountMatchers ?? [], [/rent/i, /lease/i])
     if (!rx) return null
-    const out = new Array(pl.monthLabels.length).fill(0)
+    let latest: number | null = null
     for (const a of pl.accounts) {
       if (a.section !== 'operating_expenses') continue
       if (!rx.test(a.name)) continue
-      for (let i = 0; i < out.length; i++) out[i] += a.values[i] ?? 0
+      for (let i = pl.monthLabels.length - 1; i >= 0; i--) {
+        const v = a.values[i] ?? 0
+        if (v !== 0) {
+          latest = v
+          break
+        }
+      }
+      if (latest != null) break
     }
-    return out
+    return latest
   }, [pl, scenario.rentAccountMatchers])
+
+  const consultGroups = useMemo(() => {
+    if (!gl) return []
+    const rx = compileMatchers(scenario.legacyConsultAccountMatchers ?? [], [])
+    if (!rx) return []
+    const groups: Record<string, any> = {}
+    for (const [idx, txn] of (gl.txns ?? []).entries()) {
+      const label = `${txn.account ?? 'Unmapped'}`
+      if (!rx.test(label) && !(txn.description && rx.test(txn.description))) continue
+      if (!groups[label]) groups[label] = { account: label, txns: [] as any[] }
+      const key = `${label}-${txn.date}-${txn.amount}-${txn.description ?? ''}-${idx}`
+      groups[label].txns.push({ key, ...txn })
+    }
+    return Object.values(groups)
+  }, [gl, scenario.legacyConsultAccountMatchers])
 
   const scenarioTotals = useMemo(() => {
     if (!pl || !baseTotals) return null
     if (!scenario.enabled) return null
     return applyBundledScenario(baseTotals, pl, scenario)
   }, [pl, baseTotals, scenario])
+
+  const matcherPreview = useMemo(() => {
+    if (!pl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
+    const tmsPatterns = compileList(scenario.legacyTmsAccountMatchers ?? [])
+    const consultPatterns = scenario.includeDoctorConsultsInBundle ? compileList(scenario.legacyConsultAccountMatchers ?? []) : []
+    const excluded = new Set(scenario.excludedConsultAccounts ?? [])
+    const totals = { revenue: 0, cogs: 0, opex: 0 }
+    const accounts: { name: string; total: number; section: string; kind: 'tms' | 'consult' }[] = []
+
+    const shouldRemove = (name: string, kind: 'tms' | 'consult') => {
+      const patterns = kind === 'tms' ? tmsPatterns : consultPatterns
+      return patterns.length ? patterns.some(re => re.test(name)) : false
+    }
+
+    for (const a of pl.accounts) {
+      const matchedTms = shouldRemove(a.name, 'tms')
+      const matchedConsult = shouldRemove(a.name, 'consult')
+      if (!matchedTms && !matchedConsult) continue
+      if (matchedConsult && excluded.has(a.name)) continue
+
+      const kind = matchedTms ? 'tms' : 'consult'
+      accounts.push({ name: a.name, total: a.total, section: a.section, kind })
+      const target =
+        a.section === 'trading_income' || a.section === 'other_income'
+          ? 'revenue'
+          : a.section === 'cost_of_sales'
+            ? 'cogs'
+            : 'opex'
+      totals[target as 'revenue' | 'cogs' | 'opex'] += a.total ?? 0
+    }
+    return { accounts, totals }
+  }, [pl, scenario.includeDoctorConsultsInBundle, scenario.legacyConsultAccountMatchers, scenario.legacyTmsAccountMatchers, scenario.excludedConsultAccounts])
 
   if (!pl || !baseTotals) {
     return (
@@ -296,11 +378,53 @@ export function Overview() {
   const best = (arr: number[]) => (arr.length ? Math.max(...arr) : 0)
   const worst = (arr: number[]) => (arr.length ? Math.min(...arr) : 0)
 
-  const effectivePrograms = scenario.machinesEnabled && derivedProgramCount != null ? Math.round(derivedProgramCount) : (scenario.programMonthlyCount ?? 0)
-  const baseRentAvg = baseRentByMonth ? avg(baseRentByMonth) : 0
+  const derivedProgramsRounded = derivedProgramCount != null ? Math.round(derivedProgramCount) : 0
+  const effectivePrograms = scenario.machinesEnabled && derivedProgramCount != null ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
+  const baseRentAvg = baseRentLatest ?? 0
+  const programDisplayCount = scenario.machinesEnabled ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
+  const doctorPayoutPct = Math.max(0, Math.min(100, 100 - (scenario.doctorServiceFeePct ?? 0)))
+  const assumptionChips = [
+    scenario.enabled ? 'Replacement scenario on' : null,
+    scenario.includeDoctorConsultsInBundle ? 'Consult revenue removed from base' : null,
+    scenario.addBundleCostsToScenario ? 'Bundle costs added to scenario COGS' : null,
+    scenario.rentEnabled ? `Rent override (${scenario.rentMode === 'fixed' ? 'fixed' : 'monthly %'})` : null,
+    scenario.machinesEnabled ? 'Programs derived from capacity' : 'Programs set manually',
+    scenario.state ? `Clinic state: ${scenario.state}` : null,
+  ].filter(Boolean) as string[]
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold text-slate-100">Data status</div>
+          <div className="text-xs text-slate-300">
+            P&amp;L: {pl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-rose-200 font-semibold">Missing</span>}
+            {plLoadedAt ? <span className="text-slate-400"> · updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
+          </div>
+          <div className="text-xs text-slate-300">
+            GL: {gl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-amber-200 font-semibold">Optional</span>}
+            {glLoadedAt ? <span className="text-slate-400"> · updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
+          </div>
+          <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult matcher previews &amp; drill-down.</div>
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
+          <div className="text-xs text-slate-300">Replacement rule: remove matched legacy TMS (and consult, if enabled) then add CBA + cgTMS bundle revenue. Costs can be added explicitly.</div>
+          <div className="text-xs text-slate-400">
+            Matchers active: {scenario.legacyTmsAccountMatchers?.length ?? 0} TMS ·{' '}
+            {scenario.includeDoctorConsultsInBundle ? `${scenario.legacyConsultAccountMatchers?.length ?? 0} consult` : 'consult off'}
+          </div>
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold text-slate-100">Results &amp; sensitivity</div>
+          <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} → {scenarioTotal == null ? '—' : money(scenarioTotal)}</div>
+          <div className="text-xs text-slate-300">High-leverage levers: rent override, TMS capacity (programs), consult inclusion, bundle COGS toggle.</div>
+        </Card>
+      </div>
+
       <Card className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -342,6 +466,10 @@ export function Overview() {
         </div>
 
         <div className="mt-4 h-[300px]">
+          <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
+            <span>P&amp;L trend (current vs scenario)</span>
+            <span>Δ shown as scenario - current</span>
+          </div>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={rows} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
               <XAxis dataKey="month" tick={{ fill: 'rgba(226,232,240,0.7)', fontSize: 12 }} />
@@ -359,7 +487,202 @@ export function Overview() {
           </ResponsiveContainer>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-5 space-y-4">
+          <div className="rounded-2xl border border-indigo-400/10 bg-gradient-to-br from-slate-900/80 via-slate-900/60 to-indigo-900/40 p-4 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-100">Shifting the needle</div>
+                <div className="text-xs text-slate-300 mt-1">
+                  High-leverage levers that can swing profitability (without changing clinical volume).
+                </div>
+              </div>
+              <Chip className="shrink-0">High leverage</Chip>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">Rent</div>
+                    <div className="text-xs text-slate-300 mt-1">
+                      Current rent is read from the uploaded P&amp;L (matched accounts). Scenario can override it.
+                    </div>
+                  </div>
+                  <ToggleSwitch checked={scenario.rentEnabled} onChange={(v) => setScenario({ rentEnabled: v })} />
+                </div>
+
+                {scenario.rentEnabled ? (
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Matched rent accounts</Label>
+                      <textarea
+                        className="mt-2 h-20 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none"
+                        value={(scenario.rentAccountMatchers ?? []).join('\n')}
+                        onChange={(e) => setScenario({ rentAccountMatchers: e.target.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean) })}
+                      />
+                      <div className="mt-1 text-xs text-slate-300">
+                        Avg matched rent (current): <span className="font-semibold text-slate-100">{money(baseRentAvg)}</span> / month
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Mode</Label>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setScenario({ rentMode: 'fixed' })}
+                          className={
+                            'rounded-xl border px-3 py-2 text-xs font-semibold ' +
+                            (scenario.rentMode === 'fixed'
+                              ? 'border-white/20 bg-white/10 text-slate-100'
+                              : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')
+                          }
+                        >
+                          Fixed monthly
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScenario({ rentMode: 'percent' })}
+                          className={
+                            'rounded-xl border px-3 py-2 text-xs font-semibold ' +
+                            (scenario.rentMode === 'percent'
+                              ? 'border-white/20 bg-white/10 text-slate-100'
+                              : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')
+                          }
+                        >
+                          Monthly % change
+                        </button>
+                      </div>
+
+                      {scenario.rentMode === 'fixed' ? (
+                        <div className="mt-3">
+                          <Label>Scenario rent (per month)</Label>
+                          <Input className="mt-2" type="number" value={scenario.rentFixedMonthly} onChange={(e) => setScenario({ rentFixedMonthly: toNum(e.target.value) })} />
+                          <div className="mt-1 text-xs text-slate-300">
+                            This replaces matched rent each month (scenario only).
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3">
+                          <Label>Monthly change (%)</Label>
+                          <Input
+                            className="mt-2"
+                            type="number"
+                            value={scenario.rentPercentPerMonth}
+                            onChange={(e) => setScenario({ rentPercentPerMonth: toNum(e.target.value) })}
+                          />
+                          <div className="mt-1 text-xs text-slate-300">
+                            Compounded month-to-month (as displayed left→right in the chart).
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-xs text-slate-300">Off = scenario keeps rent exactly as reported in the uploaded P&amp;L.</div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">TMS machine capacity</div>
+                    <div className="text-xs text-slate-300 mt-1">
+                      Derive programs/month from machines, utilisation, and a conservative 4.33 weeks/month — or override manually.
+                    </div>
+                  </div>
+                  <Chip tone={scenario.machinesEnabled ? 'good' : 'bad'} className="shrink-0">
+                    {scenario.machinesEnabled ? 'Dynamic' : 'Manual override'}
+                  </Chip>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScenario({ machinesEnabled: true })}
+                    className={
+                      'rounded-xl border px-3 py-2 text-xs font-semibold ' +
+                      (scenario.machinesEnabled
+                        ? 'border-emerald-400/40 bg-emerald-400/10 text-slate-100'
+                        : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')
+                    }
+                  >
+                    Dynamic (auto-adjust)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setScenario({
+                        machinesEnabled: false,
+                        programMonthlyCount: programDisplayCount || derivedProgramsRounded,
+                      })
+                    }
+                    className={
+                      'rounded-xl border px-3 py-2 text-xs font-semibold ' +
+                      (!scenario.machinesEnabled
+                        ? 'border-amber-400/40 bg-amber-400/10 text-slate-100'
+                        : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')
+                    }
+                  >
+                    Manual override
+                  </button>
+                </div>
+
+                {scenario.machinesEnabled ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <Label>Machines</Label>
+                        <Input
+                          className="mt-2"
+                          type="number"
+                          value={scenario.tmsMachines}
+                          onChange={(e) => setScenario({ tmsMachines: toNum(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Patients / week / machine</Label>
+                        <Input
+                          className="mt-2"
+                          type="number"
+                          value={scenario.patientsPerMachinePerWeek}
+                          onChange={(e) => setScenario({ patientsPerMachinePerWeek: toNum(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Utilisation (%)</Label>
+                        <Input
+                          className="mt-2"
+                          type="number"
+                          value={Math.round((scenario.utilisation ?? 0) * 100)}
+                          onChange={(e) => setScenario({ utilisation: Math.min(1, Math.max(0, toNum(e.target.value) / 100)) })}
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-xs text-slate-100">
+                      Programs / month (auto): <span className="text-base font-semibold text-white">{derivedProgramsRounded}</span>
+                      <div className="text-emerald-100/70">
+                        Used throughout the scenario (consult payouts, program revenue, and COGS).
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <Label>Programs / month (manual)</Label>
+                    <Input
+                      className="mt-2"
+                      type="number"
+                      value={scenario.programMonthlyCount}
+                      onChange={(e) => setScenario({ programMonthlyCount: toNum(e.target.value) })}
+                    />
+                    <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-100">
+                      Manual override is active — auto capacity adjustments are paused until you switch back to Dynamic.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -378,16 +701,16 @@ export function Overview() {
                   value={scenario.state}
                   onChange={(e) => {
                     const st = e.target.value as any
-                    const mriActual = mriDefaultForState(st)
-                    const mriPatient = mriPatientForState(st)
+                    const mriActual = mriDefaultForState(st, defaults)
+                    const mriPatient = mriPatientForState(st, defaults)
                     setScenario({
                       state: st,
                       cbaMriCost: mriActual,
                       progMriCost: mriActual,
                       cbaMriPatientFee: mriPatient,
                       progMriPatientFee: mriPatient,
-                      cbaPrice: suggestedCbaPrice(st),
-                      programPrice: suggestedProgramPrice(st),
+                      cbaPrice: suggestedCbaPrice(st, defaults),
+                      programPrice: suggestedProgramPrice(st, defaults),
                     })
                   }}
                   className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/50"
@@ -454,13 +777,62 @@ export function Overview() {
                     }
                     placeholder={'consult\nappointment\ndr\ndoctor'}
                   />
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                    <button
+                      type="button"
+                      onClick={() => setConsultModalOpen(true)}
+                      className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-indigo-500/15"
+                    >
+                      Review &amp; exclude consult transactions
+                    </button>
+                    <span>
+                      Excluded accounts: {(scenario.excludedConsultAccounts ?? []).length} · Excluded txns:{' '}
+                      {(scenario.excludedConsultTxnKeys ?? []).length}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
 
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                <div className="text-xs font-semibold text-slate-100">Matcher preview</div>
+                <div className="text-xs text-slate-300 mt-1">Accounts removed: {matcherPreview.accounts.length}</div>
+                <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
+                  {matcherPreview.accounts.length === 0 ? (
+                    <div className="text-slate-400">No accounts matched the current regex.</div>
+                  ) : (
+                    matcherPreview.accounts.map(acc => (
+                      <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
+                        <span className="font-semibold text-slate-100">{acc.name}</span>
+                        <span className="text-slate-400 uppercase text-[10px]">{acc.kind}</span>
+                        <span className="text-slate-200">{money(acc.total)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400">
+                  Totals removed → Revenue: <span className="text-slate-200">{money(matcherPreview.totals.revenue)}</span> · COGS:{' '}
+                  <span className="text-slate-200">{money(matcherPreview.totals.cogs)}</span> · Opex:{' '}
+                  <span className="text-slate-200">{money(matcherPreview.totals.opex)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
+                <div className="text-xs font-semibold text-slate-100">Capacity &amp; payout model</div>
+                <div className="text-[11px] text-slate-300">
+                  Programs / month: <span className="font-semibold text-slate-100">{programDisplayCount}</span> ({scenario.machinesEnabled ? 'capacity-derived' : 'manual'}).
+                  Capacity inputs: {scenario.tmsMachines} machines · {scenario.patientsPerMachinePerWeek} patients/wk · utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee → doctor payout {doctorPayoutPct}% of patient fee.
+                </div>
+              </div>
+            </div>
+
             {/* Bundle streams */}
             {(() => {
-              const mriDefault = mriDefaultForState(scenario.state)
+              const mriDefault = mriDefaultForState(scenario.state, defaults)
               const svcFactor = 1 - Math.min(1, Math.max(0, (scenario.doctorServiceFeePct ?? 0) / 100))
               const cbaConsultActual = (scenario.cbaInitialConsultFee ?? 0) * svcFactor * (scenario.cbaInitialConsultCount ?? 0)
               const cbaIncluded =
@@ -496,15 +868,18 @@ export function Overview() {
                         type="button"
                         onClick={() => {
                           const st = scenario.state
-                          const mri = mriDefaultForState(st)
+                          const mri = mriDefaultForState(st, defaults)
                           setScenario({
-                            cbaPrice: suggestedCbaPrice(st),
+                            cbaPrice: suggestedCbaPrice(st, defaults),
                             cbaIncludeMRI: true,
                             cbaMriCost: mri,
+                            cbaMriPatientFee: mriPatientForState(st, defaults),
                             cbaIncludeQuicktome: true,
                             cbaQuicktomeCost: 200,
+                            cbaQuicktomePatientFee: 200,
                             cbaIncludeCreyos: true,
                             cbaCreyosCost: 75,
+                            cbaCreyosPatientFee: 75,
                             cbaIncludeInitialConsult: true,
                             cbaInitialConsultFee: 650,
                             cbaInitialConsultCount: 1,
@@ -528,9 +903,36 @@ export function Overview() {
                     </div>
 
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <CostItem title="MRI" subtitle="Radiology" checked={scenario.cbaIncludeMRI} onChecked={(v) => setScenario({ cbaIncludeMRI: v })} value={scenario.cbaMriCost} onValue={(n) => setScenario({ cbaMriCost: n })} />
-                      <CostItem title="Quicktome" subtitle="Processing" checked={scenario.cbaIncludeQuicktome} onChecked={(v) => setScenario({ cbaIncludeQuicktome: v })} value={scenario.cbaQuicktomeCost} onValue={(n) => setScenario({ cbaQuicktomeCost: n })} />
-                      <CostItem title="Creyos" subtitle="Assessment" checked={scenario.cbaIncludeCreyos} onChecked={(v) => setScenario({ cbaIncludeCreyos: v })} value={scenario.cbaCreyosCost} onValue={(n) => setScenario({ cbaCreyosCost: n })} />
+                      <CostItem
+                        title="MRI"
+                        subtitle="Radiology"
+                        checked={scenario.cbaIncludeMRI}
+                        onChecked={(v) => setScenario({ cbaIncludeMRI: v })}
+                        patientFee={scenario.cbaMriPatientFee}
+                        onPatientFee={(n) => setScenario({ cbaMriPatientFee: n })}
+                        actual={scenario.cbaMriCost}
+                        onActual={(n) => setScenario({ cbaMriCost: n })}
+                      />
+                      <CostItem
+                        title="Quicktome"
+                        subtitle="Processing"
+                        checked={scenario.cbaIncludeQuicktome}
+                        onChecked={(v) => setScenario({ cbaIncludeQuicktome: v })}
+                        patientFee={scenario.cbaQuicktomePatientFee}
+                        onPatientFee={(n) => setScenario({ cbaQuicktomePatientFee: n })}
+                        actual={scenario.cbaQuicktomeCost}
+                        onActual={(n) => setScenario({ cbaQuicktomeCost: n })}
+                      />
+                      <CostItem
+                        title="Creyos"
+                        subtitle="Assessment"
+                        checked={scenario.cbaIncludeCreyos}
+                        onChecked={(v) => setScenario({ cbaIncludeCreyos: v })}
+                        patientFee={scenario.cbaCreyosPatientFee}
+                        onPatientFee={(n) => setScenario({ cbaCreyosPatientFee: n })}
+                        actual={scenario.cbaCreyosCost}
+                        onActual={(n) => setScenario({ cbaCreyosCost: n })}
+                      />
                       <ConsultCostItem
                         title="Initial consult"
                         subtitle="Doctor"
@@ -538,8 +940,8 @@ export function Overview() {
                         onChecked={(v) => setScenario({ cbaIncludeInitialConsult: v })}
                         count={scenario.cbaInitialConsultCount}
                         onCount={(n) => setScenario({ cbaInitialConsultCount: n })}
-                        fee={scenario.cbaInitialConsultFee}
-                        onFee={(n) => setScenario({ cbaInitialConsultFee: n })}
+                        patientFee={scenario.cbaInitialConsultFee}
+                        onPatientFee={(n) => setScenario({ cbaInitialConsultFee: n })}
                         patientCount={scenario.cbaMonthlyCount ?? 0}
                         patientLabel="CBA / month"
                       />
@@ -549,8 +951,11 @@ export function Overview() {
                         checked={true}
                         onChecked={() => {}}
                         toggleable={false}
-                        value={scenario.cbaOtherCogsPerAssessment}
-                        onValue={(n) => setScenario({ cbaOtherCogsPerAssessment: n })}
+                        patientFee={0}
+                        onPatientFee={() => {}}
+                        actual={scenario.cbaOtherCogsPerAssessment}
+                        onActual={(n) => setScenario({ cbaOtherCogsPerAssessment: n })}
+                        showPatientFee={false}
                       />
                     </div>
 
@@ -561,99 +966,6 @@ export function Overview() {
                       </div>
                       <div className="text-slate-300">
                         Gross margin / CBA: <span className="font-semibold text-slate-100">{money((scenario.cbaPrice ?? 0) - cbaIncluded)}</span>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-100">Shifting the needle</div>
-                          <div className="text-xs text-slate-300 mt-1">
-                            High-leverage levers that can swing profitability (without changing clinical volume).
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="text-sm font-semibold text-slate-100">Rent</div>
-                            <div className="text-xs text-slate-300 mt-1">
-                              Current rent is read from the uploaded P&L (matched accounts). Scenario can override it.
-                            </div>
-                          </div>
-                          <ToggleSwitch checked={scenario.rentEnabled} onChange={(v) => setScenario({ rentEnabled: v })} />
-                        </div>
-
-                        {scenario.rentEnabled ? (
-                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div>
-                              <Label>Matched rent accounts</Label>
-                              <textarea
-                                className="mt-2 h-20 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none"
-                                value={(scenario.rentAccountMatchers ?? []).join('\n')}
-                                onChange={(e) => setScenario({ rentAccountMatchers: e.target.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean) })}
-                              />
-                              <div className="mt-1 text-xs text-slate-300">
-                                Avg matched rent (current): <span className="font-semibold text-slate-100">{money(baseRentAvg)}</span> / month
-                              </div>
-                            </div>
-                            <div>
-                              <Label>Mode</Label>
-                              <div className="mt-2 flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setScenario({ rentMode: 'fixed' })}
-                                  className={
-                                    'rounded-xl border px-3 py-2 text-xs font-semibold ' +
-                                    (scenario.rentMode === 'fixed'
-                                      ? 'border-white/20 bg-white/10 text-slate-100'
-                                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')
-                                  }
-                                >
-                                  Fixed monthly
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setScenario({ rentMode: 'percent' })}
-                                  className={
-                                    'rounded-xl border px-3 py-2 text-xs font-semibold ' +
-                                    (scenario.rentMode === 'percent'
-                                      ? 'border-white/20 bg-white/10 text-slate-100'
-                                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')
-                                  }
-                                >
-                                  Monthly % change
-                                </button>
-                              </div>
-
-                              {scenario.rentMode === 'fixed' ? (
-                                <div className="mt-3">
-                                  <Label>Scenario rent (per month)</Label>
-                                  <Input className="mt-2" type="number" value={scenario.rentFixedMonthly} onChange={(e) => setScenario({ rentFixedMonthly: toNum(e.target.value) })} />
-                                  <div className="mt-1 text-xs text-slate-300">
-                                    This replaces matched rent each month (scenario only).
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="mt-3">
-                                  <Label>Monthly change (%)</Label>
-                                  <Input
-                                    className="mt-2"
-                                    type="number"
-                                    value={scenario.rentPercentPerMonth}
-                                    onChange={(e) => setScenario({ rentPercentPerMonth: toNum(e.target.value) })}
-                                  />
-                                  <div className="mt-1 text-xs text-slate-300">
-                                    Compounded month-to-month (as displayed left→right in the chart).
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-3 text-xs text-slate-300">Off = scenario keeps rent exactly as reported in the uploaded P&L.</div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -668,15 +980,18 @@ export function Overview() {
                         type="button"
                         onClick={() => {
                           const st = scenario.state
-                          const mri = mriDefaultForState(st)
+                          const mri = mriDefaultForState(st, defaults)
                           setScenario({
-                            programPrice: suggestedProgramPrice(st),
+                            programPrice: suggestedProgramPrice(st, defaults),
                             progIncludePostMRI: true,
                             progMriCost: mri,
+                            progMriPatientFee: mriPatientForState(st, defaults),
                             progIncludeQuicktome: true,
                             progQuicktomeCost: 200,
+                            progQuicktomePatientFee: 200,
                             progIncludeCreyos: true,
                             progCreyosCost: 75,
+                            progCreyosPatientFee: 75,
                             progInclude6WkConsult: true,
                             prog6WkConsultFee: 450,
                             prog6WkConsultCount: 1,
@@ -687,6 +1002,7 @@ export function Overview() {
                             prog6MoConsultCount: 1,
                             progInclude6MoCreyos: true,
                             prog6MoCreyosCost: 75,
+                            prog6MoCreyosPatientFee: 75,
                           })
                         }}
                         className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-white/10"
@@ -697,19 +1013,29 @@ export function Overview() {
 
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
-                        <Label>Programs / month</Label>
+                        <Label className="flex items-center justify-between gap-2">
+                          Programs / month
+                          <Chip tone={scenario.machinesEnabled ? 'good' : 'bad'} className="h-6 px-2">
+                            {scenario.machinesEnabled ? 'Auto' : 'Manual'}
+                          </Chip>
+                        </Label>
                         <Input
                           className="mt-2"
                           type="number"
-                          value={scenario.programMonthlyCount}
+                          value={programDisplayCount}
                           onChange={(e) => setScenario({ programMonthlyCount: toNum(e.target.value) })}
                           disabled={scenario.machinesEnabled}
                         />
-                        {scenario.machinesEnabled && derivedProgramCount != null ? (
-                          <div className="mt-1 text-xs text-slate-300">
-                            Derived from capacity: <span className="font-semibold text-slate-100">{Math.round(derivedProgramCount)}</span> programs / month
-                          </div>
-                        ) : null}
+                        <div className="mt-1 text-xs text-slate-300">
+                          {scenario.machinesEnabled && derivedProgramCount != null ? (
+                            <>
+                              Derived from capacity:{' '}
+                              <span className="font-semibold text-slate-100">{derivedProgramsRounded}</span> programs / month (set above).
+                            </>
+                          ) : (
+                            'Manual override in use — switch to Dynamic above to auto-adjust.'
+                          )}
+                        </div>
                       </div>
                       <div>
                         <Label>cgTMS price (revenue)</Label>
@@ -717,46 +1043,37 @@ export function Overview() {
                       </div>
                     </div>
 
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-100">TMS machine capacity</div>
-                          <div className="text-xs text-slate-300 mt-1">
-                            Optional: derive programs/month from machines, utilisation, and a conservative 4.33 weeks/month.
-                          </div>
-                        </div>
-                        <ToggleSwitch checked={scenario.machinesEnabled} onChange={(v) => setScenario({ machinesEnabled: v })} />
-                      </div>
-
-                      {scenario.machinesEnabled ? (
-                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                          <div>
-                            <Label>Machines</Label>
-                            <Input className="mt-2" type="number" value={scenario.tmsMachines} onChange={(e) => setScenario({ tmsMachines: toNum(e.target.value) })} />
-                          </div>
-                          <div>
-                            <Label>Patients / week / machine</Label>
-                            <Input className="mt-2" type="number" value={scenario.patientsPerMachinePerWeek} onChange={(e) => setScenario({ patientsPerMachinePerWeek: toNum(e.target.value) })} />
-                          </div>
-                          <div>
-                            <Label>Utilisation (%)</Label>
-                            <Input
-                              className="mt-2"
-                              type="number"
-                              value={Math.round((scenario.utilisation ?? 0) * 100)}
-                              onChange={(e) => setScenario({ utilisation: Math.min(1, Math.max(0, toNum(e.target.value) / 100)) })}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-3 text-xs text-slate-300">Off = programs/month is a simple manual input (like a spreadsheet).</div>
-                      )}
-                    </div>
-
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <CostItem title="Post MRI" subtitle="Radiology" checked={scenario.progIncludePostMRI} onChecked={(v) => setScenario({ progIncludePostMRI: v })} value={scenario.progMriCost} onValue={(n) => setScenario({ progMriCost: n })} />
-                      <CostItem title="Quicktome" subtitle="Processing" checked={scenario.progIncludeQuicktome} onChecked={(v) => setScenario({ progIncludeQuicktome: v })} value={scenario.progQuicktomeCost} onValue={(n) => setScenario({ progQuicktomeCost: n })} />
-                      <CostItem title="Creyos" subtitle="Assessment" checked={scenario.progIncludeCreyos} onChecked={(v) => setScenario({ progIncludeCreyos: v })} value={scenario.progCreyosCost} onValue={(n) => setScenario({ progCreyosCost: n })} />
+                      <CostItem
+                        title="Post MRI"
+                        subtitle="Radiology"
+                        checked={scenario.progIncludePostMRI}
+                        onChecked={(v) => setScenario({ progIncludePostMRI: v })}
+                        patientFee={scenario.progMriPatientFee}
+                        onPatientFee={(n) => setScenario({ progMriPatientFee: n })}
+                        actual={scenario.progMriCost}
+                        onActual={(n) => setScenario({ progMriCost: n })}
+                      />
+                      <CostItem
+                        title="Quicktome"
+                        subtitle="Processing"
+                        checked={scenario.progIncludeQuicktome}
+                        onChecked={(v) => setScenario({ progIncludeQuicktome: v })}
+                        patientFee={scenario.progQuicktomePatientFee}
+                        onPatientFee={(n) => setScenario({ progQuicktomePatientFee: n })}
+                        actual={scenario.progQuicktomeCost}
+                        onActual={(n) => setScenario({ progQuicktomeCost: n })}
+                      />
+                      <CostItem
+                        title="Creyos"
+                        subtitle="Assessment"
+                        checked={scenario.progIncludeCreyos}
+                        onChecked={(v) => setScenario({ progIncludeCreyos: v })}
+                        patientFee={scenario.progCreyosPatientFee}
+                        onPatientFee={(n) => setScenario({ progCreyosPatientFee: n })}
+                        actual={scenario.progCreyosCost}
+                        onActual={(n) => setScenario({ progCreyosCost: n })}
+                      />
                       <ConsultCostItem
                         title="6-week consult"
                         subtitle="Doctor"
@@ -764,12 +1081,22 @@ export function Overview() {
                         onChecked={(v) => setScenario({ progInclude6WkConsult: v })}
                         count={scenario.prog6WkConsultCount}
                         onCount={(n) => setScenario({ prog6WkConsultCount: n })}
-                        fee={scenario.prog6WkConsultFee}
-                        onFee={(n) => setScenario({ prog6WkConsultFee: n })}
+                        patientFee={scenario.prog6WkConsultFee}
+                        onPatientFee={(n) => setScenario({ prog6WkConsultFee: n })}
                         patientCount={effectivePrograms}
                         patientLabel="Programs / month"
                       />
-                      <CostItem title="Adjunct allowance" subtitle="Therapies" checked={scenario.progIncludeAdjunctAllowance} onChecked={(v) => setScenario({ progIncludeAdjunctAllowance: v })} value={scenario.progAdjunctAllowance} onValue={(n) => setScenario({ progAdjunctAllowance: n })} />
+                      <CostItem
+                        title="Adjunct allowance"
+                        subtitle="Therapies"
+                        checked={scenario.progIncludeAdjunctAllowance}
+                        onChecked={(v) => setScenario({ progIncludeAdjunctAllowance: v })}
+                        patientFee={0}
+                        onPatientFee={() => {}}
+                        actual={scenario.progAdjunctAllowance}
+                        onActual={(n) => setScenario({ progAdjunctAllowance: n })}
+                        showPatientFee={false}
+                      />
                       <ConsultCostItem
                         title="6-month consult"
                         subtitle="Doctor"
@@ -777,20 +1104,32 @@ export function Overview() {
                         onChecked={(v) => setScenario({ progInclude6MoConsult: v })}
                         count={scenario.prog6MoConsultCount}
                         onCount={(n) => setScenario({ prog6MoConsultCount: n })}
-                        fee={scenario.prog6MoConsultFee}
-                        onFee={(n) => setScenario({ prog6MoConsultFee: n })}
+                        patientFee={scenario.prog6MoConsultFee}
+                        onPatientFee={(n) => setScenario({ prog6MoConsultFee: n })}
                         patientCount={effectivePrograms}
                         patientLabel="Programs / month"
                       />
-                      <CostItem title="6-month Creyos" subtitle="Assessment" checked={scenario.progInclude6MoCreyos} onChecked={(v) => setScenario({ progInclude6MoCreyos: v })} value={scenario.prog6MoCreyosCost} onValue={(n) => setScenario({ prog6MoCreyosCost: n })} />
+                      <CostItem
+                        title="6-month Creyos"
+                        subtitle="Assessment"
+                        checked={scenario.progInclude6MoCreyos}
+                        onChecked={(v) => setScenario({ progInclude6MoCreyos: v })}
+                        patientFee={scenario.prog6MoCreyosPatientFee}
+                        onPatientFee={(n) => setScenario({ prog6MoCreyosPatientFee: n })}
+                        actual={scenario.prog6MoCreyosCost}
+                        onActual={(n) => setScenario({ prog6MoCreyosCost: n })}
+                      />
                       <CostItem
                         title="Treatment delivery"
                         subtitle="Unmodelled cost"
                         checked={true}
                         onChecked={() => {}}
                         toggleable={false}
-                        value={scenario.progTreatmentDeliveryCost}
-                        onValue={(n) => setScenario({ progTreatmentDeliveryCost: n })}
+                        patientFee={0}
+                        onPatientFee={() => {}}
+                        actual={scenario.progTreatmentDeliveryCost}
+                        onActual={(n) => setScenario({ progTreatmentDeliveryCost: n })}
+                        showPatientFee={false}
                       />
                       <CostItem
                         title="Other program COGS"
@@ -798,8 +1137,11 @@ export function Overview() {
                         checked={true}
                         onChecked={() => {}}
                         toggleable={false}
-                        value={scenario.progOtherCogsPerProgram}
-                        onValue={(n) => setScenario({ progOtherCogsPerProgram: n })}
+                        patientFee={0}
+                        onPatientFee={() => {}}
+                        actual={scenario.progOtherCogsPerProgram}
+                        onActual={(n) => setScenario({ progOtherCogsPerProgram: n })}
+                        showPatientFee={false}
                       />
                     </div>
 
@@ -821,6 +1163,9 @@ export function Overview() {
                       <div className="text-slate-200">
                         Δ COGS = {scenario.addBundleCostsToScenario ? `CBA×${money(cbaApplied)} + Program×${money(progApplied)}` : '0 (costs assumed already in P&L)'}
                       </div>
+                      <div className="text-slate-200">
+                        Bundle cost impact: CBA {moneyShort(cbaApplied)} /mo · Program {moneyShort(progApplied)} /mo (applied when toggle is ON).
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -830,8 +1175,108 @@ export function Overview() {
             <div className="mt-4 text-xs text-slate-400">
               Next iteration: plug scenario revenue into the Dream lines (so you can drill down into assumptions the same way it drills into GL).
             </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-slate-400">Assumptions used:</span>
+              {assumptionChips.length === 0 ? (
+                <span className="text-xs text-slate-400">None (scenario off)</span>
+              ) : (
+                assumptionChips.map(chip => (
+                  <span key={chip} className="text-xs font-semibold text-slate-100 rounded-full bg-white/5 border border-white/10 px-3 py-1">
+                    {chip}
+                  </span>
+                ))
+              )}
+            </div>
           </div>
       </Card>
     </div>
+    {consultModalOpen ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur">
+        <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-100">Consult transaction review</div>
+              <div className="text-xs text-slate-400">Group by Xero account. Exclude whole accounts or individual txns.</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConsultModalOpen(false)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-4 max-h-[60vh] overflow-auto space-y-3">
+            {consultGroups.length === 0 ? (
+              <div className="text-xs text-slate-300">No consult transactions matched the current regex.</div>
+            ) : (
+              consultGroups.map(group => {
+                const excludedAcc = (scenario.excludedConsultAccounts ?? []).includes(group.account)
+                return (
+                  <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">{group.account}</div>
+                        <div className="text-xs text-slate-400">{group.txns.length} transactions</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const set = new Set(scenario.excludedConsultAccounts ?? [])
+                          excludedAcc ? set.delete(group.account) : set.add(group.account)
+                          setScenario({ excludedConsultAccounts: Array.from(set) })
+                        }}
+                        className={`rounded-xl px-3 py-1 text-xs font-semibold border ${
+                          excludedAcc
+                            ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
+                            : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
+                        }`}
+                      >
+                        {excludedAcc ? 'Include account' : 'Exclude account'}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {group.txns.map((txn: any) => {
+                        const excludedKeySet = new Set(scenario.excludedConsultTxnKeys ?? [])
+                        const isExcluded = excludedKeySet.has(txn.key)
+                        return (
+                          <div key={txn.key} className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="font-semibold">{txn.description || '(no description)'}</div>
+                                <div className="text-slate-400">{txn.date}</div>
+                                <div className="text-slate-300">Amount: {money(txn.amount)}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = new Set(scenario.excludedConsultTxnKeys ?? [])
+                                  isExcluded ? next.delete(txn.key) : next.add(txn.key)
+                                  setScenario({ excludedConsultTxnKeys: Array.from(next) })
+                                }}
+                                className={`rounded-lg px-2 py-1 border text-[11px] font-semibold ${
+                                  isExcluded
+                                    ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
+                                    : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
+                                }`}
+                              >
+                                {isExcluded ? 'Include' : 'Exclude'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   )
 }

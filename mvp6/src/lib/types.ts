@@ -55,7 +55,14 @@ export type DreamGroup = {
 export type DreamTemplate = {
   id: string
   name: string
+  schemaVersion: string
+  version: number
   root: DreamGroup
+}
+
+export type TemplateValidationIssue = {
+  level: 'error' | 'warning'
+  message: string
 }
 
 export type DreamComputed = {
@@ -154,4 +161,7 @@ export type ScenarioInputs = {
   patientsPerMachinePerWeek: number
   weeksPerYear: number
   utilisation: number // 0..1
+
+  excludedConsultAccounts?: string[]
+  excludedConsultTxnKeys?: string[]
 }

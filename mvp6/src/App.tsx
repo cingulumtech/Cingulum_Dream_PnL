@@ -1,6 +1,6 @@
 import React from 'react'
-import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings } from 'lucide-react'
-import { useAppStore } from './store/appStore'
+import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText, Settings2 } from 'lucide-react'
+import { useAppStore, type View } from './store/appStore'
 import { UploadPanel } from './components/UploadPanel'
 import { Overview } from './components/Overview'
 import { LegacyPnLTable } from './components/LegacyPnLTable'
@@ -8,6 +8,9 @@ import { DreamPnLTable } from './components/DreamPnLTable'
 import { MappingEditor } from './components/MappingEditor'
 import { TemplateEditor } from './components/TemplateEditor'
 import { Help } from './components/Help'
+import { SettingsPage } from './components/SettingsPage'
+import { SavedExports } from './components/SavedExports'
+import { Reports } from './components/Reports'
 import { DrilldownDrawer } from './components/DrilldownDrawer'
 import { Card } from './components/ui'
 
@@ -15,14 +18,17 @@ export function App() {
   const view = useAppStore(s => s.view)
   const setView = useAppStore(s => s.setView)
 
-  const nav = [
+  const nav: { id: View; label: string; icon: React.ComponentType<any> }[] = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'legacy', label: 'Legacy P&L', icon: FileSpreadsheet },
-    { id: 'dream', label: 'Dream P&L', icon: LayoutGrid },
+    { id: 'pnlLegacy', label: 'P&L (Legacy)', icon: FileSpreadsheet },
+    { id: 'pnlManagement', label: 'P&L (Management)', icon: LayoutGrid },
     { id: 'mapping', label: 'Mapping', icon: Wand2 },
-    { id: 'scenario', label: 'Layout editor', icon: Settings },
+    { id: 'layout', label: 'Layout', icon: Settings2 },
+    { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'snapshots', label: 'Snapshots', icon: Database },
+    { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'help', label: 'Help', icon: HelpCircle },
-  ] as const
+  ]
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -38,10 +44,17 @@ export function App() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]">
           <div className="space-y-4">
             <Card className="p-4">
-              <div className="text-sm text-slate-300">Cingulum</div>
-              <div className="text-lg font-semibold">Dream P&amp;L</div>
-              <div className="text-xs text-slate-400 mt-1">
-                Built-in model. Upload Xero exports → map once → get a board-grade P&amp;L + drill-down.
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 via-sky-400 to-cyan-300 text-slate-900 font-black shadow-glass ring-1 ring-white/40">
+                  C
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-slate-200">Cingulum</div>
+                  <div className="text-lg font-semibold">P&amp;L Control</div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    Upload Xero exports, map once, and drive a board-grade P&amp;L with drill-down.
+                  </div>
+                </div>
               </div>
             </Card>
 
@@ -53,7 +66,7 @@ export function App() {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setView(item.id as any)}
+                      onClick={() => setView(item.id)}
                       className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold border transition ${
                         active ? 'bg-indigo-500/15 border-indigo-400/30' : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
                       }`}
@@ -71,10 +84,13 @@ export function App() {
 
           <div className="space-y-4">
             {view === 'overview' && <Overview />}
-            {view === 'legacy' && <LegacyPnLTable />}
-            {view === 'dream' && <DreamPnLTable />}
+            {view === 'pnlLegacy' && <LegacyPnLTable />}
+            {view === 'pnlManagement' && <DreamPnLTable />}
             {view === 'mapping' && <MappingEditor />}
-            {view === 'scenario' && <TemplateEditor />}
+            {view === 'layout' && <TemplateEditor />}
+            {view === 'settings' && <SettingsPage />}
+            {view === 'snapshots' && <SavedExports />}
+            {view === 'reports' && <Reports />}
             {view === 'help' && <Help />}
           </div>
         </div>

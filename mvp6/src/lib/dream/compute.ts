@@ -152,6 +152,7 @@ export function applyBundledScenario(
   const consultPatterns = scenario.includeDoctorConsultsInBundle
     ? compile(scenario.legacyConsultAccountMatchers ?? [])
     : []
+  const excludedConsultAccounts = new Set(scenario.excludedConsultAccounts ?? [])
 
   const shouldRemove = (name: string) =>
     (tmsPatterns.length && tmsPatterns.some(re => re.test(name))) ||
@@ -160,6 +161,7 @@ export function applyBundledScenario(
   if (tmsPatterns.length || consultPatterns.length) {
     for (const a of pl.accounts) {
       if (!shouldRemove(a.name)) continue
+      if (excludedConsultAccounts.has(a.name)) continue
 
       // Removal affects whichever section the matched account lives in
       const target =
