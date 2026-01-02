@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
 import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
 
-export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help'
+export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
 
 type AppState = {
   view: View
@@ -24,6 +24,28 @@ type AppState = {
 
   scenario: ScenarioInputs
   setScenario: (s: Partial<ScenarioInputs>) => void
+
+  defaults: {
+    suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+    suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+    mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+    mriPatientByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+    doctorServiceFeePct: number
+  }
+  setDefaults: (d: Partial<AppState['defaults']>) => void
+
+  snapshots: {
+    id: string
+    name: string
+    createdAt: string
+    scenario: ScenarioInputs
+    template: DreamTemplate
+    pl: XeroPL | null
+    gl: GL | null
+  }[]
+  addSnapshot: (name: string) => void
+  loadSnapshot: (id: string) => void
+  deleteSnapshot: (id: string) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -119,22 +141,86 @@ export const useAppStore = create<AppState>()(
         patientsPerMachinePerWeek: 4,
         weeksPerYear: 52,
         utilisation: 0.65,
+        excludedConsultAccounts: [],
+        excludedConsultTxnKeys: [],
       },
       setScenario: (s) => set({ scenario: { ...get().scenario, ...s } }),
+
+      defaults: {
+        suggestedCbaPrice: { 'NSW/QLD': 1325, WA: 1475, VIC: 925 },
+        suggestedProgramPrice: { 'NSW/QLD': 10960, WA: 11110, VIC: 10560 },
+        mriCostByState: { 'NSW/QLD': 380, WA: 750, VIC: 0 },
+        mriPatientByState: { 'NSW/QLD': 400, WA: 770, VIC: 0 },
+        doctorServiceFeePct: 15,
+      },
+      setDefaults: (d) => set({ defaults: { ...get().defaults, ...d } }),
+
+      snapshots: [],
+      addSnapshot: (name) => {
+        const state = get()
+        const snapshot = {
+          id: crypto.randomUUID(),
+          name,
+          createdAt: new Date().toISOString(),
+          scenario: state.scenario,
+          template: state.template,
+          pl: state.pl,
+          gl: state.gl,
+        }
+        set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20) })
+      },
+      loadSnapshot: (id) => {
+        const state = get()
+        const snap = state.snapshots.find(s => s.id === id)
+        if (!snap) return
+        set({
+          scenario: snap.scenario,
+          template: snap.template,
+          pl: snap.pl,
+          gl: snap.gl,
+        })
+      },
+      deleteSnapshot: (id) => {
+        set({ snapshots: get().snapshots.filter(s => s.id !== id) })
+      },
     }),
     {
       name: 'cingulum-dream-pnl',
       partialize: (state) => ({
         template: state.template,
         scenario: state.scenario,
+        defaults: state.defaults,
+        snapshots: state.snapshots,
       }),
       // Keep backward compatibility when we add new scenario keys (avoid old persisted state wiping defaults)
-      merge: (persisted: any, current) => ({
-        ...current,
-        ...persisted,
-        template: persisted?.template ?? current.template,
-        scenario: { ...current.scenario, ...(persisted?.scenario ?? {}) },
-      }),
+      merge: (persisted: any, current) => {
+        const defaults = current.scenario
+        const incoming = persisted?.scenario ?? {}
+
+        const sanitizeScenario = (src: any, fallback: typeof defaults): typeof defaults => {
+          const result: any = { ...fallback }
+          for (const [key, value] of Object.entries(src ?? {})) {
+            if (value === undefined || value === null) continue
+            if (typeof value === 'string' && value.trim() === '') continue
+            if (Array.isArray(value)) {
+              // For matcher arrays, keep defaults when the persisted array is empty
+              result[key] = value.length ? value : (fallback as any)[key] ?? []
+              continue
+            }
+            result[key] = value as any
+          }
+          return result as typeof defaults
+        }
+
+        return {
+          ...current,
+          ...persisted,
+          template: persisted?.template ?? current.template,
+          scenario: sanitizeScenario(incoming, defaults),
+          defaults: persisted?.defaults ?? current.defaults,
+          snapshots: persisted?.snapshots ?? current.snapshots,
+        }
+      },
     }
   )
 )
