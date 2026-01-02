@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
     "lucide-react": "^0.538.0",
-    "recharts": "^2.15.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "recharts": "^2.15.4",
     "xlsx": "^0.18.5",
     "zustand": "^4.5.5"
   },
