@@ -129,12 +129,32 @@ export const useAppStore = create<AppState>()(
         scenario: state.scenario,
       }),
       // Keep backward compatibility when we add new scenario keys (avoid old persisted state wiping defaults)
-      merge: (persisted: any, current) => ({
-        ...current,
-        ...persisted,
-        template: persisted?.template ?? current.template,
-        scenario: { ...current.scenario, ...(persisted?.scenario ?? {}) },
-      }),
+      merge: (persisted: any, current) => {
+        const defaults = current.scenario
+        const incoming = persisted?.scenario ?? {}
+
+        const sanitizeScenario = (src: any, fallback: typeof defaults): typeof defaults => {
+          const result: any = { ...fallback }
+          for (const [key, value] of Object.entries(src ?? {})) {
+            if (value === undefined || value === null) continue
+            if (typeof value === 'string' && value.trim() === '') continue
+            if (Array.isArray(value)) {
+              // For matcher arrays, keep defaults when the persisted array is empty
+              result[key] = value.length ? value : (fallback as any)[key] ?? []
+              continue
+            }
+            result[key] = value as any
+          }
+          return result as typeof defaults
+        }
+
+        return {
+          ...current,
+          ...persisted,
+          template: persisted?.template ?? current.template,
+          scenario: sanitizeScenario(incoming, defaults),
+        }
+      },
     }
   )
 )
