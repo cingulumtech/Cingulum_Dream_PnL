@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../store/appStore'
 import { applyBundledScenario, computeXeroTotals } from '../lib/dream/compute'
@@ -66,32 +66,20 @@ function OverviewTooltip({ active, payload, label, showScenario }: any) {
   )
 }
 
-function suggestedCbaPrice(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Draft totals from the bundled pricing framework doc
-  if (state === 'WA') return 1475
-  if (state === 'VIC') return 925
-  return 1325
+function suggestedCbaPrice(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.suggestedCbaPrice[state]
 }
 
-function suggestedProgramPrice(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Draft totals from the bundled pricing framework doc
-  if (state === 'WA') return 11110
-  if (state === 'VIC') return 10560
-  return 10960
+function suggestedProgramPrice(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.suggestedProgramPrice[state]
 }
 
-function mriDefaultForState(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Actual cost to clinic (defaults)
-  if (state === 'WA') return 750
-  if (state === 'VIC') return 0
-  return 380
+function mriDefaultForState(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.mriCostByState[state]
 }
 
-function mriPatientForState(state: 'NSW/QLD' | 'WA' | 'VIC') {
-  // Price to patient (defaults)
-  if (state === 'WA') return 770
-  if (state === 'VIC') return 0
-  return 400
+function mriPatientForState(state: 'NSW/QLD' | 'WA' | 'VIC', defaults: any) {
+  return defaults.mriPatientByState[state]
 }
 
 function ToggleSwitch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
@@ -251,8 +239,11 @@ function ConsultCostItem(props: {
 
 export function Overview() {
   const pl = useAppStore(s => s.pl)
+  const gl = useAppStore(s => s.gl)
   const scenario = useAppStore(s => s.scenario)
   const setScenario = useAppStore(s => s.setScenario)
+  const defaults = useAppStore(s => s.defaults)
+  const [consultModalOpen, setConsultModalOpen] = useState(false)
 
   const baseTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
 
@@ -265,18 +256,40 @@ export function Overview() {
     return machines * perWeek * weeksPerMonth * util
   }, [scenario.machinesEnabled, scenario.tmsMachines, scenario.patientsPerMachinePerWeek, scenario.utilisation, scenario.weeksPerYear])
 
-  const baseRentByMonth = useMemo(() => {
+  const baseRentLatest = useMemo(() => {
     if (!pl) return null
     const rx = compileMatchers(scenario.rentAccountMatchers ?? [], [/rent/i, /lease/i])
     if (!rx) return null
-    const out = new Array(pl.monthLabels.length).fill(0)
+    let latest: number | null = null
     for (const a of pl.accounts) {
       if (a.section !== 'operating_expenses') continue
       if (!rx.test(a.name)) continue
-      for (let i = 0; i < out.length; i++) out[i] += a.values[i] ?? 0
+      for (let i = pl.monthLabels.length - 1; i >= 0; i--) {
+        const v = a.values[i] ?? 0
+        if (v !== 0) {
+          latest = v
+          break
+        }
+      }
+      if (latest != null) break
     }
-    return out
+    return latest
   }, [pl, scenario.rentAccountMatchers])
+
+  const consultGroups = useMemo(() => {
+    if (!gl) return []
+    const rx = compileMatchers(scenario.legacyConsultAccountMatchers ?? [], [])
+    if (!rx) return []
+    const groups: Record<string, any> = {}
+    for (const [idx, txn] of (gl.txns ?? []).entries()) {
+      const label = `${txn.account ?? 'Unmapped'}`
+      if (!rx.test(label) && !(txn.description && rx.test(txn.description))) continue
+      if (!groups[label]) groups[label] = { account: label, txns: [] as any[] }
+      const key = `${label}-${txn.date}-${txn.amount}-${txn.description ?? ''}-${idx}`
+      groups[label].txns.push({ key, ...txn })
+    }
+    return Object.values(groups)
+  }, [gl, scenario.legacyConsultAccountMatchers])
 
   const scenarioTotals = useMemo(() => {
     if (!pl || !baseTotals) return null
@@ -312,10 +325,11 @@ export function Overview() {
 
   const derivedProgramsRounded = derivedProgramCount != null ? Math.round(derivedProgramCount) : 0
   const effectivePrograms = scenario.machinesEnabled && derivedProgramCount != null ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
-  const baseRentAvg = baseRentByMonth ? avg(baseRentByMonth) : 0
+  const baseRentAvg = baseRentLatest ?? 0
   const programDisplayCount = scenario.machinesEnabled ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-4">
       <Card className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -589,16 +603,16 @@ export function Overview() {
                   value={scenario.state}
                   onChange={(e) => {
                     const st = e.target.value as any
-                    const mriActual = mriDefaultForState(st)
-                    const mriPatient = mriPatientForState(st)
+                    const mriActual = mriDefaultForState(st, defaults)
+                    const mriPatient = mriPatientForState(st, defaults)
                     setScenario({
                       state: st,
                       cbaMriCost: mriActual,
                       progMriCost: mriActual,
                       cbaMriPatientFee: mriPatient,
                       progMriPatientFee: mriPatient,
-                      cbaPrice: suggestedCbaPrice(st),
-                      programPrice: suggestedProgramPrice(st),
+                      cbaPrice: suggestedCbaPrice(st, defaults),
+                      programPrice: suggestedProgramPrice(st, defaults),
                     })
                   }}
                   className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/50"
@@ -665,13 +679,26 @@ export function Overview() {
                     }
                     placeholder={'consult\nappointment\ndr\ndoctor'}
                   />
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                    <button
+                      type="button"
+                      onClick={() => setConsultModalOpen(true)}
+                      className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-indigo-500/15"
+                    >
+                      Review &amp; exclude consult transactions
+                    </button>
+                    <span>
+                      Excluded accounts: {(scenario.excludedConsultAccounts ?? []).length} · Excluded txns:{' '}
+                      {(scenario.excludedConsultTxnKeys ?? []).length}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
 
             {/* Bundle streams */}
             {(() => {
-              const mriDefault = mriDefaultForState(scenario.state)
+              const mriDefault = mriDefaultForState(scenario.state, defaults)
               const svcFactor = 1 - Math.min(1, Math.max(0, (scenario.doctorServiceFeePct ?? 0) / 100))
               const cbaConsultActual = (scenario.cbaInitialConsultFee ?? 0) * svcFactor * (scenario.cbaInitialConsultCount ?? 0)
               const cbaIncluded =
@@ -707,12 +734,12 @@ export function Overview() {
                         type="button"
                         onClick={() => {
                           const st = scenario.state
-                          const mri = mriDefaultForState(st)
+                          const mri = mriDefaultForState(st, defaults)
                           setScenario({
-                            cbaPrice: suggestedCbaPrice(st),
+                            cbaPrice: suggestedCbaPrice(st, defaults),
                             cbaIncludeMRI: true,
                             cbaMriCost: mri,
-                            cbaMriPatientFee: mriPatientForState(st),
+                            cbaMriPatientFee: mriPatientForState(st, defaults),
                             cbaIncludeQuicktome: true,
                             cbaQuicktomeCost: 200,
                             cbaQuicktomePatientFee: 200,
@@ -819,11 +846,12 @@ export function Overview() {
                         type="button"
                         onClick={() => {
                           const st = scenario.state
-                          const mri = mriDefaultForState(st)
+                          const mri = mriDefaultForState(st, defaults)
                           setScenario({
-                            programPrice: suggestedProgramPrice(st),
+                            programPrice: suggestedProgramPrice(st, defaults),
                             progIncludePostMRI: true,
                             progMriCost: mri,
+                            progMriPatientFee: mriPatientForState(st, defaults),
                             progMriPatientFee: mriPatientForState(st),
                             progIncludeQuicktome: true,
                             progQuicktomeCost: 200,
@@ -1014,5 +1042,93 @@ export function Overview() {
           </div>
       </Card>
     </div>
+    {consultModalOpen ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur">
+        <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-100">Consult transaction review</div>
+              <div className="text-xs text-slate-400">Group by Xero account. Exclude whole accounts or individual txns.</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConsultModalOpen(false)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-4 max-h-[60vh] overflow-auto space-y-3">
+            {consultGroups.length === 0 ? (
+              <div className="text-xs text-slate-300">No consult transactions matched the current regex.</div>
+            ) : (
+              consultGroups.map(group => {
+                const excludedAcc = (scenario.excludedConsultAccounts ?? []).includes(group.account)
+                return (
+                  <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">{group.account}</div>
+                        <div className="text-xs text-slate-400">{group.txns.length} transactions</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const set = new Set(scenario.excludedConsultAccounts ?? [])
+                          excludedAcc ? set.delete(group.account) : set.add(group.account)
+                          setScenario({ excludedConsultAccounts: Array.from(set) })
+                        }}
+                        className={`rounded-xl px-3 py-1 text-xs font-semibold border ${
+                          excludedAcc
+                            ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
+                            : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
+                        }`}
+                      >
+                        {excludedAcc ? 'Include account' : 'Exclude account'}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {group.txns.map((txn: any) => {
+                        const excludedKeySet = new Set(scenario.excludedConsultTxnKeys ?? [])
+                        const isExcluded = excludedKeySet.has(txn.key)
+                        return (
+                          <div key={txn.key} className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="font-semibold">{txn.description || '(no description)'}</div>
+                                <div className="text-slate-400">{txn.date}</div>
+                                <div className="text-slate-300">Amount: {money(txn.amount)}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = new Set(scenario.excludedConsultTxnKeys ?? [])
+                                  isExcluded ? next.delete(txn.key) : next.add(txn.key)
+                                  setScenario({ excludedConsultTxnKeys: Array.from(next) })
+                                }}
+                                className={`rounded-lg px-2 py-1 border text-[11px] font-semibold ${
+                                  isExcluded
+                                    ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
+                                    : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
+                                }`}
+                              >
+                                {isExcluded ? 'Include' : 'Exclude'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   )
 }
