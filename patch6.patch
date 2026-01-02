@@ -1,0 +1,835 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mvp6/src/components/DataHealthSummary.tsx b/mvp6/src/components/DataHealthSummary.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..16cabb599ae16a302be37f124ab9995e29295639
+--- /dev/null
++++ b/mvp6/src/components/DataHealthSummary.tsx
+@@ -0,0 +1,55 @@
++import React, { useMemo } from 'react'
++import { XeroPL } from '../lib/types'
++import { analyzeDataHealth } from '../lib/dataHealth'
++import { Chip, Label } from './ui'
++
++export function DataHealthSummary({ pl, className }: { pl: XeroPL; className?: string }) {
++  const summary = useMemo(() => analyzeDataHealth(pl), [pl])
++
++  return (
++    <div className={`rounded-2xl border border-white/10 bg-white/5 p-4 ${className ?? ''}`}>
++      <div className="flex items-start justify-between gap-2">
++        <div>
++          <div className="text-sm font-semibold text-slate-100">Data health</div>
++          <div className="text-xs text-slate-400">Detected months, gaps, and any anomalies we padded for you.</div>
++        </div>
++        <Chip tone={summary.gaps.length === 0 && summary.anomalies.length === 0 ? 'good' : 'neutral'}>
++          {summary.monthsDetected} months
++        </Chip>
++      </div>
++
++      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
++        <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++          <Label>Range detected</Label>
++          <div className="mt-1 text-sm font-semibold text-slate-100">{summary.rangeLabel}</div>
++        </div>
++
++        <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++          <Label>Gaps</Label>
++          {summary.gaps.length === 0 ? (
++            <div className="mt-1 text-sm text-emerald-200">No gaps</div>
++          ) : (
++            <ul className="mt-1 space-y-1 text-sm text-amber-100">
++              {summary.gaps.map((g, i) => (
++                <li key={i}>• {g}</li>
++              ))}
++            </ul>
++          )}
++        </div>
++
++        <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++          <Label>Anomalies</Label>
++          {summary.anomalies.length === 0 ? (
++            <div className="mt-1 text-sm text-emerald-200">Clean</div>
++          ) : (
++            <ul className="mt-1 space-y-1 text-sm text-rose-100">
++              {summary.anomalies.map((g, i) => (
++                <li key={i}>• {g}</li>
++              ))}
++            </ul>
++          )}
++        </div>
++      </div>
++    </div>
++  )
++}
+diff --git a/mvp6/src/components/DreamPnLTable.tsx b/mvp6/src/components/DreamPnLTable.tsx
+index eab30bc249c9f095f240892862a0f6e3a31bf315..fe79ca5580c242450e90e25d41f2af125da4ba4c 100644
+--- a/mvp6/src/components/DreamPnLTable.tsx
++++ b/mvp6/src/components/DreamPnLTable.tsx
+@@ -1,238 +1,413 @@
+ import React, { useMemo, useState } from 'react'
+-import { ChevronDown, ChevronRight, Pencil, Settings2 } from 'lucide-react'
++import { ChevronDown, ChevronRight, Pencil, Settings2, Link2, RefreshCcw } from 'lucide-react'
+ import { useAppStore } from '../store/appStore'
+-import { computeDepAmort, computeDream, computeDreamTotals } from '../lib/dream/compute'
++import { computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals } from '../lib/dream/compute'
+ import { DreamGroup, DreamLine } from '../lib/types'
+ import { Button, Card, Chip, Input } from './ui'
++import { formatCurrency, formatPercent } from '../lib/format'
++import { DataHealthSummary } from './DataHealthSummary'
+ 
+ function Row({
+   node,
+   depth,
+   months,
+   getVals,
+   onSelect,
+   expanded,
+   toggle,
++  coveragePct,
+ }: {
+   node: DreamGroup | DreamLine
+   depth: number
+   months: number
+   getVals: (id: string) => number[]
+   onSelect: (id: string) => void
+   expanded: Set<string>
+   toggle: (id: string) => void
++  coveragePct: (id: string) => number
+ }) {
+   const isGroup = node.kind === 'group'
+   const pad = 12 + depth * 14
+   const vals = isGroup ? null : getVals(node.id)
++  const coverage = isGroup || !vals ? null : coveragePct(node.id)
+ 
+   return (
+     <>
+       <tr
+-        className="border-t border-white/10 hover:bg-white/5 cursor-pointer"
++        className="border-t border-white/10 hover:bg-white/5 cursor-pointer focus-within:bg-white/5"
+         onClick={() => (isGroup ? toggle(node.id) : onSelect(node.id))}
++        tabIndex={0}
++        onKeyDown={e => {
++          if (e.key === 'Enter' || e.key === ' ') {
++            e.preventDefault()
++            isGroup ? toggle(node.id) : onSelect(node.id)
++          }
++        }}
+       >
+         <td className="px-3 py-2" style={{ paddingLeft: pad }}>
+           <div className="flex items-center gap-2">
+             {isGroup ? (
+               expanded.has(node.id) ? <ChevronDown className="h-4 w-4 text-slate-300" /> : <ChevronRight className="h-4 w-4 text-slate-300" />
+             ) : (
+               <span className="h-4 w-4" />
+             )}
+             <div className={isGroup ? 'font-semibold text-slate-100' : 'text-slate-100'}>{node.label}</div>
+-            {!isGroup && (node.mappedAccounts?.length ?? 0) > 0 && <Chip className="ml-2">{node.mappedAccounts.length}</Chip>}
+-            {!isGroup && (node.mappedAccounts?.length ?? 0) === 0 && <Chip className="ml-2">Unmapped</Chip>}
++            {!isGroup && (
++              <div className="ml-auto flex items-center gap-2">
++                <Chip className="whitespace-nowrap">
++                  {node.mappedAccounts?.length ?? 0} mapped · {coverage !== null ? formatPercent(coverage, { maximumFractionDigits: 1 }) : '0%'}
++                </Chip>
++                {(node.mappedAccounts?.length ?? 0) === 0 && <Chip className="whitespace-nowrap" tone="bad">Unmapped</Chip>}
++              </div>
++            )}
+           </div>
+         </td>
+         {Array.from({ length: months }).map((_, i) => (
+           <td key={i} className="px-3 py-2 text-right tabular-nums">
+-            {isGroup ? <span className="text-slate-500">—</span> : (vals?.[i] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
++            {isGroup ? <span className="text-slate-500">—</span> : (vals?.[i] ?? 0) === 0 ? <span className="text-slate-500">—</span> : formatCurrency(vals?.[i] ?? 0)}
+           </td>
+         ))}
+       </tr>
+ 
+       {isGroup &&
+         expanded.has(node.id) &&
+         node.children.map(child => (
+           <Row
+             key={child.id}
+             node={child}
+             depth={depth + 1}
+             months={months}
+             getVals={getVals}
+             onSelect={onSelect}
+             expanded={expanded}
+             toggle={toggle}
++            coveragePct={coveragePct}
+           />
+         ))}
+     </>
+   )
+ }
+ 
+ export function DreamPnLTable() {
+   const pl = useAppStore(s => s.pl)
+   const template = useAppStore(s => s.template)
+   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
+   const setView = useAppStore(s => s.setView)
+   const [q, setQ] = useState('')
+   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['rev', 'cogs', 'opex']))
++  const [showReconciliation, setShowReconciliation] = useState(false)
+ 
+   const computed = useMemo(() => (pl ? computeDream(pl, template) : null), [pl, template])
+   const totals = useMemo(() => (pl && computed ? computeDreamTotals(pl, template, computed) : null), [pl, template, computed])
++  const legacyTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
+ 
+   const depAmort = useMemo(() => (pl ? computeDepAmort(pl) : []), [pl])
+ 
+   const hasAnyMapping = useMemo(() => {
+     const walk = (n: any): boolean => {
+       if (!n) return false
+       if (n.kind === "line") return (n.mappedAccounts?.length ?? 0) > 0
+       return Array.isArray(n.children) && n.children.some(walk)
+     }
+     return walk(template.root)
+   }, [template])
+ 
++  const mappedAccountSet = useMemo(() => {
++    const set = new Set<string>()
++    const walk = (node: DreamGroup) => {
++      for (const child of node.children) {
++        if (child.kind === 'line') child.mappedAccounts.forEach(a => set.add(a))
++        else walk(child)
++      }
++    }
++    walk(template.root)
++    return set
++  }, [template])
++
++  const unmappedAccountNames = useMemo(() => {
++    if (!pl) return []
++    return pl.accounts.map(a => a.name).filter(name => !mappedAccountSet.has(name))
++  }, [pl, mappedAccountSet])
++
++  const mappedTotals = useMemo(() => {
++    if (!pl) return null
++    const blank = () => Array(pl.months.length).fill(0)
++    const mapped = { revenue: blank(), cogs: blank(), opex: blank() }
++
++    for (const acc of pl.accounts) {
++      if (!mappedAccountSet.has(acc.name)) continue
++      const target =
++        acc.section === 'trading_income' || acc.section === 'other_income'
++          ? mapped.revenue
++          : acc.section === 'cost_of_sales'
++            ? mapped.cogs
++            : acc.section === 'operating_expenses'
++              ? mapped.opex
++              : null
++      if (!target) continue
++      for (let i = 0; i < acc.values.length; i++) {
++        target[i] += acc.values[i] ?? 0
++      }
++    }
++
++    const net = mapped.revenue.map((v, i) => v - mapped.cogs[i] - mapped.opex[i])
++    return { ...mapped, net }
++  }, [pl, mappedAccountSet])
++
++  const unmappedTotals = useMemo(() => {
++    if (!legacyTotals || !mappedTotals) return null
++    const subtract = (a: number[], b: number[]) => a.map((v, i) => (v ?? 0) - (b?.[i] ?? 0))
++    return {
++      revenue: subtract(legacyTotals.revenue, mappedTotals.revenue),
++      cogs: subtract(legacyTotals.cogs, mappedTotals.cogs),
++      opex: subtract(legacyTotals.opex, mappedTotals.opex),
++      net: subtract(legacyTotals.net, mappedTotals.net),
++    }
++  }, [legacyTotals, mappedTotals])
++
++  const totalActivity = useMemo(() => {
++    if (!pl) return 0
++    return pl.accounts.reduce((sum, acc) => sum + acc.values.reduce((s, v) => s + Math.abs(v ?? 0), 0), 0)
++  }, [pl])
++
++  const coveragePct = (lineId: string) => {
++    if (!computed || !totalActivity) return 0
++    const vals = computed.byLineId[lineId] ?? []
++    const activity = vals.reduce((s, v) => s + Math.abs(v ?? 0), 0)
++    return totalActivity ? activity / totalActivity : 0
++  }
++
+   const monthlyFooter = useMemo(() => {
+     if (!pl || !totals) return [] as { label: string; values: number[] }[]
+     const grossProfit = totals.revenue.map((r, i) => r - totals.cogs[i])
+     const ebit = totals.revenue.map((r, i) => r - totals.cogs[i] - totals.opex[i])
+     const ebitda = ebit.map((e, i) => e + (hasAnyMapping ? (depAmort[i] ?? 0) : 0))
+     return [
+       { label: 'Total revenue', values: totals.revenue },
+       { label: 'Total COGS', values: totals.cogs },
+       { label: 'Gross profit', values: grossProfit },
+       { label: 'Total OpEx', values: totals.opex },
+       { label: 'EBITDA', values: ebitda },
+       { label: 'EBIT', values: ebit },
+       { label: 'Net profit', values: totals.net },
+     ]
+   }, [pl, totals, depAmort, hasAnyMapping])
+ 
++  const reconciliationRows = useMemo(() => {
++    if (!totals || !legacyTotals) return [] as { label: string; legacy: number; management: number; delta: number }[]
++    const sum = (arr: number[]) => arr.reduce((a, b) => a + (b ?? 0), 0)
++    const rows = [
++      { label: 'Revenue', legacy: sum(legacyTotals.revenue), management: sum(totals.revenue) },
++      { label: 'COGS', legacy: sum(legacyTotals.cogs), management: sum(totals.cogs) },
++      { label: 'OpEx', legacy: sum(legacyTotals.opex), management: sum(totals.opex) },
++      { label: 'Net', legacy: sum(legacyTotals.net), management: sum(totals.net) },
++    ]
++    return rows.map(r => ({ ...r, delta: r.management - r.legacy }))
++  }, [totals, legacyTotals])
++
+   const rootFiltered = useMemo(() => {
+     if (!q) return template.root
+     const needle = q.toLowerCase()
+     const filter = (node: DreamGroup | DreamLine): DreamGroup | DreamLine | null => {
+       if (node.kind === 'line') return node.label.toLowerCase().includes(needle) ? node : null
+       const kids = node.children.map(filter).filter(Boolean) as (DreamGroup | DreamLine)[]
+       if (node.label.toLowerCase().includes(needle)) return { ...node, children: node.children } // keep as-is
+       if (kids.length) return { ...node, children: kids }
+       return null
+     }
+     return (filter(template.root) as DreamGroup) ?? template.root
+   }, [template, q])
+ 
+   function toggle(id: string) {
+     setExpanded(prev => {
+       const next = new Set(prev)
+       if (next.has(id)) next.delete(id)
+       else next.add(id)
+       return next
+     })
+   }
+ 
+   if (!pl) {
+     return (
+       <Card className="p-5">
+         <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view your Dream P&amp;L.</div>
+       </Card>
+     )
+   }
+ 
+   const getVals = (id: string) => computed?.byLineId[id] ?? Array(pl.months.length).fill(0)
+ 
+   return (
+     <Card className="p-5 overflow-hidden">
+       <div className="flex items-start justify-between gap-4">
+         <div>
+           <div className="text-lg font-semibold">Dream P&amp;L (management view)</div>
+           <div className="text-sm text-slate-300">
+             Same underlying Xero data, re-expressed into your Dream structure. Click a line to drill down.
+           </div>
+         </div>
+-        <div className="flex items-center gap-2">
++        <div className="flex flex-wrap items-center gap-2 justify-end">
++          <Chip tone={unmappedAccountNames.length ? 'bad' : 'good'}>
++            {unmappedAccountNames.length ? `${unmappedAccountNames.length} unmapped` : 'All accounts mapped'}
++          </Chip>
+           <Button variant="ghost" onClick={() => setView('mapping')}>
+             <Settings2 className="h-4 w-4" /> Map accounts
+           </Button>
+         </div>
+       </div>
+ 
+       {totals && (
+         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Revenue</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+-              {totals.revenue.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
++              {formatCurrency(totals.revenue.reduce((a, b) => a + b, 0))}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo COGS</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+-              {totals.cogs.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
++              {formatCurrency(totals.cogs.reduce((a, b) => a + b, 0))}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo OpEx</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+-              {totals.opex.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
++              {formatCurrency(totals.opex.reduce((a, b) => a + b, 0))}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Net</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+-              {totals.net.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
++              {formatCurrency(totals.net.reduce((a, b) => a + b, 0))}
+             </div>
+           </div>
+         </div>
+       )}
+ 
+-      <div className="mt-4 flex items-center justify-between gap-3">
+-        <div className="w-80">
++      {pl && <DataHealthSummary pl={pl} className="mt-4" />}
++
++      {unmappedTotals && (
++        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
++          <div className="flex items-center justify-between gap-2">
++            <div>
++              <div className="text-sm font-semibold text-amber-100">Unmapped remainder</div>
++              <div className="text-xs text-amber-50/80">
++                Totals that have not yet been captured by your Dream mapping. Map them to close the reconciliation gap.
++              </div>
++            </div>
++            <Button variant="ghost" onClick={() => setView('mapping')}>
++              <Link2 className="h-4 w-4" /> Go to Mapping
++            </Button>
++          </div>
++          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
++            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++              <div className="text-xs text-amber-50/70">Revenue gap</div>
++              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.revenue.reduce((a, b) => a + b, 0))}</div>
++            </div>
++            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++              <div className="text-xs text-amber-50/70">COGS gap</div>
++              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.cogs.reduce((a, b) => a + b, 0))}</div>
++            </div>
++            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++              <div className="text-xs text-amber-50/70">OpEx gap</div>
++              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.opex.reduce((a, b) => a + b, 0))}</div>
++            </div>
++            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
++              <div className="text-xs text-amber-50/70">Net gap</div>
++              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.net.reduce((a, b) => a + b, 0))}</div>
++            </div>
++          </div>
++        </div>
++      )}
++
++      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
++        <div className="w-full md:w-80">
+           <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search Dream lines…" />
+         </div>
+-        <div className="text-xs text-slate-400">Unmapped lines show as “Unmapped” until you map accounts.</div>
++        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
++          <span>Unmapped lines show as “Unmapped” until you map accounts.</span>
++          <Button
++            variant="ghost"
++            className={`px-3 py-1 text-xs ${showReconciliation ? 'border-indigo-400/40 bg-indigo-500/10' : ''}`}
++            onClick={() => setShowReconciliation(v => !v)}
++          >
++            <RefreshCcw className="h-3.5 w-3.5" /> {showReconciliation ? 'Hide' : 'Show'} reconciliation
++          </Button>
++        </div>
+       </div>
+ 
++      {showReconciliation && reconciliationRows.length > 0 && (
++        <div className="mt-3 overflow-auto rounded-2xl border border-white/10">
++          <table className="min-w-full text-sm">
++            <thead className="bg-white/5">
++              <tr>
++                <th className="text-left px-3 py-2 font-semibold">Metric</th>
++                <th className="text-right px-3 py-2 font-semibold">Legacy</th>
++                <th className="text-right px-3 py-2 font-semibold">Management</th>
++                <th className="text-right px-3 py-2 font-semibold">Delta</th>
++              </tr>
++            </thead>
++            <tbody>
++              {reconciliationRows.map(row => (
++                <tr key={row.label} className="border-t border-white/10">
++                  <td className="px-3 py-2 font-semibold text-slate-100">{row.label}</td>
++                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.legacy)}</td>
++                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.management)}</td>
++                  <td className={`px-3 py-2 text-right tabular-nums ${row.delta === 0 ? 'text-slate-200' : row.delta > 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
++                    {formatCurrency(row.delta)}
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++          <div className="px-3 py-2 text-xs text-slate-400">Delta = Dream totals − Legacy totals. Map accounts to close the gap.</div>
++        </div>
++      )}
++
+       <div className="mt-4 overflow-auto rounded-2xl border border-white/10">
+         <table className="min-w-full text-sm">
+           <thead className="bg-white/5 sticky top-0 z-10">
+             <tr>
+               <th className="text-left px-3 py-2 font-semibold">Dream category</th>
+               {pl.monthLabels.map(m => (
+                 <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{m}</th>
+               ))}
+             </tr>
+           </thead>
+           <tbody>
+             {rootFiltered.children.map(child => (
+               <Row
+                 key={child.id}
+                 node={child}
+                 depth={0}
+                 months={pl.months.length}
+                 getVals={getVals}
+                 onSelect={id => setSelectedLineId(id)}
+                 expanded={expanded}
+                 toggle={toggle}
++                coveragePct={coveragePct}
+               />
+             ))}
+           </tbody>
+           <tfoot className="bg-white/5 sticky bottom-0 z-10 border-t border-white/10">
+             {monthlyFooter.map(row => (
+               <tr key={row.label} className="border-t border-white/10">
+                 <td className="px-3 py-2 font-semibold text-slate-100">{row.label}</td>
+                 {row.values.map((v, i) => (
+                   <td key={i} className="px-3 py-2 text-right font-semibold tabular-nums text-slate-100">
+-                    {v.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })}
++                    {formatCurrency(v)}
+                   </td>
+                 ))}
+               </tr>
+             ))}
+           </tfoot>
+         </table>
+       </div>
+ 
+       <div className="mt-3 text-xs text-slate-400">
+         Tip: click any line item to see mapped accounts and GL transactions. Use <span className="kbd">Map accounts</span> to edit mappings.
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/components/LegacyPnLTable.tsx b/mvp6/src/components/LegacyPnLTable.tsx
+index d4e20aed496bedee3a4474a58d8ba68a61a3f3ad..b132c9f02903ebab317e5cc2bea13e71b66661bf 100644
+--- a/mvp6/src/components/LegacyPnLTable.tsx
++++ b/mvp6/src/components/LegacyPnLTable.tsx
+@@ -1,152 +1,194 @@
+ import React, { useMemo, useState } from 'react'
++import { ChevronDown, ChevronRight } from 'lucide-react'
+ import { useAppStore } from '../store/appStore'
+ import { Card, Chip, Input } from './ui'
+ import { XeroPLSection } from '../lib/types'
+ import { computeDepAmort, computeXeroTotals } from '../lib/dream/compute'
++import { formatCurrency } from '../lib/format'
++import { DataHealthSummary } from './DataHealthSummary'
+ 
+ const sectionLabels: Record<XeroPLSection, string> = {
+   trading_income: 'Trading Income',
+   cost_of_sales: 'Cost of Sales',
+   other_income: 'Other Income',
+   operating_expenses: 'Operating Expenses',
+   unknown: 'Other / Unclassified',
+ }
+ 
+ export function LegacyPnLTable() {
+   const pl = useAppStore(s => s.pl)
+   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
+   const [q, setQ] = useState('')
++  const [expandedSections, setExpandedSections] = useState<Record<XeroPLSection, boolean>>({
++    trading_income: true,
++    cost_of_sales: true,
++    other_income: true,
++    operating_expenses: true,
++    unknown: true,
++  })
+ 
+   const sections = useMemo(() => {
+     if (!pl) return []
+     const match = (name: string) => !q || name.toLowerCase().includes(q.toLowerCase())
+     const by: Record<string, typeof pl.accounts> = {}
+     for (const a of pl.accounts) {
+       if (!match(a.name)) continue
+       by[a.section] = by[a.section] ?? []
+       by[a.section].push(a)
+     }
+     return Object.entries(by).map(([section, accounts]) => ({
+       section: section as XeroPLSection,
+       accounts,
+     }))
+   }, [pl, q])
+ 
+   const totals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
+   const depAmort = useMemo(() => (pl ? computeDepAmort(pl) : null), [pl])
+ 
+   const footer = useMemo(() => {
+     if (!totals) return null
+     const n = totals.revenue.length
+     const gross = Array(n).fill(0).map((_, i) => totals.revenue[i] - totals.cogs[i])
+     const ebit = Array(n).fill(0).map((_, i) => totals.revenue[i] - totals.cogs[i] - totals.opex[i])
+     const da = depAmort ?? Array(n).fill(0)
+     const ebitda = Array(n).fill(0).map((_, i) => ebit[i] + (da[i] ?? 0))
+     return {
+       rows: [
+         { label: 'Total Revenue', values: totals.revenue },
+         { label: 'Total COGS', values: totals.cogs },
+         { label: 'Gross Profit', values: gross },
+         { label: 'Total OpEx', values: totals.opex },
+         { label: 'EBITDA', values: ebitda },
+         { label: 'EBIT', values: ebit },
+         { label: 'Net Profit', values: totals.net },
+       ],
+     }
+   }, [totals, depAmort])
+ 
++  const toggleSection = (section: XeroPLSection) => {
++    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
++  }
++
++  const handleActivate = (id: string) => {
++    setSelectedLineId(id)
++  }
++
++  const onRowKey = (e: React.KeyboardEvent<HTMLTableRowElement>, id: string) => {
++    if (e.key === 'Enter' || e.key === ' ') {
++      e.preventDefault()
++      handleActivate(id)
++    }
++  }
++
+   if (!pl) {
+     return (
+       <Card className="p-5">
+         <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view the Xero-faithful table.</div>
+       </Card>
+     )
+   }
+ 
+   return (
+     <Card className="p-5 overflow-hidden">
+       <div className="flex items-center justify-between gap-3">
+         <div>
+           <div className="text-lg font-semibold">Legacy P&amp;L (Xero-faithful)</div>
+           <div className="text-sm text-slate-300">Rows mirror Xero accounts. Columns are months.</div>
+         </div>
+         <div className="w-72">
+           <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search accounts…" />
+         </div>
+       </div>
+ 
+       {/* Top-level 12-month totals (same as Dream P&L) */}
+       {totals && (
+         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Revenue</div>
+-            <div className="text-lg font-semibold">{Math.round(totals.revenue.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
++            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.revenue.reduce((a, b) => a + b, 0))}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo COGS</div>
+-            <div className="text-lg font-semibold">{Math.round(totals.cogs.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
++            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.cogs.reduce((a, b) => a + b, 0))}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo OpEx</div>
+-            <div className="text-lg font-semibold">{Math.round(totals.opex.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
++            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.opex.reduce((a, b) => a + b, 0))}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Net</div>
+-            <div className="text-lg font-semibold">{Math.round(totals.net.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
++            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.net.reduce((a, b) => a + b, 0))}</div>
+           </div>
+         </div>
+       )}
+ 
++      {pl && <DataHealthSummary pl={pl} className="mt-4" />}
++
+       <div className="mt-4 overflow-auto rounded-2xl border border-white/10">
+         <table className="min-w-full text-sm">
+           <thead className="bg-white/5 sticky top-0 z-10">
+             <tr>
+               <th className="text-left px-3 py-2 font-semibold">Account</th>
+               {pl.monthLabels.map(m => (
+                 <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{m}</th>
+               ))}
+             </tr>
+           </thead>
+           <tbody>
+             {sections.map(sec => (
+               <React.Fragment key={sec.section}>
+-                <tr className="bg-white/5">
++                <tr className="bg-white/5 border-t border-white/10">
+                   <td className="px-3 py-2 font-semibold" colSpan={1 + pl.months.length}>
+-                    {sectionLabels[sec.section]} <Chip className="ml-2">{sec.accounts.length}</Chip>
++                    <button
++                      className="flex w-full items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 rounded-lg px-1 py-1"
++                      onClick={() => toggleSection(sec.section)}
++                      aria-expanded={expandedSections[sec.section]}
++                    >
++                      {expandedSections[sec.section] ? (
++                        <ChevronDown className="h-4 w-4 text-slate-300" />
++                      ) : (
++                        <ChevronRight className="h-4 w-4 text-slate-300" />
++                      )}
++                      <span>{sectionLabels[sec.section]}</span>
++                      <Chip className="ml-2">{sec.accounts.length}</Chip>
++                    </button>
+                   </td>
+                 </tr>
+-                {sec.accounts.map(a => (
+-                  <tr
+-                    key={`${sec.section}:${a.name}`}
+-                    className="border-t border-white/10 hover:bg-white/5 cursor-pointer"
+-                    onClick={() => setSelectedLineId(`__acc__:${a.name}`)}
+-                  >
+-                    <td className="px-3 py-2 text-slate-100">{a.name}</td>
+-                    {a.values.map((v, idx) => (
+-                      <td key={idx} className="px-3 py-2 text-right tabular-nums">
+-                        {v === 0 ? <span className="text-slate-500">—</span> : v.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+-                      </td>
+-                    ))}
+-                  </tr>
+-                ))}
++                {expandedSections[sec.section] &&
++                  sec.accounts.map(a => (
++                    <tr
++                      key={`${sec.section}:${a.name}`}
++                      className="border-t border-white/10 hover:bg-white/5 cursor-pointer focus-within:bg-white/5"
++                      onClick={() => handleActivate(`__acc__:${a.name}`)}
++                      tabIndex={0}
++                      onKeyDown={e => onRowKey(e, `__acc__:${a.name}`)}
++                    >
++                      <td className="px-3 py-2 text-slate-100">{a.name}</td>
++                      {a.values.map((v, idx) => (
++                        <td key={idx} className="px-3 py-2 text-right tabular-nums">
++                          {v === 0 ? <span className="text-slate-500">—</span> : formatCurrency(v)}
++                        </td>
++                      ))}
++                    </tr>
++                  ))}
+               </React.Fragment>
+             ))}
+           </tbody>
+           <tfoot className="bg-white/5 sticky bottom-0 z-10 border-t border-white/10">
+             {(footer?.rows ?? []).map(row => (
+               <tr key={row.label} className="border-t border-white/10">
+                 <td className="px-3 py-2 font-semibold text-slate-100 whitespace-nowrap">{row.label}</td>
+                 {row.values.map((v, idx) => (
+                   <td key={idx} className="px-3 py-2 text-right tabular-nums font-semibold">
+-                    {v === 0 ? <span className="text-slate-500">—</span> : Math.round(v).toLocaleString()}
++                    {v === 0 ? <span className="text-slate-500">—</span> : formatCurrency(v)}
+                   </td>
+                 ))}
+               </tr>
+             ))}
+           </tfoot>
+         </table>
+       </div>
+       <div className="mt-3 text-xs text-slate-400">Tip: click an account to drill into the General Ledger (if loaded).</div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/lib/dataHealth.ts b/mvp6/src/lib/dataHealth.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..980a0131621602e0ca5fb9d9148b923e121cac5e
+--- /dev/null
++++ b/mvp6/src/lib/dataHealth.ts
+@@ -0,0 +1,77 @@
++import { XeroPL } from './types'
++import { computeXeroTotals } from './dream/compute'
++
++function parseMonth(key: string): { year: number; month: number } | null {
++  const [y, m] = key.split('-').map(Number)
++  if (!y || !m) return null
++  if (m < 1 || m > 12) return null
++  return { year: y, month: m }
++}
++
++function addMonths(start: { year: number; month: number }, delta: number) {
++  const d = new Date(Date.UTC(start.year, start.month - 1 + delta, 1))
++  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 }
++}
++
++function labelMonth(val: { year: number; month: number }) {
++  return new Date(Date.UTC(val.year, val.month - 1, 1)).toLocaleString('en-AU', { month: 'short', year: 'numeric', timeZone: 'UTC' })
++}
++
++export type DataHealthSummary = {
++  monthsDetected: number
++  rangeLabel: string
++  gaps: string[]
++  anomalies: string[]
++}
++
++export function analyzeDataHealth(pl: XeroPL): DataHealthSummary {
++  const monthsDetected = pl.months.length
++  const parsed = pl.months.map(parseMonth)
++  const validMonths = parsed.filter(Boolean) as { year: number; month: number }[]
++
++  const rangeLabel =
++    validMonths.length > 1
++      ? `${labelMonth(validMonths[0])} → ${labelMonth(validMonths[validMonths.length - 1])}`
++      : pl.monthLabels[0] ?? '—'
++
++  const gaps: string[] = []
++  for (let i = 0; i < validMonths.length - 1; i++) {
++    const cur = validMonths[i]
++    const next = validMonths[i + 1]
++    const diff = (next.year - cur.year) * 12 + (next.month - cur.month)
++    if (diff > 1) {
++      const missing: string[] = []
++      for (let step = 1; step < diff; step++) {
++        missing.push(labelMonth(addMonths(cur, step)))
++      }
++      gaps.push(`${labelMonth(cur)} → ${labelMonth(next)} (${missing.length} month gap${missing.length > 1 ? 's' : ''})`)
++    }
++  }
++
++  const anomalies: string[] = []
++  if (new Set(pl.months).size !== pl.months.length) {
++    anomalies.push('Duplicate month columns detected')
++  }
++
++  const mismatched = pl.accounts.filter(a => a.values.length !== pl.months.length)
++  if (mismatched.length) {
++    anomalies.push(`${mismatched.length} accounts had missing month values (padded)`)
++  }
++
++  const totals = computeXeroTotals(pl)
++  const quietMonths: string[] = []
++  for (let i = 0; i < pl.months.length; i++) {
++    const isZero = (totals.revenue[i] ?? 0) === 0 && (totals.cogs[i] ?? 0) === 0 && (totals.opex[i] ?? 0) === 0
++    if (isZero) quietMonths.push(pl.monthLabels[i] ?? `Month ${i + 1}`)
++  }
++  if (quietMonths.length) {
++    anomalies.push(`No activity detected for ${quietMonths.slice(0, 4).join(', ')}${quietMonths.length > 4 ? '…' : ''}`)
++  }
++
++  return {
++    monthsDetected,
++    rangeLabel,
++    gaps,
++    anomalies,
++  }
++}
+diff --git a/mvp6/src/lib/format.ts b/mvp6/src/lib/format.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d69b4204ed0c93ff92b22e599b3a88998cbd7358
+--- /dev/null
++++ b/mvp6/src/lib/format.ts
+@@ -0,0 +1,28 @@
++const currencyFormatter = new Intl.NumberFormat('en-AU', {
++  style: 'currency',
++  currency: 'AUD',
++  maximumFractionDigits: 0,
++})
++
++export function formatCurrency(value: number | null | undefined, opts?: { maximumFractionDigits?: number }) {
++  const n = Number(value ?? 0)
++  const formatter =
++    opts?.maximumFractionDigits != null
++      ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: opts.maximumFractionDigits })
++      : currencyFormatter
++  return formatter.format(Math.round(n))
++}
++
++export function formatNumber(value: number | null | undefined, opts?: { maximumFractionDigits?: number }) {
++  const n = Number(value ?? 0)
++  return new Intl.NumberFormat('en-AU', { maximumFractionDigits: opts?.maximumFractionDigits ?? 2, minimumFractionDigits: 0 }).format(n)
++}
++
++export function formatPercent(value: number | null | undefined, opts?: { maximumFractionDigits?: number }) {
++  const n = Number(value ?? 0)
++  return new Intl.NumberFormat('en-AU', {
++    style: 'percent',
++    maximumFractionDigits: opts?.maximumFractionDigits ?? 0,
++    minimumFractionDigits: 0,
++  }).format(n)
++}
+ 
+EOF
+)
