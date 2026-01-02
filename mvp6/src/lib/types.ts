@@ -154,4 +154,7 @@ export type ScenarioInputs = {
   patientsPerMachinePerWeek: number
   weeksPerYear: number
   utilisation: number // 0..1
+
+  excludedConsultAccounts?: string[]
+  excludedConsultTxnKeys?: string[]
 }
