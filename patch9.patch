@@ -1,0 +1,720 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mvp6/src/components/report/InvestorReportTemplate.test.tsx b/mvp6/src/components/report/InvestorReportTemplate.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..85d6ee5ab90c81c1ae95b75fa022c7873c1627a9
+--- /dev/null
++++ b/mvp6/src/components/report/InvestorReportTemplate.test.tsx
+@@ -0,0 +1,11 @@
++import { describe, expect, it } from 'vitest'
++import { profitImpactClass } from './InvestorReportTemplate'
++
++describe('InvestorReportTemplate helpers', () => {
++  it('returns colour classes based on profit impact', () => {
++    expect(profitImpactClass(10)).toMatch(/emerald/)
++    expect(profitImpactClass(-5)).toMatch(/rose/)
++    expect(profitImpactClass(0)).toMatch(/slate/)
++    expect(profitImpactClass(null)).toMatch(/slate/)
++  })
++})
+diff --git a/mvp6/src/components/report/InvestorReportTemplate.tsx b/mvp6/src/components/report/InvestorReportTemplate.tsx
+index cd0050f354e88843175c87b8d3b8f8aa3948b3de..12e103eb9cc2b43d91fc8436b74ee62b01b5d799 100644
+--- a/mvp6/src/components/report/InvestorReportTemplate.tsx
++++ b/mvp6/src/components/report/InvestorReportTemplate.tsx
+@@ -1,42 +1,49 @@
+ import React from 'react'
+ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts'
+ import { ReportData } from '../../lib/reportData'
+ 
+ const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+ const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 })
+ 
+ function money(n: number | null | undefined) {
+   if (n == null) return '—'
+   return MONEY_FORMATTER.format(n)
+ }
+ 
+ function pct(n: number | null | undefined) {
+   if (n == null || Number.isNaN(n)) return '—'
+   return `${PCT_FORMATTER.format(n)}%`
+ }
+ 
++export function profitImpactClass(profitImpact: number | null): string {
++  if (profitImpact == null) return 'text-slate-200'
++  if (profitImpact > 0) return 'text-emerald-300'
++  if (profitImpact < 0) return 'text-rose-300'
++  return 'text-slate-200'
++}
++
+ function Callout({ title, detail }: { title: string; detail: string }) {
+   return (
+     <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+       <div className="font-semibold text-amber-50">{title}</div>
+       <div>{detail}</div>
+     </div>
+   )
+ }
+ 
+ export function InvestorReportTemplate({ data }: { data: ReportData }) {
+   const {
+     dataSourceLabel,
+     dataQualityBadge,
+     periodLabel,
+     kpis,
+     executiveSummary,
+     whatChanged,
+     trendRows,
+     trendStats,
+     varianceAttribution,
+     drivers,
+     pnlSummary,
+     dataQuality,
+     scenarioNotes,
+     comparisonLabel,
+@@ -137,92 +144,92 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
+           <Callout title="Trend unavailable" detail="Upload at least 6 months of data to plot profit trend." />
+         )}
+       </div>
+ 
+       {/* Page 3: Drivers */}
+       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+         <div className="flex items-center justify-between">
+           <div className="text-sm font-semibold">Income drivers (Actual + Movement)</div>
+           <div className="text-xs text-slate-400">{movementBadge}</div>
+         </div>
+         {drivers.revenue.disabledReason ? (
+           <Callout
+             title="Drivers unavailable"
+             detail={`${drivers.revenue.disabledReason}${drivers.revenue.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
+           />
+         ) : drivers.revenue.items.length ? (
+           <div className="text-[11px] text-slate-200">
+             <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
+               <div className="w-1/4">Driver</div>
+               <div className="w-1/5 text-right">Actual</div>
+               <div className="w-1/5 text-right">Comparison</div>
+               <div className="w-1/5 text-right">Δ (profit impact)</div>
+               <div className="w-1/5 text-right">Contribution</div>
+             </div>
+             {drivers.revenue.items.map(d => {
+-              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
++              const impactTone = profitImpactClass(d.profitImpact)
+               return (
+                 <div key={d.label} className="flex items-center border-b border-white/5 py-1">
+                   <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
+                   <div className="w-1/5 text-right">{money(d.currentValue)}</div>
+                   <div className="w-1/5 text-right">{money(d.compareValue)}</div>
+                   <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
+                     {money(d.delta)} ({pct(d.pctDelta)})
+                   </div>
+                   <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
+                 </div>
+               )
+             })}
+             <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (income up is good, down is bad).</div>
+           </div>
+         ) : (
+           <Callout title="No revenue drivers" detail="Not enough movement to surface revenue drivers." />
+         )}
+       </div>
+ 
+       {/* Page 4: Cost drivers */}
+       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+         <div className="flex items-center justify-between">
+           <div className="text-sm font-semibold">Cost drivers (Actual + Movement)</div>
+           <div className="text-xs text-slate-400">{movementBadge}</div>
+         </div>
+         {drivers.cost.disabledReason ? (
+           <Callout
+             title="Drivers unavailable"
+             detail={`${drivers.cost.disabledReason}${drivers.cost.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
+           />
+         ) : drivers.cost.items.length ? (
+           <div className="text-[11px] text-slate-200">
+             <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
+               <div className="w-1/4">Driver</div>
+               <div className="w-1/5 text-right">Actual</div>
+               <div className="w-1/5 text-right">Comparison</div>
+               <div className="w-1/5 text-right">Δ (profit impact)</div>
+               <div className="w-1/5 text-right">Contribution</div>
+             </div>
+             {drivers.cost.items.map(d => {
+-              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
++              const impactTone = profitImpactClass(d.profitImpact)
+               return (
+                 <div key={d.label} className="flex items-center border-b border-white/5 py-1">
+                   <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
+                   <div className="w-1/5 text-right">{money(d.currentValue)}</div>
+                   <div className="w-1/5 text-right">{money(d.compareValue)}</div>
+                   <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
+                     {money(d.delta)} ({pct(d.pctDelta)})
+                   </div>
+                   <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
+                 </div>
+               )
+             })}
+             <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (cost down is good, up is bad).</div>
+           </div>
+         ) : (
+           <Callout title="No cost drivers" detail="Not enough movement to surface cost drivers." />
+         )}
+       </div>
+ 
+       {/* Page 5 */}
+       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+         <div className="text-sm font-semibold">P&L summary (current vs scenario)</div>
+         {pnlSummary.length ? (
+           <table className="w-full text-xs text-slate-200">
+             <thead className="text-slate-400">
+diff --git a/mvp6/src/components/report/ReportPreview.test.ts b/mvp6/src/components/report/ReportPreview.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c034ff24e535dd1c6a0250dba0fffc5083a8d46
+--- /dev/null
++++ b/mvp6/src/components/report/ReportPreview.test.ts
+@@ -0,0 +1,9 @@
++import { describe, expect, it } from 'vitest'
++import { REPORT_PREVIEW_PRINT_CSS } from './ReportPreview'
++
++describe('ReportPreview print CSS', () => {
++  it('removes any max-width constraint for the report root in print', () => {
++    expect(REPORT_PREVIEW_PRINT_CSS).toContain('max-width: none')
++    expect(REPORT_PREVIEW_PRINT_CSS).toContain('.report-root')
++  })
++})
+diff --git a/mvp6/src/components/report/ReportPreview.tsx b/mvp6/src/components/report/ReportPreview.tsx
+index e2e8d720c0da8474db2f7cfcdc6dcb8bf5c42266..dfe3b340d08628d0824e55c5cac6ca845a76cb46 100644
+--- a/mvp6/src/components/report/ReportPreview.tsx
++++ b/mvp6/src/components/report/ReportPreview.tsx
+@@ -1,29 +1,31 @@
+ import React from 'react'
+ import { Card } from '../ui'
+ 
++export const REPORT_PREVIEW_PRINT_CSS = `
++  @page { size: A4; margin: 12mm; }
++  @media print {
++    .report-root {
++      width: calc(210mm - 24mm);
++      max-width: none;
++    }
++  }
++`
++
+ export function ReportPreview({ previewRef, children }: { previewRef: React.RefObject<HTMLDivElement>; children: React.ReactNode }) {
+   return (
+     <Card className="p-3">
+-      <style>{`
+-        @page { size: A4; margin: 12mm; }
+-        @media print {
+-          .report-root {
+-            width: calc(210mm - 24mm);
+-            max-width: none;
+-          }
+-        }
+-      `}</style>
++      <style>{REPORT_PREVIEW_PRINT_CSS}</style>
+       <div className="text-sm font-semibold text-slate-100 mb-2">Report Preview</div>
+       <div className="text-xs text-slate-400 mb-2">Live preview of the first pages. Export preserves this layout.</div>
+       <div className="rounded-2xl border border-white/10 bg-slate-950 p-3 overflow-auto max-h-[70vh]">
+         <div
+           ref={previewRef}
+           className="origin-top-left report-root"
+           style={{ width: '794px', minHeight: '1122px' }}
+         >
+           {children}
+         </div>
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/components/ui.tsx b/mvp6/src/components/ui.tsx
+index bf3fb9a05c1342a072b02d7a3039f19e57acfc83..94a8112e60836c4d9fd4c28df1836e4f6312dfc8 100644
+--- a/mvp6/src/components/ui.tsx
++++ b/mvp6/src/components/ui.tsx
+@@ -1,38 +1,38 @@
+ import React from 'react'
+ import clsx from 'clsx'
+ 
+ export function Card(props: React.HTMLAttributes<HTMLDivElement>) {
+   return <div {...props} className={clsx('glass shadow-glass rounded-2xl', props.className)} />
+ }
+ 
+ export function Button(
+   props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' }
+ ) {
+   const { variant = 'primary', className, ...rest } = props
+   const base =
+-    'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-[0.98]'
++    'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300'
+   const variants: Record<string, string> = {
+     primary:
+       'bg-indigo-500/90 hover:bg-indigo-500 text-white shadow-glass border border-indigo-400/40',
+     ghost: 'bg-white/5 hover:bg-white/10 text-slate-100 border border-white/10',
+     danger: 'bg-rose-500/80 hover:bg-rose-500 text-white border border-rose-400/40',
+   }
+   return <button {...rest} className={clsx(base, variants[variant], className)} />
+ }
+ 
+ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+   return (
+     <input
+       {...props}
+       className={clsx(
+         'w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500/50',
+         props.className
+       )}
+     />
+   )
+ }
+ 
+ export function Label(props: React.HTMLAttributes<HTMLDivElement>) {
+   return <div {...props} className={clsx('text-xs text-slate-300', props.className)} />
+ }
+ 
+diff --git a/mvp6/src/lib/dream/compute.test.ts b/mvp6/src/lib/dream/compute.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f0154c97417457fd2f335fd17a68ce4fc557f9a3
+--- /dev/null
++++ b/mvp6/src/lib/dream/compute.test.ts
+@@ -0,0 +1,54 @@
++import { describe, expect, it } from 'vitest'
++import { applyBundledScenario } from './compute'
++import { baseScenario, samplePl } from '../../test/fixtures'
++
++describe('applyBundledScenario', () => {
++  it('removes matched legacy revenue but keeps excluded consult accounts', () => {
++    const scenario = {
++      ...baseScenario,
++      enabled: true,
++      legacyTmsAccountMatchers: ['Revenue'],
++      includeDoctorConsultsInBundle: true,
++      legacyConsultAccountMatchers: ['Consult'],
++      excludedConsultAccounts: ['Consult Income'],
++      cbaMonthlyCount: 0,
++      programMonthlyCount: 0,
++    }
++
++    const pl = {
++      ...samplePl,
++      accounts: [
++        ...samplePl.accounts,
++        { name: 'Consult Income', section: 'trading_income', values: [50, 50, 50, 50, 50, 50], total: 300 },
++      ],
++    }
++
++    const base = { revenue: [1000, 1000, 1000, 1500, 1500, 1500], cogs: [0, 0, 0, 0, 0, 0], opex: [0, 0, 0, 0, 0, 0], net: [0, 0, 0, 0, 0, 0] }
++    const result = applyBundledScenario(base, pl, scenario)
++
++    expect(result.revenue[0]).toBe(base.revenue[0] - 200) // both revenue accounts removed
++    expect(result.revenue[0]).toBeGreaterThanOrEqual(base.revenue[0] - 200) // excluded consult stays
++  })
++
++  it('adds replacement bundle revenue and COGS when enabled', () => {
++    const scenario = {
++      ...baseScenario,
++      enabled: true,
++      cbaMonthlyCount: 10,
++      programMonthlyCount: 5,
++      cbaPrice: 100,
++      programPrice: 200,
++      addBundleCostsToScenario: true,
++      cbaIncludeMRI: true,
++      cbaMriCost: 10,
++      progIncludePostMRI: true,
++      progMriCost: 20,
++    }
++
++    const base = { revenue: [0, 0, 0, 0, 0, 0], cogs: [0, 0, 0, 0, 0, 0], opex: [0, 0, 0, 0, 0, 0], net: [0, 0, 0, 0, 0, 0] }
++    const result = applyBundledScenario(base, samplePl, scenario)
++
++    expect(result.revenue[0]).toBeCloseTo(10 * 100 + 5 * 200)
++    expect(result.cogs[0]).toBeGreaterThan(0) // MRI costs applied
++  })
++})
+diff --git a/mvp6/src/lib/reportData.test.ts b/mvp6/src/lib/reportData.test.ts
+index dd8a9a92cdfd4a79a6604a5c8f823fa5b54b554d..3d8549831af7921d49f413bd008022e76df4f894 100644
+--- a/mvp6/src/lib/reportData.test.ts
++++ b/mvp6/src/lib/reportData.test.ts
+@@ -1,145 +1,38 @@
+ import { describe, expect, it } from 'vitest'
+ import { getReportData } from './reportData'
+-import { DreamTemplate, ScenarioInputs, XeroPL } from './types'
+-
+-const baseScenario: ScenarioInputs = {
+-  enabled: false,
+-  legacyTmsAccountMatchers: [],
+-  includeDoctorConsultsInBundle: false,
+-  legacyConsultAccountMatchers: [],
+-  state: 'NSW/QLD',
+-  doctorServiceFeePct: 15,
+-  cbaMonthlyCount: 0,
+-  programMonthlyCount: 0,
+-  cbaPrice: 0,
+-  programPrice: 0,
+-  addBundleCostsToScenario: false,
+-  cbaIncludeMRI: false,
+-  cbaMriCost: 0,
+-  cbaMriPatientFee: 0,
+-  cbaIncludeQuicktome: false,
+-  cbaQuicktomeCost: 0,
+-  cbaQuicktomePatientFee: 0,
+-  cbaIncludeCreyos: false,
+-  cbaCreyosCost: 0,
+-  cbaCreyosPatientFee: 0,
+-  cbaIncludeInitialConsult: false,
+-  cbaInitialConsultFee: 0,
+-  cbaInitialConsultCount: 0,
+-  cbaOtherCogsPerAssessment: 0,
+-  progIncludePostMRI: false,
+-  progMriCost: 0,
+-  progMriPatientFee: 0,
+-  progIncludeQuicktome: false,
+-  progQuicktomeCost: 0,
+-  progQuicktomePatientFee: 0,
+-  progIncludeCreyos: false,
+-  progCreyosCost: 0,
+-  progCreyosPatientFee: 0,
+-  progInclude6WkConsult: false,
+-  prog6WkConsultFee: 0,
+-  prog6WkConsultCount: 0,
+-  progIncludeAdjunctAllowance: false,
+-  progAdjunctAllowance: 0,
+-  progInclude6MoConsult: false,
+-  prog6MoConsultFee: 0,
+-  prog6MoConsultCount: 0,
+-  progInclude6MoCreyos: false,
+-  prog6MoCreyosCost: 0,
+-  prog6MoCreyosPatientFee: 0,
+-  progTreatmentDeliveryCost: 0,
+-  progOtherCogsPerProgram: 0,
+-  rentEnabled: false,
+-  rentAccountMatchers: [],
+-  rentMode: 'fixed',
+-  rentFixedMonthly: 0,
+-  rentPercentPerMonth: 0,
+-  machinesEnabled: false,
+-  tmsMachines: 0,
+-  patientsPerMachinePerWeek: 0,
+-  weeksPerYear: 52,
+-  utilisation: 0,
+-  excludedConsultAccounts: [],
+-  excludedConsultTxnKeys: [],
+-}
+-
+-const samplePl: XeroPL = {
+-  months: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
+-  monthLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+-  accounts: [
+-    { name: 'Revenue A', section: 'trading_income', values: [100, 100, 100, 200, 200, 200], total: 900 },
+-    { name: 'Revenue B', section: 'trading_income', values: [100, 100, 100, 200, 200, 200], total: 900 },
+-    { name: 'Opex', section: 'operating_expenses', values: [50, 50, 50, 60, 60, 60], total: 320 },
+-  ],
+-}
+-
+-const mappedTemplate: DreamTemplate = {
+-  id: 't',
+-  name: 'mapped',
+-  root: {
+-    id: 'root',
+-    label: 'root',
+-    kind: 'group',
+-    children: [
+-      {
+-        id: 'rev',
+-        label: 'Revenue',
+-        kind: 'group',
+-        children: [
+-          { id: 'rev_a', label: 'Rev A', kind: 'line', mappedAccounts: ['Revenue A'] },
+-          { id: 'rev_b', label: 'Rev B', kind: 'line', mappedAccounts: ['Revenue B'] },
+-        ],
+-      },
+-      {
+-        id: 'cogs',
+-        label: 'COGS',
+-        kind: 'group',
+-        children: [
+-          { id: 'cogs_line', label: 'COGS Line', kind: 'line', mappedAccounts: [] },
+-        ],
+-      },
+-      {
+-        id: 'opex',
+-        label: 'Opex',
+-        kind: 'group',
+-        children: [
+-          { id: 'opex_line', label: 'Opex Line', kind: 'line', mappedAccounts: ['Opex'] },
+-        ],
+-      },
+-    ],
+-  },
+-}
+-
+-const unmappedTemplate: DreamTemplate = {
+-  id: 't2',
+-  name: 'unmapped',
+-  root: {
+-    id: 'root',
+-    label: 'root',
+-    kind: 'group',
+-    children: [
+-      { id: 'rev', label: 'Revenue', kind: 'group', children: [] },
+-      { id: 'cogs', label: 'COGS', kind: 'group', children: [] },
+-      { id: 'opex', label: 'Opex', kind: 'group', children: [] },
+-    ],
+-  },
+-}
++import { baseScenario, mappedTemplate, samplePl, unmappedTemplate } from '../test/fixtures'
+ 
+ describe('reportData', () => {
+   it('falls back to legacy when dream drivers are suspicious/identical', () => {
+     const report = getReportData({ dataSource: 'dream', pl: samplePl, template: mappedTemplate, scenario: baseScenario, includeScenario: false })
+     expect(report.dataSourceUsed).toBe('legacy')
+     expect(report.fallbackReason).toMatch(/Dream drivers/i)
+   })
+ 
+   it('avoids $0 spam when mapping is missing', () => {
+     const report = getReportData({ dataSource: 'dream', pl: samplePl, template: unmappedTemplate, scenario: baseScenario, includeScenario: false })
+     expect(report.drivers.revenue.items.length).toBe(0)
+     expect(report.drivers.revenue.disabledReason).toMatch(/mapped data/i)
+   })
+ 
+   it('defaults recommendation to legacy when dream completeness is low', () => {
+     const report = getReportData({ dataSource: 'dream', pl: samplePl, template: unmappedTemplate, scenario: baseScenario, includeScenario: false })
+     expect(report.recommendedSource).toBe('legacy')
+   })
++
++  it('computes gross margin as a percentage KPI', () => {
++    const report = getReportData({ dataSource: 'dream', pl: samplePl, template: mappedTemplate, scenario: baseScenario, includeScenario: false })
++    const gm = report.kpis.find(k => k.label === 'Gross margin %')
++    expect(gm?.current).toBeCloseTo(((1800 - 540) / 1800) * 100)
++  })
++
++  it('suppresses drivers when movement is suspiciously flat', () => {
++    const flatPl = {
++      ...samplePl,
++      accounts: samplePl.accounts.map(a => ({ ...a, values: [100, 100, 100, 101, 101, 101] })),
++    }
++    const report = getReportData({ dataSource: 'dream', pl: flatPl, template: mappedTemplate, scenario: baseScenario, includeScenario: false })
++    expect(report.drivers.revenue.disabledReason).toMatch(/identical/i)
++    expect(report.drivers.revenue.items).toHaveLength(0)
++  })
+ })
+diff --git a/mvp6/src/lib/reportData.ts b/mvp6/src/lib/reportData.ts
+index 1abd93e38f28d225ad81e0cb06f75733305e7ba9..570eb5e0d3b72d5eb5dde6d002c1e0f11da40725 100644
+--- a/mvp6/src/lib/reportData.ts
++++ b/mvp6/src/lib/reportData.ts
+@@ -224,51 +224,53 @@ function getDrivers(opts: {
+       sectionType: e.sectionType,
+       currentValue: cmp.currentTotal,
+       compareValue: cmp.compareTotal,
+       delta: cmp.delta,
+       pctDelta: cmp.pctDelta,
+       profitImpact,
+     }
+   })
+ 
+   const deltasFiltered = deltas.filter(d => d.delta != null)
+   const sorted = deltasFiltered.sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
+   const top = sorted.filter(d => Math.abs(d.delta ?? 0) > 0).slice(0, 5)
+   if (!top.length) return { items: [], disabledReason: 'Not enough movement to rank drivers.' }
+ 
+   const absValues = top.map(t => Math.abs(t.delta ?? 0))
+   const varianceSpan = Math.max(...absValues) - Math.min(...absValues)
+   const suspicious = absValues.length >= 2 && varianceSpan < 1
+   const denom = absValues.reduce((a, b) => a + b, 0) || 1
+ 
+   const items: DriverItem[] = top.map(t => ({
+     ...t,
+     contributionPct: (Math.abs(t.delta ?? 0) / denom) * 100,
+     pctDelta: t.pctDelta ?? null,
+   }))
+ 
+-  return { items, suspicious }
++  if (suspicious) return { items: [], suspicious, disabledReason: 'Drivers looked identical; movement too small to rank.' }
++
++  return { items, suspicious: false }
+ }
+ 
+ export function getReportData(opts: {
+   dataSource: DataSource
+   pl: XeroPL | null
+   template: DreamTemplate
+   scenario: ScenarioInputs
+   includeScenario: boolean
+   completenessThreshold?: number
+   comparisonMode?: ComparisonMode
+ }): ReportData {
+   const { dataSource, pl, template, scenario, includeScenario, completenessThreshold = 0.85, comparisonMode } = opts
+   const mapping = calcMappingStats(pl, template)
+   const recommendedSource: DataSource = mapping.completeness >= completenessThreshold ? 'dream' : 'legacy'
+   const scenarioActive = includeScenario && scenario.enabled
+   const mode: ComparisonMode = comparisonMode ? comparisonMode : scenarioActive ? 'scenario_vs_current' : 'last3_vs_prev3'
+ 
+   const buildForSource = (source: DataSource): ReportData => {
+     const hasData = !!pl
+     if (!hasData) {
+       return {
+         dataSourceRequested: dataSource,
+         dataSourceUsed: source,
+         recommendedSource,
+         fallbackReason: 'No P&L uploaded.',
+diff --git a/mvp6/src/test/fixtures.ts b/mvp6/src/test/fixtures.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ea9fd1ff1234241e555efa179e199d9a21b939a
+--- /dev/null
++++ b/mvp6/src/test/fixtures.ts
+@@ -0,0 +1,154 @@
++import { ReportData } from '../lib/reportData'
++import { DreamTemplate, ScenarioInputs, XeroPL } from '../lib/types'
++
++export const baseScenario: ScenarioInputs = {
++  enabled: false,
++  legacyTmsAccountMatchers: [],
++  includeDoctorConsultsInBundle: false,
++  legacyConsultAccountMatchers: [],
++  state: 'NSW/QLD',
++  doctorServiceFeePct: 15,
++  cbaMonthlyCount: 0,
++  programMonthlyCount: 0,
++  cbaPrice: 0,
++  programPrice: 0,
++  addBundleCostsToScenario: false,
++  cbaIncludeMRI: false,
++  cbaMriCost: 0,
++  cbaMriPatientFee: 0,
++  cbaIncludeQuicktome: false,
++  cbaQuicktomeCost: 0,
++  cbaQuicktomePatientFee: 0,
++  cbaIncludeCreyos: false,
++  cbaCreyosCost: 0,
++  cbaCreyosPatientFee: 0,
++  cbaIncludeInitialConsult: false,
++  cbaInitialConsultFee: 0,
++  cbaInitialConsultCount: 0,
++  cbaOtherCogsPerAssessment: 0,
++  progIncludePostMRI: false,
++  progMriCost: 0,
++  progMriPatientFee: 0,
++  progIncludeQuicktome: false,
++  progQuicktomeCost: 0,
++  progQuicktomePatientFee: 0,
++  progIncludeCreyos: false,
++  progCreyosCost: 0,
++  progCreyosPatientFee: 0,
++  progInclude6WkConsult: false,
++  prog6WkConsultFee: 0,
++  prog6WkConsultCount: 0,
++  progIncludeAdjunctAllowance: false,
++  progAdjunctAllowance: 0,
++  progInclude6MoConsult: false,
++  prog6MoConsultFee: 0,
++  prog6MoConsultCount: 0,
++  progInclude6MoCreyos: false,
++  prog6MoCreyosCost: 0,
++  prog6MoCreyosPatientFee: 0,
++  progTreatmentDeliveryCost: 0,
++  progOtherCogsPerProgram: 0,
++  rentEnabled: false,
++  rentAccountMatchers: [],
++  rentMode: 'fixed',
++  rentFixedMonthly: 0,
++  rentPercentPerMonth: 0,
++  machinesEnabled: false,
++  tmsMachines: 0,
++  patientsPerMachinePerWeek: 0,
++  weeksPerYear: 52,
++  utilisation: 0,
++  excludedConsultAccounts: [],
++  excludedConsultTxnKeys: [],
++}
++
++export const samplePl: XeroPL = {
++  months: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
++  monthLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
++  accounts: [
++    { name: 'Revenue A', section: 'trading_income', values: [100, 100, 100, 200, 200, 200], total: 900 },
++    { name: 'Revenue B', section: 'trading_income', values: [100, 100, 100, 200, 200, 200], total: 900 },
++    { name: 'COGS', section: 'cost_of_sales', values: [80, 80, 80, 100, 100, 100], total: 540 },
++    { name: 'Opex', section: 'operating_expenses', values: [50, 50, 50, 60, 60, 60], total: 320 },
++  ],
++}
++
++export const mappedTemplate: DreamTemplate = {
++  id: 't',
++  name: 'mapped',
++  root: {
++    id: 'root',
++    label: 'root',
++    kind: 'group',
++    children: [
++      {
++        id: 'rev',
++        label: 'Revenue',
++        kind: 'group',
++        children: [
++          { id: 'rev_a', label: 'Rev A', kind: 'line', mappedAccounts: ['Revenue A'] },
++          { id: 'rev_b', label: 'Rev B', kind: 'line', mappedAccounts: ['Revenue B'] },
++        ],
++      },
++      {
++        id: 'cogs',
++        label: 'COGS',
++        kind: 'group',
++        children: [
++          { id: 'cogs_line', label: 'COGS Line', kind: 'line', mappedAccounts: ['COGS'] },
++        ],
++      },
++      {
++        id: 'opex',
++        label: 'Opex',
++        kind: 'group',
++        children: [
++          { id: 'opex_line', label: 'Opex Line', kind: 'line', mappedAccounts: ['Opex'] },
++        ],
++      },
++    ],
++  },
++}
++
++export const unmappedTemplate: DreamTemplate = {
++  id: 't2',
++  name: 'unmapped',
++  root: {
++    id: 'root',
++    label: 'root',
++    kind: 'group',
++    children: [
++      { id: 'rev', label: 'Revenue', kind: 'group', children: [] },
++      { id: 'cogs', label: 'COGS', kind: 'group', children: [] },
++      { id: 'opex', label: 'Opex', kind: 'group', children: [] },
++    ],
++  },
++}
++
++export function makeReport(overrides: Partial<ReportData>): ReportData {
++  return {
++    dataSourceRequested: 'dream',
++    dataSourceUsed: 'dream',
++    recommendedSource: 'dream',
++    periodLabel: 'Through Jun',
++    dataSourceLabel: 'Dream',
++    dataQualityBadge: 'Data quality: Good',
++    dataQualityBadgeLabel: 'Data quality: Good',
++    baseTotals: { revenue: [0], cogs: [0], opex: [0], net: [0] },
++    scenarioTotals: null,
++    trendRows: [],
++    trendStats: {},
++    kpis: [],
++    executiveSummary: [],
++    whatChanged: [],
++    varianceAttribution: undefined,
++    drivers: { revenue: { items: [] }, cost: { items: [] } },
++    pnlSummary: [],
++    dataQuality: { mappingCompleteness: 1, missingAccounts: [], missingKeyAccounts: [], disabledSections: [], warnings: [] },
++    scenarioNotes: [],
++    comparisonMode: 'last3_vs_prev3',
++    comparisonLabel: 'Last 3 months vs prior 3 months',
++    movementBadge: 'Movement',
++    ...overrides,
++  }
++}
+ 
+EOF
+)
