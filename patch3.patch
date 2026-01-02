@@ -1,0 +1,1207 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..a016260baec0dc508cd4b05da28efc254bc69a81
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,4 @@
++node_modules/
++mvp6/node_modules/
++dist/
++.vite/
+diff --git a/mvp6/src/components/Reports.tsx b/mvp6/src/components/Reports.tsx
+index f5e1cde4128e0759629a9ca45717064aef684a1f..13055be4a3a800f4b7d9a0c4560f230285eccdd1 100644
+--- a/mvp6/src/components/Reports.tsx
++++ b/mvp6/src/components/Reports.tsx
+@@ -70,51 +70,51 @@ export function Reports() {
+     const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
+     const imgData = canvas.toDataURL('image/png')
+     const pdf = new jsPDF('p', 'pt', 'a4')
+     const pageWidth = pdf.internal.pageSize.getWidth()
+     const pageHeight = pdf.internal.pageSize.getHeight()
+     const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
+     const imgWidth = canvas.width * ratio
+     const imgHeight = canvas.height * ratio
+     pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+     pdf.save('Investor_Report.pdf')
+     setStatus('Report generated.')
+     setTimeout(() => setStatus(null), 2000)
+   }
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]">
+       <ReportBuilderPanel
+         dataSource={builder.dataSource}
+         includeScenario={builder.includeScenario}
+         recommendedSource={reportData.recommendedSource}
+         mappingCompleteness={reportData.dataQuality.mappingCompleteness}
+         mappingWarnings={[
+           ...reportData.dataQuality.warnings,
+           ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
+           ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
+-            ? ['Dream mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
++            ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+             : []),
+         ]}
+         comparisonMode={builder.comparisonMode}
+         onChange={handleChange}
+       />
+ 
+       <div className="space-y-3">
+         {reportData.fallbackReason && (
+           <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
+             {reportData.fallbackReason}
+           </Card>
+         )}
+         <ReportPreview previewRef={previewRef}>
+           <InvestorReportTemplate data={reportData} />
+         </ReportPreview>
+         <div className="flex items-center gap-3">
+           <button
+             type="button"
+             onClick={generate}
+             className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
+             disabled={!pl || !reportData.baseTotals}
+           >
+             Generate investor PDF
+           </button>
+           {status ? <div className="text-xs text-slate-300">{status}</div> : null}
+diff --git a/mvp6/src/components/report/InvestorReportTemplate.tsx b/mvp6/src/components/report/InvestorReportTemplate.tsx
+index cd0050f354e88843175c87b8d3b8f8aa3948b3de..0ed93a8ff9ea1d464746721a1076a30eefb99191 100644
+--- a/mvp6/src/components/report/InvestorReportTemplate.tsx
++++ b/mvp6/src/components/report/InvestorReportTemplate.tsx
+@@ -1,42 +1,46 @@
+ import React from 'react'
+ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts'
+ import { ReportData } from '../../lib/reportData'
+ 
+ const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+ const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 })
+ 
+ function money(n: number | null | undefined) {
+   if (n == null) return '—'
+   return MONEY_FORMATTER.format(n)
+ }
+ 
+ function pct(n: number | null | undefined) {
+   if (n == null || Number.isNaN(n)) return '—'
+   return `${PCT_FORMATTER.format(n)}%`
+ }
+ 
++function formatValue(value: number | null | undefined, format?: 'currency' | 'percentage') {
++  return format === 'percentage' ? pct(value) : money(value)
++}
++
+ function Callout({ title, detail }: { title: string; detail: string }) {
+   return (
+     <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+       <div className="font-semibold text-amber-50">{title}</div>
+       <div>{detail}</div>
+     </div>
+   )
+ }
+ 
+ export function InvestorReportTemplate({ data }: { data: ReportData }) {
+   const {
+     dataSourceLabel,
+     dataQualityBadge,
+     periodLabel,
+     kpis,
+     executiveSummary,
+     whatChanged,
+     trendRows,
+     trendStats,
+     varianceAttribution,
+     drivers,
+     pnlSummary,
+     dataQuality,
+     scenarioNotes,
+     comparisonLabel,
+@@ -54,55 +58,56 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
+   if (fallbackReason) warningLines.push(fallbackReason)
+   if (dataQuality.disabledSections.length) warningLines.push(`Sections disabled: ${dataQuality.disabledSections.join(', ')}`)
+   if (drivers.revenue.disabledReason || drivers.cost.disabledReason) warningLines.push('Drivers incomplete. Go to Mapping to unlock movement insights.')
+ 
+   return (
+     <div className="bg-slate-950 text-slate-100 font-sans w-full max-w-none mx-auto p-8 space-y-8">
+       {/* Page 1 */}
+       <div className="flex items-start justify-between gap-3">
+         <div>
+           <div className="text-xs uppercase tracking-wide text-indigo-300">Investor Report</div>
+           <div className="text-2xl font-semibold">Cingulum Dream P&L</div>
+           <div className="text-sm text-slate-400">{periodLabel}</div>
+           <div className="mt-2 text-xs text-slate-300">Datasource: {dataSourceLabel}</div>
+           <div className="mt-1 text-[11px] text-slate-300">{movementBadge}</div>
+         </div>
+         <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+           {dataQualityBadge}
+         </div>
+       </div>
+ 
+       <div className="grid grid-cols-2 gap-3">
+         {kpis.map(k => (
+           <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+             <div className="text-xs text-slate-400">{k.label}</div>
+             <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
+-              {k.label.toLowerCase().includes('%') ? pct(k.current) : money(k.current)}
++              {formatValue(k.current, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))}
+             </div>
+             {k.variance != null && (
+               <div className="text-xs text-slate-400">
+-                Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
++                Scenario: {formatValue(k.scenario ?? null, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} (
++                {formatValue(k.label.toLowerCase().includes('%') ? (k.scenario ?? 0) - (k.current ?? 0) : k.variance, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} vs current)
+               </div>
+             )}
+           </div>
+         ))}
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+           <div className="text-sm font-semibold">Executive summary</div>
+           <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
+             {executiveSummary.map((i, idx) => (
+               <li key={idx}>{i}</li>
+             ))}
+           </ul>
+         </div>
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+           <div className="text-sm font-semibold">What changed (last 3 vs prior 3)</div>
+           <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
+             {whatChanged.map((i, idx) => (
+               <li key={idx}>{i}</li>
+             ))}
+           </ul>
+         </div>
+       </div>
+ 
+@@ -215,54 +220,54 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
+             })}
+             <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (cost down is good, up is bad).</div>
+           </div>
+         ) : (
+           <Callout title="No cost drivers" detail="Not enough movement to surface cost drivers." />
+         )}
+       </div>
+ 
+       {/* Page 5 */}
+       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+         <div className="text-sm font-semibold">P&L summary (current vs scenario)</div>
+         {pnlSummary.length ? (
+           <table className="w-full text-xs text-slate-200">
+             <thead className="text-slate-400">
+               <tr>
+                 <th className="text-left pb-1">Line</th>
+                 <th className="text-right pb-1">Current</th>
+                 <th className="text-right pb-1">Scenario</th>
+                 <th className="text-right pb-1">Variance</th>
+               </tr>
+             </thead>
+             <tbody>
+               {pnlSummary.map(row => (
+                 <tr key={row.label} className="border-t border-white/5">
+                   <td className="py-1">{row.label}</td>
+-                  <td className="py-1 text-right">{money(row.current)}</td>
+-                  <td className="py-1 text-right">{row.scenario != null ? money(row.scenario) : '—'}</td>
++                  <td className="py-1 text-right">{formatValue(row.current, row.format)}</td>
++                  <td className="py-1 text-right">{row.scenario != null ? formatValue(row.scenario, row.format) : '—'}</td>
+                   <td className={`py-1 text-right ${((row.variance ?? 0) >= 0) ? 'text-emerald-300' : 'text-rose-300'}`}>
+-                    {row.variance != null ? money(row.variance) : '—'}
++                    {row.variance != null ? formatValue(row.variance, row.format) : '—'}
+                   </td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         ) : (
+           <Callout title="P&L summary unavailable" detail="Upload a P&L to see investor summary lines." />
+         )}
+       </div>
+ 
+       {/* Page 6: Scenario attribution */}
+       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+         <div className="flex items-center justify-between">
+           <div className="text-sm font-semibold">Scenario variance attribution</div>
+           <div className="text-xs text-slate-400">Explains where the scenario delta comes from.</div>
+         </div>
+         {showScenario && varianceAttribution ? (
+           <div className="grid grid-cols-1 gap-2">
+             {varianceAttribution.map((row, idx) => (
+               <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                 <div className="text-sm text-slate-200">{row.label}</div>
+                 <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
+               </div>
+             ))}
+           </div>
+diff --git a/mvp6/src/components/report/ReportBuilderPanel.tsx b/mvp6/src/components/report/ReportBuilderPanel.tsx
+index 5e9df1f8d5ad000212423a10b71777701db8a8e8..379f11c74953942bd2afe47ea62f875448c1b7a0 100644
+--- a/mvp6/src/components/report/ReportBuilderPanel.tsx
++++ b/mvp6/src/components/report/ReportBuilderPanel.tsx
+@@ -1,103 +1,102 @@
+ import React from 'react'
+ import { Card, Label } from '../ui'
+-import { ComparisonMode, DataSource } from '../../lib/reportData'
++import { COMPARISON_MODE_METADATA, ComparisonMode, DataSource } from '../../lib/reportData'
+ 
+ export type BuilderState = {
+   dataSource: DataSource
+   includeScenario: boolean
+   recommendedSource: DataSource
+   mappingCompleteness: number
+   mappingWarnings: string[]
+   comparisonMode: ComparisonMode
+   onChange: (s: Partial<BuilderState>) => void
+ }
+ 
+ export function ReportBuilderPanel(props: BuilderState) {
+   const { dataSource, includeScenario, recommendedSource, mappingCompleteness, mappingWarnings, comparisonMode, onChange } = props
+ 
+   return (
+     <Card className="p-4 space-y-4">
+       <div>
+         <div className="text-sm font-semibold text-slate-100">Report Builder</div>
+         <div className="text-xs text-slate-400">Choose data source and scenario overlay. No filler controls.</div>
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-2">
+         <div>
+           <Label>Data source (required)</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+-            {(['legacy', 'dream'] as const).map(src => (
++            {(['legacy', 'management'] as const).map(src => (
+               <button
+                 key={src}
+                 onClick={() => onChange({ dataSource: src })}
+                 className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                   dataSource === src ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+                 }`}
+               >
+-                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Dream P&L (mapped model)'}
++                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Management P&L (mapped model)'}
+                 {recommendedSource === src ? ' • default' : ''}
+               </button>
+             ))}
+           </div>
+           {recommendedSource === 'legacy' && (
+             <div className="mt-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+-              Dream mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
++              Management mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
+             </div>
+           )}
+         </div>
+ 
+         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-200 space-y-1">
+           <div className="font-semibold text-slate-100">Mapping quality</div>
+           <div>Mapped coverage: {(mappingCompleteness * 100).toFixed(0)}%</div>
+           {mappingWarnings.map((w, idx) => (
+             <div key={idx} className="text-amber-100">{w}</div>
+           ))}
+         </div>
+ 
+         <div>
+           <Label>Scenario overlay</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+             <button
+               onClick={() => onChange({ includeScenario: true })}
+               className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                 includeScenario ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+               }`}
+             >
+               Scenario ON
+             </button>
+             <button
+               onClick={() => onChange({ includeScenario: false })}
+               className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                 !includeScenario ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+               }`}
+             >
+               Scenario OFF
+             </button>
+           </div>
+         </div>
+ 
+         <div>
+           <Label>Comparison mode (controls movement math)</Label>
+           <div className="mt-2 grid grid-cols-1 gap-2">
+-            {([
+-              { id: 'last3_vs_prev3', label: 'Last 3 months vs prior 3 months' },
+-              { id: 'scenario_vs_current', label: 'Scenario vs Current (TTM)' },
+-              { id: 'month_vs_prior', label: 'Last month vs prior month' },
+-            ] as const).map(opt => (
+-              <button
+-                key={opt.id}
+-                onClick={() => onChange({ comparisonMode: opt.id })}
+-                className={`rounded-xl border px-3 py-2 text-xs font-semibold text-left ${
+-                  comparisonMode === opt.id ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+-                }`}
+-              >
+-                {opt.label}
+-                {opt.id === 'scenario_vs_current' && includeScenario && <span className="ml-2 text-emerald-200">(recommended for scenario)</span>}
+-              </button>
+-            ))}
++            {(['last3_vs_prev3', 'scenario_vs_current', 'month_vs_prior'] as ComparisonMode[]).map(id => {
++              const opt = COMPARISON_MODE_METADATA[id]
++              return (
++                <button
++                  key={id}
++                  onClick={() => onChange({ comparisonMode: id })}
++                  className={`rounded-xl border px-3 py-2 text-xs font-semibold text-left ${
++                    comparisonMode === id ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
++                  }`}
++                >
++                  {opt.label}
++                  {id === 'scenario_vs_current' && includeScenario && <span className="ml-2 text-emerald-200">(recommended for scenario)</span>}
++                </button>
++              )
++            })}
+           </div>
+         </div>
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/lib/reportData.test.ts b/mvp6/src/lib/reportData.test.ts
+index dd8a9a92cdfd4a79a6604a5c8f823fa5b54b554d..c82513fbb99f88ba37d497fc80f1d894a546cd0e 100644
+--- a/mvp6/src/lib/reportData.test.ts
++++ b/mvp6/src/lib/reportData.test.ts
+@@ -1,27 +1,28 @@
+ import { describe, expect, it } from 'vitest'
+-import { getReportData } from './reportData'
++import { buildFinancialModel, computeComparison, getReportData } from './reportData'
++import { applyBundledScenario, computeXeroTotals } from './dream/compute'
+ import { DreamTemplate, ScenarioInputs, XeroPL } from './types'
+ 
+ const baseScenario: ScenarioInputs = {
+   enabled: false,
+   legacyTmsAccountMatchers: [],
+   includeDoctorConsultsInBundle: false,
+   legacyConsultAccountMatchers: [],
+   state: 'NSW/QLD',
+   doctorServiceFeePct: 15,
+   cbaMonthlyCount: 0,
+   programMonthlyCount: 0,
+   cbaPrice: 0,
+   programPrice: 0,
+   addBundleCostsToScenario: false,
+   cbaIncludeMRI: false,
+   cbaMriCost: 0,
+   cbaMriPatientFee: 0,
+   cbaIncludeQuicktome: false,
+   cbaQuicktomeCost: 0,
+   cbaQuicktomePatientFee: 0,
+   cbaIncludeCreyos: false,
+   cbaCreyosCost: 0,
+   cbaCreyosPatientFee: 0,
+   cbaIncludeInitialConsult: false,
+   cbaInitialConsultFee: 0,
+@@ -104,42 +105,206 @@ const mappedTemplate: DreamTemplate = {
+         kind: 'group',
+         children: [
+           { id: 'opex_line', label: 'Opex Line', kind: 'line', mappedAccounts: ['Opex'] },
+         ],
+       },
+     ],
+   },
+ }
+ 
+ const unmappedTemplate: DreamTemplate = {
+   id: 't2',
+   name: 'unmapped',
+   root: {
+     id: 'root',
+     label: 'root',
+     kind: 'group',
+     children: [
+       { id: 'rev', label: 'Revenue', kind: 'group', children: [] },
+       { id: 'cogs', label: 'COGS', kind: 'group', children: [] },
+       { id: 'opex', label: 'Opex', kind: 'group', children: [] },
+     ],
+   },
+ }
+ 
+ describe('reportData', () => {
+-  it('falls back to legacy when dream drivers are suspicious/identical', () => {
+-    const report = getReportData({ dataSource: 'dream', pl: samplePl, template: mappedTemplate, scenario: baseScenario, includeScenario: false })
++  it('falls back to legacy when management drivers are suspicious/identical', () => {
++    const report = getReportData({ dataSource: 'management', pl: samplePl, template: mappedTemplate, scenario: baseScenario, includeScenario: false })
+     expect(report.dataSourceUsed).toBe('legacy')
+-    expect(report.fallbackReason).toMatch(/Dream drivers/i)
++    expect(report.fallbackReason).toMatch(/Management drivers/i)
+   })
+ 
+   it('avoids $0 spam when mapping is missing', () => {
+-    const report = getReportData({ dataSource: 'dream', pl: samplePl, template: unmappedTemplate, scenario: baseScenario, includeScenario: false })
+-    expect(report.drivers.revenue.items.length).toBe(0)
+-    expect(report.drivers.revenue.disabledReason).toMatch(/mapped data/i)
++    const report = getReportData({ dataSource: 'management', pl: samplePl, template: unmappedTemplate, scenario: baseScenario, includeScenario: false })
++    expect(report.dataSourceUsed).toBe('legacy')
++    expect(report.fallbackReason).toMatch(/Defaulted to Legacy/i)
+   })
+ 
+-  it('defaults recommendation to legacy when dream completeness is low', () => {
+-    const report = getReportData({ dataSource: 'dream', pl: samplePl, template: unmappedTemplate, scenario: baseScenario, includeScenario: false })
++  it('defaults recommendation to legacy when management completeness is low', () => {
++    const report = getReportData({ dataSource: 'management', pl: samplePl, template: unmappedTemplate, scenario: baseScenario, includeScenario: false })
+     expect(report.recommendedSource).toBe('legacy')
+   })
++
++  it('formats gross margin as a percentage in KPIs and summaries', () => {
++    const gmPl: XeroPL = {
++      months: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
++      monthLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
++      accounts: [
++        { name: 'Revenue', section: 'trading_income', values: [100, 100, 100, 100, 100, 100], total: 600 },
++        { name: 'COGS', section: 'cost_of_sales', values: [40, 40, 40, 40, 40, 40], total: 240 },
++      ],
++    }
++    const gmTemplate: DreamTemplate = {
++      ...mappedTemplate,
++      root: {
++        id: 'root',
++        label: 'root',
++        kind: 'group',
++        children: [
++          { id: 'rev', label: 'Revenue', kind: 'group', children: [{ id: 'rev_a', label: 'Rev', kind: 'line', mappedAccounts: ['Revenue'] }] },
++          { id: 'cogs', label: 'COGS', kind: 'group', children: [{ id: 'cogs_line', label: 'COGS Line', kind: 'line', mappedAccounts: ['COGS'] }] },
++          { id: 'opex', label: 'Opex', kind: 'group', children: [] },
++        ],
++      },
++    }
++
++    const report = getReportData({ dataSource: 'management', pl: gmPl, template: gmTemplate, scenario: baseScenario, includeScenario: false })
++    const gmSummary = report.pnlSummary.find(l => l.label === 'Gross margin %')
++    expect(gmSummary?.format).toBe('percentage')
++    expect(gmSummary?.current).toBeCloseTo(60)
++
++    const gmKpi = report.kpis.find(k => k.label === 'Gross margin %')
++    expect(gmKpi?.format).toBe('percentage')
++    expect(gmKpi?.current).toBeCloseTo(60)
++  })
++
++  it('builds a financial model with provenance and aggregates', () => {
++    const pl: XeroPL = {
++      months: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
++      monthLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
++      accounts: [
++        { name: 'Revenue', section: 'trading_income', values: [100, 120, 140, 160, 180, 200], total: 900 },
++        { name: 'Opex', section: 'operating_expenses', values: [50, 50, 50, 60, 60, 60], total: 330 },
++      ],
++    }
++    const template: DreamTemplate = {
++      ...mappedTemplate,
++      root: {
++        id: 'root',
++        label: 'root',
++        kind: 'group',
++        children: [
++          { id: 'rev', label: 'Revenue', kind: 'group', children: [{ id: 'rev_a', label: 'Rev', kind: 'line', mappedAccounts: ['Revenue'] }] },
++          { id: 'cogs', label: 'COGS', kind: 'group', children: [] },
++          { id: 'opex', label: 'Opex', kind: 'group', children: [{ id: 'opex_line', label: 'Opex Line', kind: 'line', mappedAccounts: ['Opex'] }] },
++        ],
++      },
++    }
++
++    const model = buildFinancialModel({
++      datasetId: 'ds-1',
++      dataSource: 'management',
++      pl,
++      template,
++      scenarioConfig: baseScenario,
++      comparisonMode: 'month_vs_prior',
++      includeScenario: false,
++    })
++
++    expect(model.provenance.datasetId).toBe('ds-1')
++    expect(model.aggregatesByMonth).toHaveLength(pl.monthLabels.length)
++    expect(model.provenance.dataSourceUsed).toBe('management')
++    expect(model.dataQuality.badge).toMatch(/Management/)
++  })
++
++  it('preserves driver profitImpact polarity for income vs cost', () => {
++    const driverPl: XeroPL = {
++      months: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
++      monthLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
++      accounts: [
++        { name: 'Revenue A', section: 'trading_income', values: [100, 100, 100, 200, 200, 250], total: 950 },
++        { name: 'Revenue B', section: 'trading_income', values: [200, 200, 200, 250, 260, 270], total: 1380 },
++        { name: 'Opex', section: 'operating_expenses', values: [50, 55, 55, 70, 75, 80], total: 385 },
++      ],
++    }
++    const driverTemplate: DreamTemplate = {
++      ...mappedTemplate,
++      root: {
++        id: 'root',
++        label: 'root',
++        kind: 'group',
++        children: [
++          {
++            id: 'rev',
++            label: 'Revenue',
++            kind: 'group',
++            children: [
++              { id: 'rev_a', label: 'Rev A', kind: 'line', mappedAccounts: ['Revenue A'] },
++              { id: 'rev_b', label: 'Rev B', kind: 'line', mappedAccounts: ['Revenue B'] },
++            ],
++          },
++          {
++            id: 'cogs',
++            label: 'COGS',
++            kind: 'group',
++            children: [],
++          },
++          {
++            id: 'opex',
++            label: 'Opex',
++            kind: 'group',
++            children: [{ id: 'opex_line', label: 'Opex Line', kind: 'line', mappedAccounts: ['Opex'] }],
++          },
++        ],
++      },
++    }
++
++    const report = getReportData({ dataSource: 'management', pl: driverPl, template: driverTemplate, scenario: baseScenario, includeScenario: false, comparisonMode: 'last3_vs_prev3' })
++    expect(report.drivers.revenue.items[0].profitImpact).toBeGreaterThan(0)
++    expect(report.drivers.cost.items[0].profitImpact).toBeLessThan(0)
++  })
++
++  it('centralises comparison math across modes', () => {
++    const baseSeries = [1, 1, 1, 2, 2, 3]
++    const scenarioSeries = [2, 2, 2, 3, 3, 4]
++
++    const last3 = computeComparison('last3_vs_prev3', baseSeries, baseSeries)
++    expect(last3.currentTotal).toBe(7)
++    expect(last3.compareTotal).toBe(3)
++    expect(last3.delta).toBe(4)
++    expect(last3.label).toMatch(/Last 3/i)
++
++    const month = computeComparison('month_vs_prior', baseSeries, baseSeries)
++    expect(month.currentTotal).toBe(3)
++    expect(month.compareTotal).toBe(2)
++    expect(month.delta).toBe(1)
++    expect(month.label).toMatch(/prior month/i)
++
++    const scenario = computeComparison('scenario_vs_current', baseSeries, scenarioSeries, { revenue: [], cogs: [], opex: [], net: [] })
++    expect(scenario.currentTotal).toBe(16)
++    expect(scenario.compareTotal).toBe(10)
++    expect(scenario.delta).toBe(6)
++    expect(scenario.label).toMatch(/Scenario/i)
++  })
++
++  it('replaces legacy streams with scenario overlays when enabled', () => {
++    const scenarioPl: XeroPL = {
++      months: ['2024-01', '2024-02'],
++      monthLabels: ['Jan', 'Feb'],
++      accounts: [{ name: 'Legacy TMS', section: 'trading_income', values: [500, 500], total: 1000 }],
++    }
++    const baseTotals = computeXeroTotals(scenarioPl)
++    const scenarioTotals = applyBundledScenario(baseTotals, scenarioPl, {
++      ...baseScenario,
++      enabled: true,
++      legacyTmsAccountMatchers: ['tms'],
++      cbaMonthlyCount: 1,
++      cbaPrice: 200,
++      programMonthlyCount: 0,
++      addBundleCostsToScenario: false,
++    })
++
++    expect(baseTotals.revenue[0]).toBe(500)
++    expect(scenarioTotals.revenue[0]).toBe(200)
++    expect(scenarioTotals.revenue[0]).not.toBe(baseTotals.revenue[0])
++  })
+ })
+diff --git a/mvp6/src/lib/reportData.ts b/mvp6/src/lib/reportData.ts
+index 1abd93e38f28d225ad81e0cb06f75733305e7ba9..e1227209a684958417104a30f910f25c2c1173c5 100644
+--- a/mvp6/src/lib/reportData.ts
++++ b/mvp6/src/lib/reportData.ts
+@@ -1,90 +1,136 @@
+ import { applyBundledScenario, computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals, DreamTotals } from './dream/compute'
+ import { DreamGroup, DreamLine, DreamTemplate, ScenarioInputs, XeroPL } from './types'
+ 
+-export type DataSource = 'legacy' | 'dream'
++export type DataSource = 'legacy' | 'management'
+ export type ComparisonMode = 'last3_vs_prev3' | 'scenario_vs_current' | 'month_vs_prior'
+ 
++export const COMPARISON_MODE_METADATA: Record<
++  ComparisonMode,
++  { label: string; badge: string; movementLabel: string; requiresScenario?: boolean }
++> = {
++  last3_vs_prev3: {
++    label: 'Last 3 months vs prior 3 months',
++    badge: 'Movement = Last 3 months vs prior 3 months',
++    movementLabel: 'Last 3 vs prior 3',
++  },
++  scenario_vs_current: {
++    label: 'Scenario TTM – Current TTM',
++    badge: 'Movement = Scenario vs Current (TTM)',
++    movementLabel: 'Scenario vs current',
++    requiresScenario: true,
++  },
++  month_vs_prior: {
++    label: 'Last month vs prior month',
++    badge: 'Movement = Last month vs prior month',
++    movementLabel: 'Month vs prior',
++  },
++}
++
+ export type DriverItem = {
+   label: string
+   sectionType: 'income' | 'expense'
+   currentValue: number | null
+   compareValue: number | null
+   delta: number | null
+   pctDelta: number | null
+   contributionPct: number
+   profitImpact: number | null
+   note?: string
+ }
+ 
+ export type DriverResult = {
+   items: DriverItem[]
+   disabledReason?: string
+   diagnostics?: string[]
+   suspicious?: boolean
+ }
+ 
+ export type TrendStats = {
+   last3vsPrev3?: string
+ }
+ 
+ export type VarianceAttribution = {
+   label: string
+   amount: number
+   tone?: 'good' | 'bad'
+ }
+ 
+ export type DataQuality = {
+   mappingCompleteness: number
+   missingAccounts: string[]
+   missingKeyAccounts: string[]
+   disabledSections: string[]
+   warnings: string[]
+ }
+ 
++export type FinancialModel = {
++  months: string[]
++  aggregatesByMonth: {
++    month: string
++    current: { revenue: number; cogs: number; opex: number; net: number }
++    scenario?: { revenue: number; cogs: number; opex: number; net: number } | null
++  }[]
++  pnlLines: (ReportData['pnlSummary'][number] & { format?: 'currency' | 'percentage' })[]
++  drivers: ReportData['drivers']
++  assumptionsUsed: string[]
++  dataQuality: DataQuality & { badge: string; badgeLabel: string }
++  provenance: {
++    datasetId: string
++    dataSourceRequested: DataSource
++    dataSourceUsed: DataSource
++    recommendedSource: DataSource
++    fallbackReason?: string
++    diagnostics: string[]
++    comparisonMode: ComparisonMode
++    comparisonLabel: string
++    movementBadge: string
++  }
++}
++
+ export type ReportData = {
+   dataSourceRequested: DataSource
+   dataSourceUsed: DataSource
+   fallbackReason?: string
+   recommendedSource: DataSource
+   periodLabel: string
+   dataSourceLabel: string
+   dataQualityBadge: string
+   dataQualityBadgeLabel: string
+   baseTotals: DreamTotals | null
+   scenarioTotals: DreamTotals | null
+   trendRows: { month: string; current: number; scenario?: number | null }[]
+   trendStats: TrendStats
+-  kpis: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad' }[]
++  kpis: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad'; format?: 'currency' | 'percentage' }[]
+   executiveSummary: string[]
+   whatChanged: string[]
+   varianceAttribution?: VarianceAttribution[]
+   drivers: {
+     revenue: DriverResult
+     cost: DriverResult
+   }
+-  pnlSummary: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad' }[]
++  pnlSummary: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad'; format?: 'currency' | 'percentage' }[]
+   dataQuality: DataQuality
+   scenarioNotes: string[]
+   comparisonMode: ComparisonMode
+   comparisonLabel: string
+   movementBadge: string
+ }
+ 
+ const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+ 
+ function money(n: number) {
+   return MONEY_FORMATTER.format(n)
+ }
+ 
+ function pct(num: number | null | undefined) {
+   if (num == null || Number.isNaN(num)) return '—'
+   return `${num.toFixed(1)}%`
+ }
+ 
+ function flattenLinesWithSection(root: DreamGroup, parentSection: 'rev' | 'cogs' | 'opex' | null = null): { line: DreamLine; section: 'rev' | 'cogs' | 'opex' | null }[] {
+   let section: 'rev' | 'cogs' | 'opex' | null = parentSection
+   if (root.id === 'rev' || root.id === 'cogs' || root.id === 'opex') section = root.id
+   const out: { line: DreamLine; section: 'rev' | 'cogs' | 'opex' | null }[] = []
+   for (const child of root.children) {
+     if (child.kind === 'line') out.push({ line: child, section })
+     else out.push(...flattenLinesWithSection(child, section))
+@@ -151,303 +197,422 @@ function buildVarianceAttribution(base: DreamTotals, scenarioTotals: DreamTotals
+   const opexDelta = sum(scenarioTotals.opex) - sum(base.opex)
+   const netDelta = sum(scenarioTotals.net) - sum(base.net)
+   const unattributed = netDelta - (revenueDelta - cogsDelta - opexDelta)
+ 
+   const attribution: VarianceAttribution[] = [
+     { label: 'Volume & pricing uplift', amount: revenueDelta, tone: revenueDelta >= 0 ? 'good' : 'bad' },
+     { label: 'Bundle & consult costs', amount: -cogsDelta, tone: cogsDelta <= 0 ? 'good' : 'bad' },
+     { label: 'Opex levers (rent/efficiency)', amount: -opexDelta, tone: opexDelta <= 0 ? 'good' : 'bad' },
+   ]
+ 
+   if (Math.abs(unattributed) > 1) {
+     attribution.push({ label: 'Unattributed / rounding', amount: unattributed })
+   }
+   return attribution
+ }
+ 
+ function describeScenario(scenario: ScenarioInputs): string[] {
+   const notes: string[] = []
+   notes.push(`Pricing: $${scenario.cbaPrice ?? 0} CBA, $${scenario.programPrice ?? 0} cgTMS; State ${scenario.state}`)
+   notes.push(`Volume: ${scenario.cbaMonthlyCount ?? 0} CBA / ${scenario.programMonthlyCount ?? 0} cgTMS per month${scenario.machinesEnabled ? ' (machine capacity applied)' : ''}`)
+   notes.push(`Consult treatment: ${scenario.includeDoctorConsultsInBundle ? 'consults removed from legacy revenue' : 'consults left in legacy revenue'}`)
+   notes.push(`Bundle costs ${scenario.addBundleCostsToScenario ? 'included' : 'excluded'}; Doctor service fee ${scenario.doctorServiceFeePct ?? 0}% share`)
+   return notes
+ }
+ 
+-function computeComparison(mode: ComparisonMode, currentSeries: number[], compareSeries: number[], scenarioTotals?: DreamTotals | null): { currentTotal: number | null; compareTotal: number | null; delta: number | null; pctDelta: number | null; label: string } {
++export function computeComparison(
++  mode: ComparisonMode,
++  currentSeries: number[],
++  compareSeries: number[],
++  scenarioTotals?: DreamTotals | null
++): { currentTotal: number | null; compareTotal: number | null; delta: number | null; pctDelta: number | null; label: string; badge: string } {
++  const meta = COMPARISON_MODE_METADATA[mode]
+   if (mode === 'scenario_vs_current') {
+-    if (!scenarioTotals) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Scenario TTM – Current TTM' }
++    if (!scenarioTotals) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: meta.label, badge: meta.badge }
+     const currentTotal = sum(compareSeries)
+     const compareTotal = sum(currentSeries)
+     const delta = currentTotal - compareTotal
+     const pctDelta = compareTotal === 0 ? null : (delta / Math.abs(compareTotal)) * 100
+-    return { currentTotal, compareTotal, delta, pctDelta, label: 'Scenario TTM – Current TTM' }
++    return { currentTotal, compareTotal, delta, pctDelta, label: meta.label, badge: meta.badge }
+   }
+   if (mode === 'month_vs_prior') {
+-    if (currentSeries.length < 2) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Last month vs prior month' }
++    if (currentSeries.length < 2) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: meta.label, badge: meta.badge }
+     const currentTotal = currentSeries[currentSeries.length - 1] ?? 0
+     const compareTotal = currentSeries[currentSeries.length - 2] ?? 0
+     const delta = currentTotal - compareTotal
+     const pctDelta = compareTotal === 0 ? null : (delta / Math.abs(compareTotal)) * 100
+-    return { currentTotal, compareTotal, delta, pctDelta, label: 'Last month vs prior month' }
++    return { currentTotal, compareTotal, delta, pctDelta, label: meta.label, badge: meta.badge }
+   }
+   const window = last3vsPrev3(currentSeries)
+-  if (!window) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Last 3 months vs prior 3 months' }
++  if (!window) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: meta.label, badge: meta.badge }
+   const delta = window.currentTotal - window.compareTotal
+   const pctDelta = window.compareTotal === 0 ? null : (delta / Math.abs(window.compareTotal)) * 100
+-  return { currentTotal: window.currentTotal, compareTotal: window.compareTotal, delta, pctDelta, label: 'Last 3 months vs prior 3 months' }
++  return { currentTotal: window.currentTotal, compareTotal: window.compareTotal, delta, pctDelta, label: meta.label, badge: meta.badge }
+ }
+ 
+ function makeDataQualityBadge(source: DataSource, completeness: number, missingKeyCount: number): { badge: string; level: 'good' | 'partial' | 'bad' } {
+   if (source === 'legacy') return { badge: 'Data quality: Legacy (Good)', level: 'good' }
+-  if (completeness >= 0.85) return { badge: 'Data quality: Good', level: 'good' }
++  if (completeness >= 0.85) return { badge: 'Data quality: Management (Good)', level: 'good' }
+   if (completeness >= 0.5) return { badge: `Data quality: Partial (${Math.round(completeness * 100)}% mapped; missing ${missingKeyCount} key)`, level: 'partial' }
+   return { badge: `Data quality: Incomplete (${Math.round(completeness * 100)}% mapped; missing ${missingKeyCount} key)`, level: 'bad' }
+ }
+ 
+ function getDrivers(opts: {
+   entries: { label: string; values: number[]; sectionType: 'income' | 'expense' }[]
+   mode: ComparisonMode
+   scenarioTotals: DreamTotals | null
+   scenarioEntries?: { label: string; values: number[]; sectionType: 'income' | 'expense' }[]
+ }): DriverResult {
+   const { entries, mode, scenarioTotals, scenarioEntries } = opts
+   if (!entries.length) return { items: [], disabledReason: 'Not enough mapped data to show drivers.' }
+   if (mode === 'last3_vs_prev3' && entries.every(e => e.values.length < 6)) return { items: [], disabledReason: 'Need at least 6 months of data for drivers.' }
+ 
+   const deltas = entries.map((e, idx) => {
+     const compareSeries = mode === 'scenario_vs_current' && scenarioEntries?.[idx] ? scenarioEntries[idx].values : e.values
+     const cmp = computeComparison(mode, e.values, compareSeries, scenarioTotals)
+     const polarity = e.sectionType === 'income' ? 1 : -1
+     const profitImpact = cmp.delta == null ? null : cmp.delta * polarity
+     return {
+       label: e.label,
+       sectionType: e.sectionType,
+       currentValue: cmp.currentTotal,
+       compareValue: cmp.compareTotal,
+       delta: cmp.delta,
+       pctDelta: cmp.pctDelta,
+       profitImpact,
+     }
+   })
+ 
+   const deltasFiltered = deltas.filter(d => d.delta != null)
+   const sorted = deltasFiltered.sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
+   const top = sorted.filter(d => Math.abs(d.delta ?? 0) > 0).slice(0, 5)
+   if (!top.length) return { items: [], disabledReason: 'Not enough movement to rank drivers.' }
+ 
+   const absValues = top.map(t => Math.abs(t.delta ?? 0))
+   const varianceSpan = Math.max(...absValues) - Math.min(...absValues)
+   const suspicious = absValues.length >= 2 && varianceSpan < 1
+   const denom = absValues.reduce((a, b) => a + b, 0) || 1
+ 
+   const items: DriverItem[] = top.map(t => ({
+     ...t,
+     contributionPct: (Math.abs(t.delta ?? 0) / denom) * 100,
+     pctDelta: t.pctDelta ?? null,
+   }))
+ 
+-  return { items, suspicious }
++  const diagnostics = suspicious ? ['Driver deltas were nearly identical. Falling back to Legacy for movement diagnostics.'] : undefined
++
++  return { items, suspicious, diagnostics }
++}
++
++function resolveComparisonMode(requested: ComparisonMode | undefined, scenarioActive: boolean): ComparisonMode {
++  if (requested) return requested
++  return scenarioActive ? 'scenario_vs_current' : 'last3_vs_prev3'
+ }
+ 
+ export function getReportData(opts: {
+   dataSource: DataSource
+   pl: XeroPL | null
+   template: DreamTemplate
+   scenario: ScenarioInputs
+   includeScenario: boolean
+   completenessThreshold?: number
+   comparisonMode?: ComparisonMode
+ }): ReportData {
+   const { dataSource, pl, template, scenario, includeScenario, completenessThreshold = 0.85, comparisonMode } = opts
+   const mapping = calcMappingStats(pl, template)
+-  const recommendedSource: DataSource = mapping.completeness >= completenessThreshold ? 'dream' : 'legacy'
++  const recommendedSource: DataSource = mapping.completeness >= completenessThreshold ? 'management' : 'legacy'
+   const scenarioActive = includeScenario && scenario.enabled
+-  const mode: ComparisonMode = comparisonMode ? comparisonMode : scenarioActive ? 'scenario_vs_current' : 'last3_vs_prev3'
++  const mode: ComparisonMode = resolveComparisonMode(comparisonMode, scenarioActive)
++  const guardrailSource: DataSource = dataSource === 'management' && mapping.completeness < completenessThreshold ? 'legacy' : dataSource
++  const guardrailReason =
++    guardrailSource !== dataSource ? `Management mapping below ${(completenessThreshold * 100).toFixed(0)}%. Defaulted to Legacy.` : undefined
+ 
+   const buildForSource = (source: DataSource): ReportData => {
+     const hasData = !!pl
+     if (!hasData) {
+       return {
+         dataSourceRequested: dataSource,
+-        dataSourceUsed: source,
++        dataSourceUsed: guardrailSource,
+         recommendedSource,
+         fallbackReason: 'No P&L uploaded.',
+         periodLabel: 'Upload a P&L export to begin.',
+         dataSourceLabel: 'No data',
+         dataQualityBadge: 'Missing data',
+         dataQualityBadgeLabel: 'Data quality: Missing',
+         baseTotals: null,
+         scenarioTotals: null,
+         trendRows: [],
+         trendStats: {},
+         kpis: [],
+         executiveSummary: ['Upload a P&L export to generate a report.'],
+         whatChanged: [],
+         varianceAttribution: undefined,
+         drivers: { revenue: { items: [], disabledReason: 'No data uploaded.' }, cost: { items: [], disabledReason: 'No data uploaded.' } },
+         pnlSummary: [],
+         dataQuality: {
+           mappingCompleteness: mapping.completeness,
+           missingAccounts: mapping.missingAccounts,
+           missingKeyAccounts: mapping.missingKeyAccounts,
+           disabledSections: ['trend', 'drivers', 'pnl', 'waterfall'],
+           warnings: ['Upload a P&L export to enable reporting.'],
+         },
+         scenarioNotes: describeScenario(scenario),
+         comparisonMode: mode,
+         comparisonLabel: 'No data',
+         movementBadge: 'Movement unavailable',
+       }
+     }
+ 
+     const months = pl.monthLabels
+     let baseTotals: DreamTotals
+     let computedDream: ReturnType<typeof computeDream> | null = null
+     let completenessWarnings: string[] = []
+-    if (source === 'dream') {
++    if (source === 'management') {
+       computedDream = computeDream(pl, template)
+       baseTotals = computeDreamTotals(pl, template, computedDream)
+       if (mapping.completeness < completenessThreshold) {
+-        completenessWarnings.push('Dream mapping below 85%. Some sections disabled.')
++        completenessWarnings.push('Management mapping below 85%. Some sections disabled.')
+       }
+     } else {
+       baseTotals = computeXeroTotals(pl)
+     }
+ 
+     const scenarioTotals = scenarioActive ? applyBundledScenario(baseTotals, pl, scenario) : null
+ 
+     const depAmort = computeDepAmort(pl)
+     const ebitdaCurrent = baseTotals.net.map((v, i) => v + (depAmort?.[i] ?? 0))
+     const ebitdaScenario = scenarioTotals ? scenarioTotals.net.map((v, i) => v + (depAmort?.[i] ?? 0)) : null
+ 
+     const lastMonthLabel = months[months.length - 1] ?? 'Current period'
+     const periodLabel = `Through ${lastMonthLabel}`
+ 
+     const netDelta = scenarioTotals ? sum(scenarioTotals.net) - sum(baseTotals.net) : null
++    const grossMarginCurrent = ((sum(baseTotals.revenue) - sum(baseTotals.cogs)) / Math.max(1, Math.abs(sum(baseTotals.revenue)))) * 100
++    const grossMarginScenario = scenarioTotals
++      ? ((sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs)) / Math.max(1, Math.abs(sum(scenarioTotals.revenue)))) * 100
++      : null
+ 
+     const kpis = [
+       { label: 'TTM net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta, tone: netDelta != null ? (netDelta >= 0 ? 'good' : 'bad') : undefined },
+       { label: 'TTM revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
+-      { label: 'Gross margin %', current: ((sum(baseTotals.revenue) - sum(baseTotals.cogs)) / Math.max(1, Math.abs(sum(baseTotals.revenue)))) * 100 },
++      { label: 'Gross margin %', current: grossMarginCurrent, scenario: grossMarginScenario, variance: grossMarginScenario != null ? grossMarginScenario - grossMarginCurrent : null, format: 'percentage' as const },
+       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
+     ]
+ 
+     const netChange = last3vsPrev3(baseTotals.net)
+     const revChange = last3vsPrev3(baseTotals.revenue)
+     const gmChange = last3vsPrev3(baseTotals.revenue.map((r, i) => r - (baseTotals.cogs[i] ?? 0)))
+     const opexChange = last3vsPrev3(baseTotals.opex)
+ 
+     const whatChanged: string[] = []
+     if (netChange) whatChanged.push(`Net profit moved ${money(netChange.currentTotal - netChange.compareTotal)} vs prior 3 months.`)
+     if (revChange) whatChanged.push(`Revenue moved ${money(revChange.currentTotal - revChange.compareTotal)} vs prior 3 months.`)
+     if (gmChange) whatChanged.push(`Gross profit moved ${money(gmChange.currentTotal - gmChange.compareTotal)} vs prior 3 months.`)
+     if (opexChange) whatChanged.push(`Opex moved ${money(opexChange.currentTotal - opexChange.compareTotal)} vs prior 3 months.`)
+     if (!whatChanged.length) whatChanged.push('Not enough history (need 6+ months) to explain recent movements.')
+ 
+     const trendStats: TrendStats = {}
+     if (netChange) trendStats.last3vsPrev3 = `Net profit ${money(netChange.currentTotal - netChange.compareTotal)} vs prior 3 months.`
+ 
+     const trendRows = months.map((m, i) => ({ month: m, current: baseTotals.net[i] ?? 0, scenario: scenarioTotals ? scenarioTotals.net[i] ?? null : null }))
+ 
+-    const driverDisabled = source === 'dream' && mapping.completeness < completenessThreshold
++    const driverDisabled = source === 'management' && mapping.completeness < completenessThreshold
+       ? 'Not enough mapped data (need 85% of key accounts).'
+       : undefined
+ 
+-    const revenueEntries = source === 'dream'
++    const revenueEntries = source === 'management'
+       ? flattenLinesWithSection(template.root)
+           .filter(l => l.section === 'rev')
+           .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'income' as const }))
+       : pl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values, sectionType: 'income' as const }))
+ 
+-    const costEntries = source === 'dream'
++    const costEntries = source === 'management'
+       ? flattenLinesWithSection(template.root)
+           .filter(l => l.section === 'cogs' || l.section === 'opex')
+           .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'expense' as const }))
+       : pl.accounts
+           .filter(a => a.section === 'cost_of_sales' || a.section === 'operating_expenses')
+           .map(a => ({ label: a.name, values: a.values, sectionType: 'expense' as const }))
+ 
+     const revenueDrivers = getDrivers({ entries: revenueEntries, mode, scenarioTotals })
+     const costDrivers = getDrivers({ entries: costEntries, mode, scenarioTotals })
+ 
+     const pnlSummary = [
+       { label: 'Revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
+       { label: 'COGS', current: sum(baseTotals.cogs), scenario: scenarioTotals ? sum(scenarioTotals.cogs) : null, variance: scenarioTotals ? sum(scenarioTotals.cogs) - sum(baseTotals.cogs) : null, tone: scenarioTotals ? (sum(scenarioTotals.cogs) - sum(baseTotals.cogs) <= 0 ? 'good' : 'bad') : undefined },
+       { label: 'Gross profit', current: sum(baseTotals.revenue) - sum(baseTotals.cogs), scenario: scenarioTotals ? sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs) : null, variance: scenarioTotals ? (sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs)) - (sum(baseTotals.revenue) - sum(baseTotals.cogs)) : null },
++      { label: 'Gross margin %', current: grossMarginCurrent, scenario: grossMarginScenario, variance: grossMarginScenario != null ? grossMarginScenario - grossMarginCurrent : null, format: 'percentage' as const },
+       { label: 'Opex', current: sum(baseTotals.opex), scenario: scenarioTotals ? sum(scenarioTotals.opex) : null, variance: scenarioTotals ? sum(scenarioTotals.opex) - sum(baseTotals.opex) : null, tone: scenarioTotals ? (sum(scenarioTotals.opex) - sum(baseTotals.opex) <= 0 ? 'good' : 'bad') : undefined },
+       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
+       { label: 'Net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta },
+     ]
+ 
+     const executiveSummary: string[] = []
+-    executiveSummary.push(`Datasource: ${source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy Xero export'}`)
++    executiveSummary.push(`Datasource: ${source === 'management' ? 'Management P&L (mapped model)' : 'Legacy Xero export'}`)
+     if (netDelta != null) executiveSummary.push(`Scenario impact: ${money(netDelta)} vs current.`)
+     const comparison = computeComparison(mode, baseTotals.net, scenarioTotals ? scenarioTotals.net : baseTotals.net, scenarioTotals)
+     executiveSummary.push(`Comparison mode: ${comparison.label}`)
+     executiveSummary.push(...whatChanged.slice(0, 2))
+     const topMoverSentences = [...revenueDrivers.items, ...costDrivers.items]
+       .sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
+       .slice(0, 2)
+       .map(d => `${d.label} Δ ${d.delta != null ? money(d.delta) : '—'} (${pct(d.pctDelta ?? null)})`)
+     if (topMoverSentences.length) executiveSummary.push(`Top movement drivers: ${topMoverSentences.join(' • ')}`)
+ 
+     const dataQuality: DataQuality = {
+       mappingCompleteness: mapping.completeness,
+       missingAccounts: mapping.missingAccounts,
+       missingKeyAccounts: mapping.missingKeyAccounts,
+       disabledSections: [],
+       warnings: [...completenessWarnings],
+     }
+ 
+     if (driverDisabled) dataQuality.disabledSections.push('drivers')
+-    if (scenarioActive && mapping.completeness < completenessThreshold && source === 'dream') dataQuality.disabledSections.push('waterfall')
++    if (scenarioActive && mapping.completeness < completenessThreshold && source === 'management') dataQuality.disabledSections.push('waterfall')
+ 
+-    const dataSourceLabel = source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy P&L (Xero export)'
++    const dataSourceLabel = source === 'management' ? 'Management P&L (mapped model)' : 'Legacy P&L (Xero export)'
+     const dataQualityBadge = makeDataQualityBadge(source, mapping.completeness, mapping.missingKeyAccounts.length)
+ 
+     const varianceAttribution = scenarioTotals ? buildVarianceAttribution(baseTotals, scenarioTotals) : undefined
+ 
+     const drivers = {
+       revenue: revenueDrivers,
+       cost: costDrivers,
+     }
+ 
+     return {
+       dataSourceRequested: dataSource,
+       dataSourceUsed: source,
+       recommendedSource,
+       fallbackReason: undefined,
+       periodLabel,
+       dataSourceLabel,
+       dataQualityBadge: dataQualityBadge.badge,
+       dataQualityBadgeLabel: dataQualityBadge.badge,
+       baseTotals,
+       scenarioTotals,
+       trendRows,
+       trendStats,
+       kpis,
+       executiveSummary,
+       whatChanged,
+       varianceAttribution,
+       drivers,
+       pnlSummary,
+       dataQuality,
+       scenarioNotes: describeScenario(scenario),
+       comparisonMode: mode,
+       comparisonLabel: comparison.label,
+-      movementBadge: `Movement = ${comparison.label} (${source === 'dream' ? 'Mapped model' : 'Actuals'})`,
++      movementBadge: `${COMPARISON_MODE_METADATA[mode].badge} (${source === 'management' ? 'Mapped model' : 'Actuals'})`,
+     }
+   }
+ 
+-  let report = buildForSource(dataSource)
++  let report = buildForSource(guardrailSource)
++  if (guardrailReason) {
++    report = { ...report, dataSourceUsed: guardrailSource, fallbackReason: guardrailReason }
++    report.dataQuality.warnings.push(guardrailReason)
++  }
+   const fallbackEligible =
+-    dataSource === 'dream' &&
++    report.dataSourceUsed === 'management' &&
+     pl &&
+     (report.drivers.revenue.suspicious || report.drivers.cost.suspicious)
+   if (fallbackEligible) {
+     const legacyReport = buildForSource('legacy')
+-    report = { ...legacyReport, dataSourceRequested: dataSource, dataSourceUsed: 'legacy', fallbackReason: 'Dream drivers looked identical. Fell back to Legacy data.' }
++    const reason = 'Management drivers looked identical. Fell back to Legacy data.'
++    report = {
++      ...legacyReport,
++      dataSourceRequested: dataSource,
++      dataSourceUsed: 'legacy',
++      fallbackReason: reason,
++    }
++    report.dataQuality.warnings.push(reason)
++    report.drivers.revenue.diagnostics = [
++      ...(report.drivers.revenue.diagnostics ?? []),
++      'Revenue drivers looked suspicious when using management mapping.',
++    ]
++    report.drivers.cost.diagnostics = [
++      ...(report.drivers.cost.diagnostics ?? []),
++      'Cost drivers looked suspicious when using management mapping.',
++    ]
+   }
+ 
+   return report
+ }
++
++export function buildFinancialModel(opts: {
++  datasetId: string
++  dataSource: DataSource
++  pl: XeroPL | null
++  template: DreamTemplate
++  scenarioConfig: ScenarioInputs
++  comparisonMode?: ComparisonMode
++  includeScenario?: boolean
++  completenessThreshold?: number
++}): FinancialModel {
++  const { datasetId, dataSource, pl, template, scenarioConfig, comparisonMode, includeScenario, completenessThreshold } = opts
++  const report = getReportData({
++    dataSource,
++    pl,
++    template,
++    scenario: scenarioConfig,
++    includeScenario: includeScenario ?? !!scenarioConfig.enabled,
++    completenessThreshold,
++    comparisonMode,
++  })
++
++  const months = pl?.monthLabels ?? []
++  const aggregatesByMonth = months.map((month, idx) => ({
++    month,
++    current: {
++      revenue: report.baseTotals?.revenue[idx] ?? 0,
++      cogs: report.baseTotals?.cogs[idx] ?? 0,
++      opex: report.baseTotals?.opex[idx] ?? 0,
++      net: report.baseTotals?.net[idx] ?? 0,
++    },
++    scenario: report.scenarioTotals
++      ? {
++          revenue: report.scenarioTotals.revenue[idx] ?? 0,
++          cogs: report.scenarioTotals.cogs[idx] ?? 0,
++          opex: report.scenarioTotals.opex[idx] ?? 0,
++          net: report.scenarioTotals.net[idx] ?? 0,
++        }
++      : null,
++  }))
++
++  const diagnostics = Array.from(
++    new Set([
++      ...(report.fallbackReason ? [report.fallbackReason] : []),
++      ...(report.dataQuality.warnings ?? []),
++      ...(report.drivers.revenue.diagnostics ?? []),
++      ...(report.drivers.cost.diagnostics ?? []),
++    ])
++  )
++
++  const formatSummary = report.pnlSummary.map(row => ({
++    ...row,
++    format: row.format ?? (row.label.toLowerCase().includes('%') ? 'percentage' : 'currency'),
++  }))
++
++  return {
++    months,
++    aggregatesByMonth,
++    pnlLines: formatSummary,
++    drivers: report.drivers,
++    assumptionsUsed: report.scenarioNotes,
++    dataQuality: {
++      ...report.dataQuality,
++      badge: report.dataQualityBadge,
++      badgeLabel: report.dataQualityBadgeLabel,
++    },
++    provenance: {
++      datasetId,
++      dataSourceRequested: report.dataSourceRequested,
++      dataSourceUsed: report.dataSourceUsed,
++      recommendedSource: report.recommendedSource,
++      fallbackReason: report.fallbackReason,
++      diagnostics,
++      comparisonMode: report.comparisonMode,
++      comparisonLabel: report.comparisonLabel,
++      movementBadge: report.movementBadge,
++    },
++  }
++}
+ 
+EOF
+)
