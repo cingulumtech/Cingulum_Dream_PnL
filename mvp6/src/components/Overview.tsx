@@ -852,6 +852,7 @@ export function Overview() {
                             progIncludePostMRI: true,
                             progMriCost: mri,
                             progMriPatientFee: mriPatientForState(st, defaults),
+                            progMriPatientFee: mriPatientForState(st),
                             progIncludeQuicktome: true,
                             progQuicktomeCost: 200,
                             progQuicktomePatientFee: 200,
