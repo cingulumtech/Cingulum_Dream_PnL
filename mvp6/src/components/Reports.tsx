@@ -1,8 +1,13 @@
-import React, { useMemo, useState } from 'react'
-import jsPDF from 'jspdf'
+import React, { useMemo, useRef, useState } from 'react'
+import { jsPDF } from 'jspdf'
+import html2canvas from 'html2canvas'
 import { useAppStore } from '../store/appStore'
 import { computeXeroTotals, applyBundledScenario } from '../lib/dream/compute'
 import { Card, Chip, Input, Label } from './ui'
+import { ReportBuilderPanel } from './report/ReportBuilderPanel'
+import { ReportPreview } from './report/ReportPreview'
+import { InvestorReportTemplate } from './report/InvestorReportTemplate'
+import { computeVarianceInsights, computeTrendInsights, computeAnomalyInsights, computeDataQuality } from '../lib/insightEngine'
 
 function money(n: number) {
   return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
@@ -109,9 +114,25 @@ export function Reports() {
   const pl = useAppStore(s => s.pl)
   const scenario = useAppStore(s => s.scenario)
   const [status, setStatus] = useState<string | null>(null)
-  const [projectionMonths, setProjectionMonths] = useState(12)
-  const [growthPct, setGrowthPct] = useState(3)
-  const [includeScenario, setIncludeScenario] = useState(true)
+  const [builder, setBuilder] = useState({
+    reportType: 'investor' as const,
+    period: 'ttm' as const,
+    projectionMonths: 12,
+    growthPct: 3,
+    includeScenario: true,
+    confidence: 70,
+    preset: 'investor' as const,
+    sections: {
+      executive: true,
+      kpi: true,
+      trend: true,
+      waterfall: true,
+      drivers: true,
+      pnl: true,
+      cost: true,
+      appendix: true,
+    },
+  })
 
   const baseTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
   const scenarioTotals = useMemo(() => {
@@ -140,10 +161,10 @@ export function Reports() {
   const projectedNet = useMemo(() => {
     if (!baseTotals) return []
     const baseAvg = mean(baseTotals.net)
-    const applied = includeScenario && scenarioTotals ? scenarioTotals.net : baseTotals.net
+    const applied = builder.includeScenario && scenarioTotals ? scenarioTotals.net : baseTotals.net
     const start = applied[applied.length - 1] ?? baseAvg
-    const growth = (growthPct ?? 0) / 100
-    const months = Math.max(1, projectionMonths)
+    const growth = (builder.growthPct ?? 0) / 100
+    const months = Math.max(1, builder.projectionMonths)
     const out = []
     let val = start
     for (let i = 0; i < months; i++) {
@@ -161,154 +182,137 @@ export function Reports() {
     return y
   }
 
+  const previewRef = useRef<HTMLDivElement>(null)
+  const templateRef = useRef<HTMLDivElement>(null)
+
   const generate = async () => {
     if (!pl || !baseTotals) {
       setStatus('Upload P&L first to generate a report.')
       return
     }
     setStatus('Generating...')
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-    const margin = 40
-    let y = margin
-
-    doc.setFillColor(10, 14, 26)
-    doc.rect(0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight(), 'F')
-
-    doc.setFontSize(16)
-    doc.setTextColor(255, 255, 255)
-    doc.text('Investor Report', margin, y)
-    doc.setFontSize(10)
-    doc.setTextColor(148, 163, 184)
-    doc.text(`As of ${new Date().toLocaleString()}`, margin, y + 14)
-
-    y += 26
-    addMetricCard(doc, 'Current 12-mo profit', money(currentTotal), margin, y)
-    addMetricCard(
-      doc,
-      'Scenario 12-mo profit',
-      includeScenario && scenarioTotal != null ? money(scenarioTotal) : 'Scenario off',
-      margin + 260,
-      y
-    )
-    addMetricCard(doc, 'Δ vs current', includeScenario && scenarioTotal != null ? money(delta) : '—', margin + 520, y)
-
-    y += 90
-    addMetricCard(doc, 'Avg monthly profit', money(mean(baseTotals.net)), margin, y)
-    addMetricCard(doc, 'Best / Worst month', `${money(bestWorst.best)} / ${money(bestWorst.worst)}`, margin + 260, y)
-    addMetricCard(
-      doc,
-      'Programs / month',
-      scenario.machinesEnabled ? `Derived ${Math.round(scenario.tmsMachines ?? 0)}×${scenario.patientsPerMachinePerWeek ?? 0}` : `${scenario.programMonthlyCount ?? 0} (manual)`,
-      margin + 520,
-      y
-    )
-
-    y += 110
-    y = ensureSpace(doc, y, 140, margin)
-    addSectionHeader(doc, 'Top accounts (magnitude)', margin, y)
-    const topRows = [['Account', 'Section', 'Total'], ...topAccounts.map(a => [a.name, a.section, money(a.total)])]
-    y = addTable(doc, topRows, margin, y + 4, [250, 140, 160])
-
-    y = ensureSpace(doc, y, 140, margin)
-    addSectionHeader(doc, 'Operating expense drivers', margin, y)
-    const opexRows = [['Account', 'Total'], ...opexDrivers.map(a => [a.name, money(a.total)])]
-    y = addTable(doc, opexRows, margin, y + 4, [300, 200])
-
-    const trendUrl = buildTrendDataURL(pl.monthLabels, baseTotals?.net ?? [], includeScenario && scenarioTotals ? scenarioTotals.net : null)
-    if (trendUrl) {
-      y = ensureSpace(doc, y, 240, margin)
-      addSectionHeader(doc, 'Net profit trend (current vs scenario)', margin, y)
-      doc.addImage(trendUrl, 'PNG', margin, y + 8, 520, 200)
-      y += 220
+    if (!templateRef.current) {
+      setStatus('Preview not ready.')
+      return
     }
-
-    if (projectedNet.length) {
-      y = ensureSpace(doc, y, 160, margin)
-      addSectionHeader(doc, `Projection (${projectionMonths} mo @ ${growthPct}%/mo)`, margin, y)
-      const projRows = [['Month', 'Projected net']]
-      projectedNet.forEach((v, i) => projRows.push([`${i + 1}`, money(v)]))
-      y = addTable(doc, projRows, margin, y + 4, [120, 200])
-    }
-
-    y = ensureSpace(doc, y, 160, margin)
-    addSectionHeader(doc, 'Key assumptions', margin, y)
-    doc.setFontSize(9)
-    doc.setTextColor(148, 163, 184)
-    const assumptions = [
-      `Programs / month: ${scenario.machinesEnabled ? 'Derived (machines enabled)' : `Manual (${scenario.programMonthlyCount ?? 0})`}`,
-      `Rent: ${money((scenario as any).rentFixedMonthly ?? 0)} (${scenario.rentMode === 'percent' ? `${(scenario.rentPercentPerMonth ?? 0).toFixed(1)}% monthly change` : 'fixed'})`,
-      `Bundle pricing: CBA ${money(scenario.cbaPrice ?? 0)}, Program ${money(scenario.programPrice ?? 0)}`,
-      `Doctor service fee retained: ${(scenario.doctorServiceFeePct ?? 0)}%`,
-      `Add bundle costs to scenario: ${scenario.addBundleCostsToScenario ? 'Yes' : 'No'}`,
-      `Consults removed: ${scenario.includeDoctorConsultsInBundle ? 'Yes' : 'No'}`,
-    ]
-    let yy = y + 14
-    assumptions.forEach(line => {
-      doc.text(`• ${line}`, margin, yy)
-      yy += 12
-    })
-
-    doc.save('Investor_Report.pdf')
+    const element = templateRef.current
+    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
+    const imgData = canvas.toDataURL('image/png')
+    const pdf = new jsPDF('p', 'pt', 'a4')
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
+    const imgWidth = canvas.width * ratio
+    const imgHeight = canvas.height * ratio
+    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+    pdf.save('Investor_Report.pdf')
     setStatus('Report generated.')
     setTimeout(() => setStatus(null), 2000)
   }
 
+  // Derived content for template
+  const insightList = [
+    ...computeVarianceInsights(baseTotals?.net, builder.includeScenario ? scenarioTotals?.net ?? undefined : undefined),
+    ...computeTrendInsights(baseTotals?.net),
+    ...computeAnomalyInsights(baseTotals?.net, pl?.monthLabels),
+    ...computeDataQuality(pl),
+  ]
+
+  const kpis = [
+    { label: 'Current TTM profit', value: money(currentTotal), tone: 'neutral' as const },
+    { label: 'Scenario TTM profit', value: builder.includeScenario && scenarioTotal != null ? money(scenarioTotal) : 'Scenario off', tone: 'neutral' as const },
+    { label: 'Avg monthly profit', value: money(mean(baseTotals?.net ?? [])), tone: 'neutral' as const },
+    { label: 'Best / Worst', value: `${money(bestWorst.best)} / ${money(bestWorst.worst)}`, tone: 'neutral' as const },
+  ]
+
+  const trendRows = (pl?.monthLabels ?? []).map((m, i) => ({
+    month: m,
+    current: baseTotals?.net?.[i] ?? 0,
+    scenario: builder.includeScenario ? scenarioTotals?.net?.[i] ?? null : null,
+  }))
+
+  const drivers = (scenarioTotals && baseTotals)
+    ? topAccounts.map(a => ({
+        label: a.name,
+        delta: (scenarioTotals.net?.[0] ?? 0) - (baseTotals.net?.[0] ?? 0),
+        pct: 'n/a',
+      }))
+    : []
+
+  const pnlSummary = baseTotals
+    ? [
+        { label: 'Revenue', current: sum(baseTotals.revenue ?? []), scenario: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.revenue ?? []) : null, variance: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.revenue ?? []) - sum(baseTotals.revenue ?? []) : null },
+        { label: 'COGS', current: sum(baseTotals.cogs ?? []), scenario: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.cogs ?? []) : null, variance: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.cogs ?? []) - sum(baseTotals.cogs ?? []) : null },
+        { label: 'Gross profit', current: sum(baseTotals.revenue ?? []) - sum(baseTotals.cogs ?? []), scenario: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.revenue ?? []) - sum(scenarioTotals.cogs ?? []) : null, variance: builder.includeScenario && scenarioTotals ? (sum(scenarioTotals.revenue ?? []) - sum(scenarioTotals.cogs ?? [])) - (sum(baseTotals.revenue ?? []) - sum(baseTotals.cogs ?? [])) : null },
+        { label: 'Opex', current: sum(baseTotals.opex ?? []), scenario: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.opex ?? []) : null, variance: builder.includeScenario && scenarioTotals ? sum(scenarioTotals.opex ?? []) - sum(baseTotals.opex ?? []) : null },
+        { label: 'Net profit', current: currentTotal, scenario: builder.includeScenario && scenarioTotals ? scenarioTotal ?? 0 : null, variance: builder.includeScenario && scenarioTotals ? delta : null },
+      ]
+    : []
+
+  const template = (
+    <InvestorReportTemplate
+      company="Cingulum Dream P&L"
+      periodLabel={`As of ${new Date().toLocaleDateString()}`}
+      kpis={kpis}
+      insights={insightList}
+      trendRows={trendRows}
+      trendStats={{ cagr: 'n/a', volatility: 'n/a', last3vsPrev3: 'see insights' }}
+      dataQuality={computeDataQuality(pl).map(i => i.detail)}
+      drivers={drivers}
+      pnlSummary={pnlSummary}
+      waterfall={[]}
+      assumptions={[
+        `Growth ${builder.growthPct}% monthly for ${builder.projectionMonths} months`,
+        builder.includeScenario ? 'Scenario overlay ON' : 'Scenario overlay OFF',
+        `Report preset: ${builder.preset}`,
+      ]}
+    />
+  )
+
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <Card className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-100">Investor report</div>
-            <div className="text-xs text-slate-400">
-              High-fidelity PDF with trend, drivers, projections, and assumptions — configurable below.
-            </div>
-          </div>
-          <Chip tone={scenario.enabled ? 'good' : 'neutral'}>{scenario.enabled ? 'Scenario ON' : 'Scenario OFF'}</Chip>
-        </div>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]">
+      <ReportBuilderPanel
+        {...builder}
+        onChange={(s) => {
+          if (s.preset) {
+            if (s.preset === 'investor') {
+              setBuilder(prev => ({ ...prev, ...s, sections: { executive: true, kpi: true, trend: true, waterfall: true, drivers: true, pnl: true, cost: true, appendix: true } }))
+              return
+            }
+            if (s.preset === 'scenario') {
+              setBuilder(prev => ({ ...prev, ...s, sections: { executive: true, kpi: true, trend: true, waterfall: true, drivers: true, pnl: true, cost: false, appendix: true } }))
+              return
+            }
+            if (s.preset === 'lean') {
+              setBuilder(prev => ({ ...prev, ...s, sections: { executive: true, kpi: true, trend: true, waterfall: false, drivers: false, pnl: true, cost: false, appendix: true } }))
+              return
+            }
+          }
+          setBuilder(prev => ({ ...prev, ...s }))
+        }}
+      />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <Label>Projection months</Label>
-            <Input
-              className="mt-1"
-              type="number"
-              value={projectionMonths}
-              onChange={(e) => setProjectionMonths(Math.max(1, Number(e.target.value)))}
-            />
-          </div>
-          <div>
-            <Label>Monthly growth (%)</Label>
-            <Input
-              className="mt-1"
-              type="number"
-              value={growthPct}
-              onChange={(e) => setGrowthPct(Number(e.target.value))}
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <label className="flex items-center gap-2 text-xs text-slate-200">
-              <input
-                type="checkbox"
-                checked={includeScenario}
-                onChange={(e) => setIncludeScenario(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-transparent"
-              />
-              Include scenario overlay
-            </label>
-          </div>
+      <div className="space-y-3">
+        <ReportPreview previewRef={previewRef} />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={generate}
+            className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
+            disabled={!pl || !baseTotals}
+          >
+            Generate investor PDF
+          </button>
+          {status ? <div className="text-xs text-slate-300">{status}</div> : null}
+          {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
         </div>
+      </div>
 
-        <button
-          type="button"
-          onClick={generate}
-          className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
-          disabled={!pl || !baseTotals}
-        >
-          Generate investor PDF
-        </button>
-        {status ? <div className="text-xs text-slate-300">{status}</div> : null}
-        {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
-      </Card>
+      {/* Hidden template for PDF + preview content */}
+      <div className="hidden">
+        <div ref={templateRef}>{template}</div>
+      </div>
+      {previewRef.current ? null : null}
     </div>
   )
 }
