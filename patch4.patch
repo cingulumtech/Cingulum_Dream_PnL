@@ -1,0 +1,1240 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mvp6/src/components/Reports.tsx b/mvp6/src/components/Reports.tsx
+index f5e1cde4128e0759629a9ca45717064aef684a1f..b71a06aec0b71a451016785fd5f7760b12a309d7 100644
+--- a/mvp6/src/components/Reports.tsx
++++ b/mvp6/src/components/Reports.tsx
+@@ -1,126 +1,148 @@
+ import React, { useEffect, useMemo, useRef, useState } from 'react'
+ import { jsPDF } from 'jspdf'
+ import html2canvas from 'html2canvas'
+ import { useAppStore } from '../store/appStore'
+ import { ReportBuilderPanel } from './report/ReportBuilderPanel'
+ import { ReportPreview } from './report/ReportPreview'
+ import { InvestorReportTemplate } from './report/InvestorReportTemplate'
+ import { Card } from './ui'
+ import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
+ 
+ export function Reports() {
+   const pl = useAppStore(s => s.pl)
+   const scenario = useAppStore(s => s.scenario)
+   const dreamTemplate = useAppStore(s => s.template)
++  const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
+ 
+   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>({
+     dataSource: 'legacy',
+     includeScenario: true,
+     comparisonMode: 'last3_vs_prev3',
+   })
+   const [userChoseSource, setUserChoseSource] = useState(false)
+   const [status, setStatus] = useState<string | null>(null)
+   const previewRef = useRef<HTMLDivElement>(null)
++  const [generatedAt, setGeneratedAt] = useState<Date>(() => new Date())
+ 
+   const reportData = useMemo(
+     () =>
+       getReportData({
+         dataSource: builder.dataSource,
+         pl,
+         template: dreamTemplate,
+         scenario,
+         includeScenario: builder.includeScenario,
+         comparisonMode: builder.comparisonMode,
+       }),
+     [builder.dataSource, builder.includeScenario, builder.comparisonMode, pl, dreamTemplate, scenario]
+   )
+ 
+   useEffect(() => {
+     if (!pl) return
+     if (userChoseSource) return
+     if (builder.dataSource !== reportData.recommendedSource) {
+       setBuilder(prev => ({ ...prev, dataSource: reportData.recommendedSource }))
+     }
+   }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource])
+ 
++  useEffect(() => {
++    setGeneratedAt(new Date())
++  }, [builder, pl, dreamTemplate, scenario])
++
+   const handleChange = (s: Partial<typeof builder>) => {
+     if ('dataSource' in s) setUserChoseSource(true)
+     setBuilder(prev => {
+       const next = { ...prev, ...s }
+       // Auto-align comparison mode when toggling scenario
+       if ('includeScenario' in s && s.includeScenario !== undefined) {
+         if (s.includeScenario && next.comparisonMode === 'last3_vs_prev3') next.comparisonMode = 'scenario_vs_current'
+         if (!s.includeScenario && next.comparisonMode === 'scenario_vs_current') next.comparisonMode = 'last3_vs_prev3'
+       }
+       return next
+     })
+   }
+ 
+   const generate = async () => {
+     if (!reportData.baseTotals) {
+       setStatus('Upload P&L first to generate a report.')
+       return
+     }
+     if (!previewRef.current) {
+       setStatus('Preview not ready.')
+       return
+     }
+     setStatus('Generating...')
+     const element = previewRef.current
+-    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
++    const stamp = new Date()
++    setGeneratedAt(stamp)
++    const canvas = await html2canvas(element, {
++      scale: 2,
++      backgroundColor: '#0b1222',
++      windowWidth: element.scrollWidth,
++      windowHeight: element.scrollHeight,
++    })
+     const imgData = canvas.toDataURL('image/png')
+     const pdf = new jsPDF('p', 'pt', 'a4')
+     const pageWidth = pdf.internal.pageSize.getWidth()
+     const pageHeight = pdf.internal.pageSize.getHeight()
+     const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
+     const imgWidth = canvas.width * ratio
+     const imgHeight = canvas.height * ratio
+     pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+     pdf.save('Investor_Report.pdf')
+     setStatus('Report generated.')
+     setTimeout(() => setStatus(null), 2000)
+   }
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]">
+       <ReportBuilderPanel
+         dataSource={builder.dataSource}
+         includeScenario={builder.includeScenario}
+         recommendedSource={reportData.recommendedSource}
+         mappingCompleteness={reportData.dataQuality.mappingCompleteness}
+         mappingWarnings={[
+           ...reportData.dataQuality.warnings,
+           ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
+           ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
+-            ? ['Dream mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
++            ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+             : []),
+         ]}
+         comparisonMode={builder.comparisonMode}
+         onChange={handleChange}
+       />
+ 
+       <div className="space-y-3">
+         {reportData.fallbackReason && (
+           <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
+             {reportData.fallbackReason}
+           </Card>
+         )}
+         <ReportPreview previewRef={previewRef}>
+-          <InvestorReportTemplate data={reportData} />
++          <InvestorReportTemplate
++            data={reportData}
++            meta={{
++              snapshotId: activeSnapshotId,
++              generatedAt,
++            }}
++          />
+         </ReportPreview>
++        <div className="text-[11px] text-slate-400">
++          {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
++        </div>
+         <div className="flex items-center gap-3">
+           <button
+             type="button"
+             onClick={generate}
+             className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
+             disabled={!pl || !reportData.baseTotals}
+           >
+             Generate investor PDF
+           </button>
+           {status ? <div className="text-xs text-slate-300">{status}</div> : null}
+           {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
+         </div>
+       </div>
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/SavedExports.tsx b/mvp6/src/components/SavedExports.tsx
+index b1214c6c2f6224b27a2a2adaa5eda36cb4af753d..73386b36df0b53f0cf2b137609be0f5fbdae3360 100644
+--- a/mvp6/src/components/SavedExports.tsx
++++ b/mvp6/src/components/SavedExports.tsx
+@@ -1,74 +1,94 @@
+ import React, { useState } from 'react'
+ import { useAppStore } from '../store/appStore'
+-import { Card, Input, Label } from './ui'
++import { Card, Chip, Input, Label } from './ui'
+ 
+ export function SavedExports() {
+   const snapshots = useAppStore(s => s.snapshots)
+   const addSnapshot = useAppStore(s => s.addSnapshot)
+   const loadSnapshot = useAppStore(s => s.loadSnapshot)
+   const deleteSnapshot = useAppStore(s => s.deleteSnapshot)
++  const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
++  const clearActiveSnapshot = useAppStore(s => s.clearActiveSnapshot)
+   const [name, setName] = useState('')
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4">
+       <Card className="p-4">
+         <div className="flex items-center justify-between gap-3">
+           <div>
+             <div className="text-sm font-semibold text-slate-100">Saved Exports</div>
+             <div className="text-xs text-slate-400">Capture the current scenario + uploads as a snapshot.</div>
+           </div>
+-          <div className="flex gap-2">
++          <div className="flex flex-wrap gap-2">
+             <Input
+               className="w-56"
+               placeholder="Name this snapshot"
+               value={name}
+               onChange={(e) => setName(e.target.value)}
+             />
+             <button
+               type="button"
+               onClick={() => {
+                 if (!name.trim()) return
+                 addSnapshot(name.trim())
+                 setName('')
+               }}
+               className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
+             >
+               Save snapshot
+             </button>
++            <button
++              type="button"
++              onClick={() => clearActiveSnapshot()}
++              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 disabled:opacity-50"
++              disabled={!activeSnapshotId}
++            >
++              Clear active
++            </button>
+           </div>
+         </div>
+ 
+         <div className="mt-4 space-y-2">
+           {snapshots.length === 0 ? (
+             <div className="text-xs text-slate-300">No snapshots saved yet.</div>
+           ) : (
+-            snapshots.map(snap => (
+-              <div key={snap.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+-                <div>
+-                  <div className="text-sm font-semibold text-slate-100">{snap.name}</div>
+-                  <div className="text-xs text-slate-400">{new Date(snap.createdAt).toLocaleString()}</div>
+-                </div>
+-                <div className="flex gap-2">
+-                  <button
+-                    type="button"
+-                    onClick={() => loadSnapshot(snap.id)}
+-                    className="rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100"
+-                  >
+-                    Load
+-                  </button>
+-                  <button
+-                    type="button"
+-                    onClick={() => deleteSnapshot(snap.id)}
+-                    className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-100"
+-                  >
+-                    Delete
+-                  </button>
++            snapshots.map(snap => {
++              const isActive = activeSnapshotId === snap.id
++              return (
++                <div
++                  key={snap.id}
++                  className={`flex items-center justify-between rounded-xl border px-3 py-2 ${isActive ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-white/10 bg-white/5'}`}
++                >
++                  <div>
++                    <div className="flex items-center gap-2">
++                      <div className="text-sm font-semibold text-slate-100">{snap.name}</div>
++                      {isActive ? <Chip tone="good" className="px-2 py-[2px] text-[10px]">Active</Chip> : null}
++                    </div>
++                    <div className="text-xs text-slate-400">{new Date(snap.createdAt).toLocaleString()}</div>
++                    <div className="text-[11px] text-slate-500">ID: {snap.id}</div>
++                  </div>
++                  <div className="flex gap-2">
++                    <button
++                      type="button"
++                      onClick={() => loadSnapshot(snap.id)}
++                      className="rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100"
++                    >
++                      Load
++                    </button>
++                    <button
++                      type="button"
++                      onClick={() => deleteSnapshot(snap.id)}
++                      className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-100"
++                    >
++                      Delete
++                    </button>
++                  </div>
+                 </div>
+-              </div>
+-            ))
++              )
++            })
+           )}
+         </div>
+       </Card>
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/report/InvestorReportTemplate.tsx b/mvp6/src/components/report/InvestorReportTemplate.tsx
+index cd0050f354e88843175c87b8d3b8f8aa3948b3de..46c835ff1ac6e09b851cdf5379cb8aab9ae80b26 100644
+--- a/mvp6/src/components/report/InvestorReportTemplate.tsx
++++ b/mvp6/src/components/report/InvestorReportTemplate.tsx
+@@ -1,295 +1,367 @@
+ import React from 'react'
+ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts'
+-import { ReportData } from '../../lib/reportData'
++import { DriverResult, ReportData } from '../../lib/reportData'
++import { Chip } from '../ui'
+ 
+ const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+ const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 })
++const DATETIME_FORMATTER = new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
+ 
+ function money(n: number | null | undefined) {
+-  if (n == null) return '—'
++  if (n == null || Number.isNaN(n)) return '—'
+   return MONEY_FORMATTER.format(n)
+ }
+ 
+ function pct(n: number | null | undefined) {
+   if (n == null || Number.isNaN(n)) return '—'
+   return `${PCT_FORMATTER.format(n)}%`
+ }
+ 
+ function Callout({ title, detail }: { title: string; detail: string }) {
+   return (
+     <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+       <div className="font-semibold text-amber-50">{title}</div>
+       <div>{detail}</div>
+     </div>
+   )
+ }
+ 
+-export function InvestorReportTemplate({ data }: { data: ReportData }) {
++function Section({
++  title,
++  subtitle,
++  badge,
++  children,
++  pageBreak,
++}: {
++  title: string
++  subtitle?: string
++  badge?: React.ReactNode
++  children: React.ReactNode
++  pageBreak?: boolean
++}) {
++  return (
++    <div className={`${pageBreak ? 'page-break' : ''} rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3`}>
++      <div className="flex items-start justify-between gap-3">
++        <div>
++          <div className="text-sm font-semibold">{title}</div>
++          {subtitle ? <div className="text-xs text-slate-400">{subtitle}</div> : null}
++        </div>
++        {badge}
++      </div>
++      {children}
++    </div>
++  )
++}
++
++function DriverTable({ title, result, movementBadge }: { title: string; result: DriverResult; movementBadge: string }) {
++  if (result.disabledReason) {
++    return <Callout title={`${title} unavailable`} detail={result.disabledReason} />
++  }
++  if (!result.items.length) {
++    return <Callout title={`No ${title.toLowerCase()}`} detail="Not enough movement to surface drivers." />
++  }
++
++  return (
++    <div className="space-y-2">
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-2">
++          <div className="text-xs uppercase tracking-wide text-slate-300">{title}</div>
++          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">Movement: {movementBadge}</Chip>
++        </div>
++      </div>
++      <div className="overflow-hidden rounded-xl border border-white/10">
++        <table className="w-full text-[11px] text-slate-200">
++          <thead className="bg-white/5 text-slate-400">
++            <tr>
++              <th className="text-left px-3 py-2">Driver</th>
++              <th className="text-right px-3 py-2">Actual</th>
++              <th className="text-right px-3 py-2">Comparison</th>
++              <th className="text-right px-3 py-2">Δ / %</th>
++              <th className="text-right px-3 py-2">Profit impact</th>
++              <th className="text-right px-3 py-2">Contribution</th>
++            </tr>
++          </thead>
++          <tbody>
++            {result.items.map(d => {
++              const impactTone = d.profitImpact == null ? 'neutral' : d.profitImpact > 0 ? 'good' : 'bad'
++              return (
++                <tr key={d.label} className="border-t border-white/5">
++                  <td className="px-3 py-2 font-semibold text-slate-100">
++                    <div className="flex items-center gap-2">
++                      <span>{d.label}</span>
++                      <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">{d.sectionType === 'income' ? 'Income' : 'Expense'}</Chip>
++                    </div>
++                  </td>
++                  <td className="px-3 py-2 text-right">{money(d.currentValue)}</td>
++                  <td className="px-3 py-2 text-right">{money(d.compareValue)}</td>
++                  <td className="px-3 py-2 text-right">
++                    <div className="font-semibold">{money(d.delta)}</div>
++                    <div className="text-[10px] text-slate-400">{pct(d.pctDelta)}</div>
++                  </td>
++                  <td className="px-3 py-2 text-right">
++                    <Chip
++                      tone={impactTone === 'good' ? 'good' : impactTone === 'bad' ? 'bad' : 'neutral'}
++                      className="justify-end px-2 py-[2px] text-[10px]"
++                    >
++                      {impactTone === 'good' ? '▲' : impactTone === 'bad' ? '▼' : '•'} {money(d.profitImpact)}
++                    </Chip>
++                  </td>
++                  <td className="px-3 py-2 text-right">{pct(d.contributionPct)}</td>
++                </tr>
++              )
++            })}
++          </tbody>
++        </table>
++      </div>
++      <div className="text-[11px] text-slate-400">Profit impact accounts for income vs expense polarity.</div>
++    </div>
++  )
++}
++
++function FooterBar({ dataSourceLabel, snapshotId, generatedAt }: { dataSourceLabel: string; snapshotId?: string | null; generatedAt: Date }) {
++  return (
++    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        <div className="font-semibold text-slate-100">Generated by Accounting Atlas</div>
++        <div className="flex flex-wrap gap-2 text-[11px]">
++          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">Source: {dataSourceLabel}</Chip>
++          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">Snapshot: {snapshotId ?? 'live data'}</Chip>
++          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">{DATETIME_FORMATTER.format(generatedAt)}</Chip>
++        </div>
++      </div>
++    </div>
++  )
++}
++
++export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?: { snapshotId?: string | null; generatedAt?: Date } }) {
+   const {
+     dataSourceLabel,
+     dataQualityBadge,
+     periodLabel,
+     kpis,
+     executiveSummary,
+     whatChanged,
+     trendRows,
+     trendStats,
+     varianceAttribution,
+     drivers,
+     pnlSummary,
+     dataQuality,
+     scenarioNotes,
+     comparisonLabel,
+     movementBadge,
+     fallbackReason,
+   } = data as ReportData & { fallbackReason?: string }
+ 
+   const showTrend = trendRows.length > 0
+   const showScenario = !!varianceAttribution && !dataQuality.disabledSections.includes('waterfall')
+   const showDrivers = !(drivers.revenue.disabledReason && drivers.cost.disabledReason)
++  const generatedAt = meta?.generatedAt ?? new Date()
++  const snapshotId = meta?.snapshotId ?? null
+ 
+   const missingMapping = dataQuality.missingAccounts.slice(0, 6)
+   const mappingHint = missingMapping.length ? ` Map these next: ${missingMapping.join(', ')}.` : ' Map missing accounts to unlock drivers.'
+   const warningLines: string[] = []
+   if (fallbackReason) warningLines.push(fallbackReason)
+   if (dataQuality.disabledSections.length) warningLines.push(`Sections disabled: ${dataQuality.disabledSections.join(', ')}`)
+   if (drivers.revenue.disabledReason || drivers.cost.disabledReason) warningLines.push('Drivers incomplete. Go to Mapping to unlock movement insights.')
+ 
+   return (
+-    <div className="bg-slate-950 text-slate-100 font-sans w-full max-w-none mx-auto p-8 space-y-8">
+-      {/* Page 1 */}
+-      <div className="flex items-start justify-between gap-3">
+-        <div>
+-          <div className="text-xs uppercase tracking-wide text-indigo-300">Investor Report</div>
+-          <div className="text-2xl font-semibold">Cingulum Dream P&L</div>
+-          <div className="text-sm text-slate-400">{periodLabel}</div>
+-          <div className="mt-2 text-xs text-slate-300">Datasource: {dataSourceLabel}</div>
+-          <div className="mt-1 text-[11px] text-slate-300">{movementBadge}</div>
+-        </div>
+-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+-          {dataQualityBadge}
++    <div className="bg-slate-950 text-slate-100 font-sans w-full max-w-none mx-auto p-6 md:p-8 space-y-6 report-root">
++      {/* Cover */}
++      <div className="page-break rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-6 space-y-4 shadow-2xl shadow-black/40">
++        <div className="flex items-start justify-between gap-3">
++          <div className="flex items-center gap-3">
++            <div className="h-10 w-10 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-100 font-semibold">AA</div>
++            <div>
++              <div className="text-xs uppercase tracking-[0.2em] text-indigo-200">Investor Report</div>
++              <div className="text-2xl font-bold">Cingulum Dream P&L</div>
++              <div className="text-sm text-slate-300">{periodLabel}</div>
++              <div className="mt-1 text-xs text-slate-400">Data source: {dataSourceLabel}</div>
++            </div>
++          </div>
++          <div className="flex flex-col items-end gap-2">
++            <Chip tone="neutral" className="px-3 py-1 text-xs">{dataQualityBadge}</Chip>
++            <Chip tone="neutral" className="px-3 py-1 text-xs">{movementBadge}</Chip>
++          </div>
+         </div>
+-      </div>
+ 
+-      <div className="grid grid-cols-2 gap-3">
+-        {kpis.map(k => (
+-          <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+-            <div className="text-xs text-slate-400">{k.label}</div>
+-            <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
+-              {k.label.toLowerCase().includes('%') ? pct(k.current) : money(k.current)}
+-            </div>
+-            {k.variance != null && (
+-              <div className="text-xs text-slate-400">
+-                Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
++        <div className="grid grid-cols-2 gap-3">
++          {kpis.map(k => (
++            <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
++              <div className="text-xs text-slate-400">{k.label}</div>
++              <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
++                {k.label.toLowerCase().includes('%') ? pct(k.current) : money(k.current)}
+               </div>
+-            )}
+-          </div>
+-        ))}
+-      </div>
++              {k.variance != null && (
++                <div className="text-xs text-slate-400">
++                  Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
++                </div>
++              )}
++            </div>
++          ))}
++        </div>
+ 
+-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+-          <div className="text-sm font-semibold">Executive summary</div>
+-          <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
+-            {executiveSummary.map((i, idx) => (
+-              <li key={idx}>{i}</li>
+-            ))}
+-          </ul>
++        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
++          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
++            <div className="text-sm font-semibold">Executive summary</div>
++            <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
++              {executiveSummary.map((i, idx) => (
++                <li key={idx}>{i}</li>
++              ))}
++            </ul>
++          </div>
++          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
++            <div className="text-sm font-semibold">What changed</div>
++            <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
++              {whatChanged.map((i, idx) => (
++                <li key={idx}>{i}</li>
++              ))}
++            </ul>
++          </div>
+         </div>
+-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+-          <div className="text-sm font-semibold">What changed (last 3 vs prior 3)</div>
+-          <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
+-            {whatChanged.map((i, idx) => (
+-              <li key={idx}>{i}</li>
++
++        {warningLines.length > 0 && (
++          <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
++            {warningLines.map((w, i) => (
++              <div key={i}>{w}</div>
+             ))}
+-          </ul>
+-        </div>
+-      </div>
++          </div>
++        )}
+ 
+-      {warningLines.length > 0 && (
+-        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+-          {warningLines.map((w, i) => (
+-            <div key={i}>{w}</div>
+-          ))}
++        <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-white/10 pt-3">
++          <div>Accounting Atlas • Cover</div>
++          <div>Movement: {movementBadge}</div>
+         </div>
+-      )}
++      </div>
+ 
+-      {/* Page 2 */}
+-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+-        <div className="flex items-center justify-between">
+-          <div className="text-sm font-semibold">Net profit trend with scenario overlay</div>
+-          <div className="text-xs text-slate-400">{comparisonLabel}</div>
+-        </div>
++      {/* Trend */}
++      <Section
++        title="Net profit trend with comparison overlay"
++        subtitle="Shows current trajectory plus scenario where enabled."
++        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">{comparisonLabel}</Chip>}
++        pageBreak
++      >
+         {showTrend ? (
+           <div className="h-72">
+             <ResponsiveContainer width="100%" height="100%">
+               <LineChart data={trendRows}>
+                 <XAxis dataKey="month" tick={{ fill: '#cbd5e1', fontSize: 10 }} />
+                 <YAxis tick={{ fill: '#cbd5e1', fontSize: 10 }} />
+                 <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }} />
+                 <Legend />
+                 <Line type="monotone" dataKey="current" name="Current" stroke="#38bdf8" strokeWidth={2} dot={false} />
+                 {trendRows.some(r => r.scenario != null) && <Line type="monotone" dataKey="scenario" name="Scenario" stroke="#22c55e" strokeWidth={2} dot={false} />}
+               </LineChart>
+             </ResponsiveContainer>
+           </div>
+         ) : (
+           <Callout title="Trend unavailable" detail="Upload at least 6 months of data to plot profit trend." />
+         )}
+-      </div>
++        {trendStats.last3vsPrev3 && <div className="text-xs text-slate-300">{trendStats.last3vsPrev3}</div>}
++      </Section>
+ 
+-      {/* Page 3: Drivers */}
+-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+-        <div className="flex items-center justify-between">
+-          <div className="text-sm font-semibold">Income drivers (Actual + Movement)</div>
+-          <div className="text-xs text-slate-400">{movementBadge}</div>
++      {/* Drivers */}
++      <Section
++        title="Drivers tables"
++        subtitle="Actual vs comparison with delta, contribution, and profit impact badges."
++        badge={showDrivers ? <Chip tone="neutral" className="px-3 py-1 text-xs">{movementBadge}</Chip> : undefined}
++        pageBreak
++      >
++        <div className="grid grid-cols-1 gap-4">
++          <DriverTable title="Income drivers" result={drivers.revenue} movementBadge={movementBadge} />
++          <DriverTable title="Cost drivers" result={drivers.cost} movementBadge={movementBadge} />
+         </div>
+-        {drivers.revenue.disabledReason ? (
+-          <Callout
+-            title="Drivers unavailable"
+-            detail={`${drivers.revenue.disabledReason}${drivers.revenue.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
+-          />
+-        ) : drivers.revenue.items.length ? (
+-          <div className="text-[11px] text-slate-200">
+-            <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
+-              <div className="w-1/4">Driver</div>
+-              <div className="w-1/5 text-right">Actual</div>
+-              <div className="w-1/5 text-right">Comparison</div>
+-              <div className="w-1/5 text-right">Δ (profit impact)</div>
+-              <div className="w-1/5 text-right">Contribution</div>
+-            </div>
+-            {drivers.revenue.items.map(d => {
+-              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
+-              return (
+-                <div key={d.label} className="flex items-center border-b border-white/5 py-1">
+-                  <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
+-                  <div className="w-1/5 text-right">{money(d.currentValue)}</div>
+-                  <div className="w-1/5 text-right">{money(d.compareValue)}</div>
+-                  <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
+-                    {money(d.delta)} ({pct(d.pctDelta)})
+-                  </div>
+-                  <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
+-                </div>
+-              )
+-            })}
+-            <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (income up is good, down is bad).</div>
+-          </div>
+-        ) : (
+-          <Callout title="No revenue drivers" detail="Not enough movement to surface revenue drivers." />
+-        )}
+-      </div>
++      </Section>
+ 
+-      {/* Page 4: Cost drivers */}
+-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+-        <div className="flex items-center justify-between">
+-          <div className="text-sm font-semibold">Cost drivers (Actual + Movement)</div>
+-          <div className="text-xs text-slate-400">{movementBadge}</div>
+-        </div>
+-        {drivers.cost.disabledReason ? (
+-          <Callout
+-            title="Drivers unavailable"
+-            detail={`${drivers.cost.disabledReason}${drivers.cost.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
+-          />
+-        ) : drivers.cost.items.length ? (
+-          <div className="text-[11px] text-slate-200">
+-            <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
+-              <div className="w-1/4">Driver</div>
+-              <div className="w-1/5 text-right">Actual</div>
+-              <div className="w-1/5 text-right">Comparison</div>
+-              <div className="w-1/5 text-right">Δ (profit impact)</div>
+-              <div className="w-1/5 text-right">Contribution</div>
+-            </div>
+-            {drivers.cost.items.map(d => {
+-              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
+-              return (
+-                <div key={d.label} className="flex items-center border-b border-white/5 py-1">
+-                  <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
+-                  <div className="w-1/5 text-right">{money(d.currentValue)}</div>
+-                  <div className="w-1/5 text-right">{money(d.compareValue)}</div>
+-                  <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
+-                    {money(d.delta)} ({pct(d.pctDelta)})
+-                  </div>
+-                  <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
+-                </div>
+-              )
+-            })}
+-            <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (cost down is good, up is bad).</div>
++      {/* Scenario attribution */}
++      <Section
++        title="Scenario variance attribution"
++        subtitle="Explains where the scenario delta comes from."
++        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">Scenario toggle</Chip>}
++        pageBreak
++      >
++        {showScenario && varianceAttribution ? (
++          <div className="grid grid-cols-1 gap-2">
++            {varianceAttribution.map((row, idx) => (
++              <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
++                <div className="text-sm text-slate-200">{row.label}</div>
++                <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
++              </div>
++            ))}
+           </div>
+         ) : (
+-          <Callout title="No cost drivers" detail="Not enough movement to surface cost drivers." />
++          <Callout title="Scenario attribution unavailable" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
+         )}
+-      </div>
++        <div className="text-xs text-slate-300">Assumptions: {scenarioNotes.join(' • ')}</div>
++      </Section>
+ 
+-      {/* Page 5 */}
+-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+-        <div className="text-sm font-semibold">P&L summary (current vs scenario)</div>
++      {/* P&L summary */}
++      <Section
++        title="P&L summary (current vs scenario)"
++        subtitle="Summarises income statement movement."
++        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">{comparisonLabel}</Chip>}
++        pageBreak
++      >
+         {pnlSummary.length ? (
+           <table className="w-full text-xs text-slate-200">
+             <thead className="text-slate-400">
+               <tr>
+                 <th className="text-left pb-1">Line</th>
+                 <th className="text-right pb-1">Current</th>
+                 <th className="text-right pb-1">Scenario</th>
+                 <th className="text-right pb-1">Variance</th>
+               </tr>
+             </thead>
+             <tbody>
+               {pnlSummary.map(row => (
+                 <tr key={row.label} className="border-t border-white/5">
+                   <td className="py-1">{row.label}</td>
+                   <td className="py-1 text-right">{money(row.current)}</td>
+                   <td className="py-1 text-right">{row.scenario != null ? money(row.scenario) : '—'}</td>
+                   <td className={`py-1 text-right ${((row.variance ?? 0) >= 0) ? 'text-emerald-300' : 'text-rose-300'}`}>
+                     {row.variance != null ? money(row.variance) : '—'}
+                   </td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         ) : (
+           <Callout title="P&L summary unavailable" detail="Upload a P&L to see investor summary lines." />
+         )}
+-      </div>
++      </Section>
+ 
+-      {/* Page 6: Scenario attribution */}
+-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+-        <div className="flex items-center justify-between">
+-          <div className="text-sm font-semibold">Scenario variance attribution</div>
+-          <div className="text-xs text-slate-400">Explains where the scenario delta comes from.</div>
+-        </div>
+-        {showScenario && varianceAttribution ? (
+-          <div className="grid grid-cols-1 gap-2">
+-            {varianceAttribution.map((row, idx) => (
+-              <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+-                <div className="text-sm text-slate-200">{row.label}</div>
+-                <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
+-              </div>
+-            ))}
++      {/* Appendix */}
++      <Section
++        title="Appendix"
++        subtitle="Assumptions, methodology, and data quality."
++        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">Accounting Atlas</Chip>}
++        pageBreak
++      >
++        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
++          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
++            <div className="text-sm font-semibold">Assumptions & methodology</div>
++            <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
++              {scenarioNotes.map((a, idx) => (
++                <li key={idx}>{a}</li>
++              ))}
++              <li>Datasource used: {dataSourceLabel}. Report never mixes sources silently.</li>
++            </ul>
+           </div>
+-        ) : (
+-          <Callout title="Scenario attribution unavailable" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
+-        )}
+-        <div className="text-xs text-slate-300">Assumptions: {scenarioNotes.join(' • ')}</div>
+-      </div>
++          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
++            <div className="text-sm font-semibold">Data quality</div>
++            <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
++              <li>Mapping completeness: {(dataQuality.mappingCompleteness * 100).toFixed(0)}%</li>
++              <li>Missing key accounts: {dataQuality.missingKeyAccounts.length}</li>
++              {missingMapping.length > 0 && <li>Examples to map: {missingMapping.join(', ')}</li>}
++              {dataQuality.disabledSections.length > 0 && <li>Sections disabled: {dataQuality.disabledSections.join(', ')}</li>}
++              <li>How to fix: Map the missing accounts in the Mapping page to unlock drivers and attribution.</li>
++            </ul>
++          </div>
++        </div>
++      </Section>
+ 
+-      {/* Appendix */}
+-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+-        <div className="text-sm font-semibold">Assumptions & methodology</div>
+-        <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
+-          {scenarioNotes.map((a, idx) => (
+-            <li key={idx}>{a}</li>
+-          ))}
+-          <li>Datasource used: {dataSourceLabel}. Report never mixes sources silently.</li>
+-        </ul>
+-        <div className="text-sm font-semibold pt-3">Data quality</div>
+-        <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
+-          <li>Mapping completeness: {(dataQuality.mappingCompleteness * 100).toFixed(0)}%</li>
+-          <li>Missing key accounts: {dataQuality.missingKeyAccounts.length}</li>
+-          {missingMapping.length > 0 && <li>Examples to map: {missingMapping.join(', ')}</li>}
+-          {dataQuality.disabledSections.length > 0 && <li>Sections disabled: {dataQuality.disabledSections.join(', ')}</li>}
+-          <li>How to fix: Map the missing accounts in the Mapping page to unlock drivers and attribution.</li>
+-        </ul>
+-      </div>
++      <FooterBar dataSourceLabel={dataSourceLabel} snapshotId={snapshotId} generatedAt={generatedAt} />
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/report/ReportBuilderPanel.tsx b/mvp6/src/components/report/ReportBuilderPanel.tsx
+index 5e9df1f8d5ad000212423a10b71777701db8a8e8..7dbb82ccf03a3b272609142822b62e0dd939ea2e 100644
+--- a/mvp6/src/components/report/ReportBuilderPanel.tsx
++++ b/mvp6/src/components/report/ReportBuilderPanel.tsx
+@@ -2,68 +2,68 @@ import React from 'react'
+ import { Card, Label } from '../ui'
+ import { ComparisonMode, DataSource } from '../../lib/reportData'
+ 
+ export type BuilderState = {
+   dataSource: DataSource
+   includeScenario: boolean
+   recommendedSource: DataSource
+   mappingCompleteness: number
+   mappingWarnings: string[]
+   comparisonMode: ComparisonMode
+   onChange: (s: Partial<BuilderState>) => void
+ }
+ 
+ export function ReportBuilderPanel(props: BuilderState) {
+   const { dataSource, includeScenario, recommendedSource, mappingCompleteness, mappingWarnings, comparisonMode, onChange } = props
+ 
+   return (
+     <Card className="p-4 space-y-4">
+       <div>
+         <div className="text-sm font-semibold text-slate-100">Report Builder</div>
+         <div className="text-xs text-slate-400">Choose data source and scenario overlay. No filler controls.</div>
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-2">
+         <div>
+-          <Label>Data source (required)</Label>
++          <Label>Data source (Legacy / Management)</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+             {(['legacy', 'dream'] as const).map(src => (
+               <button
+                 key={src}
+                 onClick={() => onChange({ dataSource: src })}
+                 className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                   dataSource === src ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+                 }`}
+               >
+-                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Dream P&L (mapped model)'}
++                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Management P&L (mapped model)'}
+                 {recommendedSource === src ? ' • default' : ''}
+               </button>
+             ))}
+           </div>
+           {recommendedSource === 'legacy' && (
+             <div className="mt-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+-              Dream mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
++              Management mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
+             </div>
+           )}
+         </div>
+ 
+         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-200 space-y-1">
+           <div className="font-semibold text-slate-100">Mapping quality</div>
+           <div>Mapped coverage: {(mappingCompleteness * 100).toFixed(0)}%</div>
+           {mappingWarnings.map((w, idx) => (
+             <div key={idx} className="text-amber-100">{w}</div>
+           ))}
+         </div>
+ 
+         <div>
+           <Label>Scenario overlay</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+             <button
+               onClick={() => onChange({ includeScenario: true })}
+               className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                 includeScenario ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+               }`}
+             >
+               Scenario ON
+             </button>
+             <button
+               onClick={() => onChange({ includeScenario: false })}
+diff --git a/mvp6/src/components/report/ReportPreview.tsx b/mvp6/src/components/report/ReportPreview.tsx
+index e2e8d720c0da8474db2f7cfcdc6dcb8bf5c42266..fdc895ef087c690dd0919ac97d6507ea17bfbe8a 100644
+--- a/mvp6/src/components/report/ReportPreview.tsx
++++ b/mvp6/src/components/report/ReportPreview.tsx
+@@ -1,29 +1,33 @@
+ import React from 'react'
+ import { Card } from '../ui'
+ 
+ export function ReportPreview({ previewRef, children }: { previewRef: React.RefObject<HTMLDivElement>; children: React.ReactNode }) {
+   return (
+     <Card className="p-3">
+       <style>{`
+         @page { size: A4; margin: 12mm; }
++        .report-root {
++          width: calc(210mm - 24mm);
++          max-width: none;
++        }
+         @media print {
+           .report-root {
+             width: calc(210mm - 24mm);
+             max-width: none;
+           }
+         }
+       `}</style>
+       <div className="text-sm font-semibold text-slate-100 mb-2">Report Preview</div>
+-      <div className="text-xs text-slate-400 mb-2">Live preview of the first pages. Export preserves this layout.</div>
++      <div className="text-xs text-slate-400 mb-2">Live preview of the report (A4, scale=2). Exported PDF matches this layout.</div>
+       <div className="rounded-2xl border border-white/10 bg-slate-950 p-3 overflow-auto max-h-[70vh]">
+         <div
+           ref={previewRef}
+           className="origin-top-left report-root"
+-          style={{ width: '794px', minHeight: '1122px' }}
++          style={{ width: 'calc(210mm - 24mm)', minHeight: '1122px' }}
+         >
+           {children}
+         </div>
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/lib/reportData.ts b/mvp6/src/lib/reportData.ts
+index 1abd93e38f28d225ad81e0cb06f75733305e7ba9..5cbaae57880220b6cf35f0b8d222cd64fa59238e 100644
+--- a/mvp6/src/lib/reportData.ts
++++ b/mvp6/src/lib/reportData.ts
+@@ -358,73 +358,73 @@ export function getReportData(opts: {
+           .filter(l => l.section === 'rev')
+           .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'income' as const }))
+       : pl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values, sectionType: 'income' as const }))
+ 
+     const costEntries = source === 'dream'
+       ? flattenLinesWithSection(template.root)
+           .filter(l => l.section === 'cogs' || l.section === 'opex')
+           .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'expense' as const }))
+       : pl.accounts
+           .filter(a => a.section === 'cost_of_sales' || a.section === 'operating_expenses')
+           .map(a => ({ label: a.name, values: a.values, sectionType: 'expense' as const }))
+ 
+     const revenueDrivers = getDrivers({ entries: revenueEntries, mode, scenarioTotals })
+     const costDrivers = getDrivers({ entries: costEntries, mode, scenarioTotals })
+ 
+     const pnlSummary = [
+       { label: 'Revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
+       { label: 'COGS', current: sum(baseTotals.cogs), scenario: scenarioTotals ? sum(scenarioTotals.cogs) : null, variance: scenarioTotals ? sum(scenarioTotals.cogs) - sum(baseTotals.cogs) : null, tone: scenarioTotals ? (sum(scenarioTotals.cogs) - sum(baseTotals.cogs) <= 0 ? 'good' : 'bad') : undefined },
+       { label: 'Gross profit', current: sum(baseTotals.revenue) - sum(baseTotals.cogs), scenario: scenarioTotals ? sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs) : null, variance: scenarioTotals ? (sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs)) - (sum(baseTotals.revenue) - sum(baseTotals.cogs)) : null },
+       { label: 'Opex', current: sum(baseTotals.opex), scenario: scenarioTotals ? sum(scenarioTotals.opex) : null, variance: scenarioTotals ? sum(scenarioTotals.opex) - sum(baseTotals.opex) : null, tone: scenarioTotals ? (sum(scenarioTotals.opex) - sum(baseTotals.opex) <= 0 ? 'good' : 'bad') : undefined },
+       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
+       { label: 'Net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta },
+     ]
+ 
+     const executiveSummary: string[] = []
+-    executiveSummary.push(`Datasource: ${source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy Xero export'}`)
++    executiveSummary.push(`Datasource: ${source === 'dream' ? 'Management P&L (mapped model)' : 'Legacy Xero export'}`)
+     if (netDelta != null) executiveSummary.push(`Scenario impact: ${money(netDelta)} vs current.`)
+     const comparison = computeComparison(mode, baseTotals.net, scenarioTotals ? scenarioTotals.net : baseTotals.net, scenarioTotals)
+     executiveSummary.push(`Comparison mode: ${comparison.label}`)
+     executiveSummary.push(...whatChanged.slice(0, 2))
+     const topMoverSentences = [...revenueDrivers.items, ...costDrivers.items]
+       .sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
+       .slice(0, 2)
+       .map(d => `${d.label} Δ ${d.delta != null ? money(d.delta) : '—'} (${pct(d.pctDelta ?? null)})`)
+     if (topMoverSentences.length) executiveSummary.push(`Top movement drivers: ${topMoverSentences.join(' • ')}`)
+ 
+     const dataQuality: DataQuality = {
+       mappingCompleteness: mapping.completeness,
+       missingAccounts: mapping.missingAccounts,
+       missingKeyAccounts: mapping.missingKeyAccounts,
+       disabledSections: [],
+       warnings: [...completenessWarnings],
+     }
+ 
+     if (driverDisabled) dataQuality.disabledSections.push('drivers')
+     if (scenarioActive && mapping.completeness < completenessThreshold && source === 'dream') dataQuality.disabledSections.push('waterfall')
+ 
+-    const dataSourceLabel = source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy P&L (Xero export)'
++    const dataSourceLabel = source === 'dream' ? 'Management P&L (mapped model)' : 'Legacy P&L (Xero export)'
+     const dataQualityBadge = makeDataQualityBadge(source, mapping.completeness, mapping.missingKeyAccounts.length)
+ 
+     const varianceAttribution = scenarioTotals ? buildVarianceAttribution(baseTotals, scenarioTotals) : undefined
+ 
+     const drivers = {
+       revenue: revenueDrivers,
+       cost: costDrivers,
+     }
+ 
+     return {
+       dataSourceRequested: dataSource,
+       dataSourceUsed: source,
+       recommendedSource,
+       fallbackReason: undefined,
+       periodLabel,
+       dataSourceLabel,
+       dataQualityBadge: dataQualityBadge.badge,
+       dataQualityBadgeLabel: dataQualityBadge.badge,
+       baseTotals,
+       scenarioTotals,
+       trendRows,
+       trendStats,
+       kpis,
+       executiveSummary,
+       whatChanged,
+diff --git a/mvp6/src/store/appStore.ts b/mvp6/src/store/appStore.ts
+index 24e54d5899aa8dbddbd5913e059f02edc6027790..98fdbccdadffe7eef21ed0b4f7d249e972c15711 100644
+--- a/mvp6/src/store/appStore.ts
++++ b/mvp6/src/store/appStore.ts
+@@ -12,62 +12,65 @@ type AppState = {
+   pl: XeroPL | null
+   setPL: (pl: XeroPL | null) => void
+ 
+   gl: GL | null
+   setGL: (gl: GL | null) => void
+ 
+   template: DreamTemplate
+   setTemplate: (t: DreamTemplate) => void
+   resetTemplate: () => void
+ 
+   selectedLineId: string | null
+   setSelectedLineId: (id: string | null) => void
+ 
+   scenario: ScenarioInputs
+   setScenario: (s: Partial<ScenarioInputs>) => void
+ 
+   defaults: {
+     suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     mriPatientByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     doctorServiceFeePct: number
+   }
+   setDefaults: (d: Partial<AppState['defaults']>) => void
+ 
++  activeSnapshotId: string | null
++
+   snapshots: {
+     id: string
+     name: string
+     createdAt: string
+     scenario: ScenarioInputs
+     template: DreamTemplate
+     pl: XeroPL | null
+     gl: GL | null
+   }[]
+   addSnapshot: (name: string) => void
+   loadSnapshot: (id: string) => void
+   deleteSnapshot: (id: string) => void
++  clearActiveSnapshot: () => void
+ }
+ 
+ export const useAppStore = create<AppState>()(
+   persist(
+     (set, get) => ({
+       view: 'overview',
+       setView: (v) => set({ view: v }),
+ 
+       pl: null,
+       setPL: (pl) => set({ pl }),
+ 
+       gl: null,
+       setGL: (gl) => set({ gl }),
+ 
+       template: DEFAULT_DREAM_TEMPLATE,
+       setTemplate: (t) => set({ template: t }),
+       resetTemplate: () => set({ template: DEFAULT_DREAM_TEMPLATE }),
+ 
+       selectedLineId: null,
+       setSelectedLineId: (id) => set({ selectedLineId: id }),
+ 
+       scenario: {
+         enabled: false,
+         legacyTmsAccountMatchers: ['tms', 'cgtms', 'rTMS', 'transcranial'],
+         includeDoctorConsultsInBundle: false,
+@@ -133,94 +136,104 @@ export const useAppStore = create<AppState>()(
+         rentEnabled: false,
+         rentAccountMatchers: ['rent', 'lease'],
+         rentMode: 'fixed',
+         rentFixedMonthly: 0,
+         rentPercentPerMonth: 0,
+ 
+         machinesEnabled: false,
+         tmsMachines: 1,
+         patientsPerMachinePerWeek: 4,
+         weeksPerYear: 52,
+         utilisation: 0.65,
+         excludedConsultAccounts: [],
+         excludedConsultTxnKeys: [],
+       },
+       setScenario: (s) => set({ scenario: { ...get().scenario, ...s } }),
+ 
+       defaults: {
+         suggestedCbaPrice: { 'NSW/QLD': 1325, WA: 1475, VIC: 925 },
+         suggestedProgramPrice: { 'NSW/QLD': 10960, WA: 11110, VIC: 10560 },
+         mriCostByState: { 'NSW/QLD': 380, WA: 750, VIC: 0 },
+         mriPatientByState: { 'NSW/QLD': 400, WA: 770, VIC: 0 },
+         doctorServiceFeePct: 15,
+       },
+       setDefaults: (d) => set({ defaults: { ...get().defaults, ...d } }),
+ 
++      activeSnapshotId: null,
+       snapshots: [],
+       addSnapshot: (name) => {
+         const state = get()
+         const snapshot = {
+           id: crypto.randomUUID(),
+           name,
+           createdAt: new Date().toISOString(),
+           scenario: state.scenario,
+           template: state.template,
+           pl: state.pl,
+           gl: state.gl,
+         }
+-        set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20) })
++        set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20), activeSnapshotId: snapshot.id })
+       },
+       loadSnapshot: (id) => {
+         const state = get()
+         const snap = state.snapshots.find(s => s.id === id)
+         if (!snap) return
+         set({
+           scenario: snap.scenario,
+           template: snap.template,
+           pl: snap.pl,
+           gl: snap.gl,
++          activeSnapshotId: id,
+         })
+       },
+       deleteSnapshot: (id) => {
+-        set({ snapshots: get().snapshots.filter(s => s.id !== id) })
++        const state = get()
++        const nextSnapshots = state.snapshots.filter(s => s.id !== id)
++        set({
++          snapshots: nextSnapshots,
++          activeSnapshotId: state.activeSnapshotId === id ? null : state.activeSnapshotId,
++        })
+       },
++      clearActiveSnapshot: () => set({ activeSnapshotId: null }),
+     }),
+     {
+       name: 'cingulum-dream-pnl',
+       partialize: (state) => ({
+         template: state.template,
+         scenario: state.scenario,
+         defaults: state.defaults,
+         snapshots: state.snapshots,
++        activeSnapshotId: state.activeSnapshotId,
+       }),
+       // Keep backward compatibility when we add new scenario keys (avoid old persisted state wiping defaults)
+       merge: (persisted: any, current) => {
+         const defaults = current.scenario
+         const incoming = persisted?.scenario ?? {}
+ 
+         const sanitizeScenario = (src: any, fallback: typeof defaults): typeof defaults => {
+           const result: any = { ...fallback }
+           for (const [key, value] of Object.entries(src ?? {})) {
+             if (value === undefined || value === null) continue
+             if (typeof value === 'string' && value.trim() === '') continue
+             if (Array.isArray(value)) {
+               // For matcher arrays, keep defaults when the persisted array is empty
+               result[key] = value.length ? value : (fallback as any)[key] ?? []
+               continue
+             }
+             result[key] = value as any
+           }
+           return result as typeof defaults
+         }
+ 
+         return {
+           ...current,
+           ...persisted,
+           template: persisted?.template ?? current.template,
+           scenario: sanitizeScenario(incoming, defaults),
+           defaults: persisted?.defaults ?? current.defaults,
+           snapshots: persisted?.snapshots ?? current.snapshots,
++          activeSnapshotId: persisted?.activeSnapshotId ?? current.activeSnapshotId,
+         }
+       },
+     }
+   )
+ )
+diff --git a/mvp6/src/styles.css b/mvp6/src/styles.css
+index f34479517b7bfa7a8e8e3490ecf58da2cabafb24..3d1dd79b54dac85da6950f39028037dda192b510 100644
+--- a/mvp6/src/styles.css
++++ b/mvp6/src/styles.css
+@@ -24,25 +24,30 @@ body {
+ *::-webkit-scrollbar-track { background: rgba(15,23,42,0.2); }
+ 
+ .glass {
+   background: rgba(15, 23, 42, 0.55);
+   border: 1px solid rgba(148, 163, 184, 0.18);
+   backdrop-filter: blur(18px);
+ }
+ 
+ .kbd {
+   border: 1px solid rgba(148,163,184,0.25);
+   background: rgba(15,23,42,0.55);
+   padding: 2px 8px;
+   border-radius: 10px;
+   font-size: 12px;
+   color: rgba(226,232,240,0.85);
+ }
+ 
+ /* Native select dropdown theming (Chromium/Windows) */
+ select {
+   color-scheme: dark;
+ }
+ select option {
+   background-color: rgb(15, 23, 42); /* slate-900-ish */
+   color: rgb(226, 232, 240);
+ }
++
++.page-break {
++  break-after: page;
++  page-break-after: always;
++}
+ 
+EOF
+)
