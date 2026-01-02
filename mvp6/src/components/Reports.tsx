@@ -183,7 +183,6 @@ export function Reports() {
   }
 
   const previewRef = useRef<HTMLDivElement>(null)
-  const templateRef = useRef<HTMLDivElement>(null)
 
   const generate = async () => {
     if (!pl || !baseTotals) {
@@ -191,11 +190,11 @@ export function Reports() {
       return
     }
     setStatus('Generating...')
-    if (!templateRef.current) {
+    if (!previewRef.current) {
       setStatus('Preview not ready.')
       return
     }
-    const element = templateRef.current
+    const element = previewRef.current
     const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF('p', 'pt', 'a4')
@@ -293,7 +292,7 @@ export function Reports() {
       />
 
       <div className="space-y-3">
-        <ReportPreview previewRef={previewRef} />
+        <ReportPreview previewRef={previewRef}>{template}</ReportPreview>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -308,11 +307,6 @@ export function Reports() {
         </div>
       </div>
 
-      {/* Hidden template for PDF + preview content */}
-      <div className="hidden">
-        <div ref={templateRef}>{template}</div>
-      </div>
-      {previewRef.current ? null : null}
     </div>
   )
 }
