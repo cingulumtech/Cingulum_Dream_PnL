@@ -172,7 +172,7 @@ export function Reports() {
       out.push(val)
     }
     return out
-  }, [baseTotals, scenarioTotals, includeScenario, projectionMonths, growthPct])
+  }, [baseTotals, scenarioTotals, builder.includeScenario, builder.projectionMonths, builder.growthPct])
 
   const ensureSpace = (doc: jsPDF, y: number, needed: number, margin: number) => {
     if (y + needed > 780) {
