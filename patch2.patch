@@ -1,0 +1,883 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mvp6/.gitignore b/mvp6/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..51e5562934beb675498e13f7805a0d4c8500983a
+--- /dev/null
++++ b/mvp6/.gitignore
+@@ -0,0 +1,5 @@
++node_modules/
++dist/
++.vite/
++.DS_Store
++coverage/
+diff --git a/mvp6/src/App.tsx b/mvp6/src/App.tsx
+index 07971223e22f35b1ff2ed552755390285f12615a..f4d9ccef7bc7c10881117cea8bd8dbf2c137d033 100644
+--- a/mvp6/src/App.tsx
++++ b/mvp6/src/App.tsx
+@@ -1,95 +1,102 @@
+ import React from 'react'
+-import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText } from 'lucide-react'
+-import { useAppStore } from './store/appStore'
++import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText, Settings2 } from 'lucide-react'
++import { useAppStore, type View } from './store/appStore'
+ import { UploadPanel } from './components/UploadPanel'
+ import { Overview } from './components/Overview'
+ import { LegacyPnLTable } from './components/LegacyPnLTable'
+ import { DreamPnLTable } from './components/DreamPnLTable'
+ import { MappingEditor } from './components/MappingEditor'
+ import { TemplateEditor } from './components/TemplateEditor'
+ import { Help } from './components/Help'
+ import { SettingsPage } from './components/SettingsPage'
+ import { SavedExports } from './components/SavedExports'
+ import { Reports } from './components/Reports'
+ import { DrilldownDrawer } from './components/DrilldownDrawer'
+ import { Card } from './components/ui'
+ 
+ export function App() {
+   const view = useAppStore(s => s.view)
+   const setView = useAppStore(s => s.setView)
+ 
+-  const nav = [
++  const nav: { id: View; label: string; icon: React.ComponentType<any> }[] = [
+     { id: 'overview', label: 'Overview', icon: BarChart3 },
+-    { id: 'legacy', label: 'Legacy P&L', icon: FileSpreadsheet },
+-    { id: 'dream', label: 'Dream P&L', icon: LayoutGrid },
++    { id: 'pnlLegacy', label: 'P&L (Legacy)', icon: FileSpreadsheet },
++    { id: 'pnlManagement', label: 'P&L (Management)', icon: LayoutGrid },
+     { id: 'mapping', label: 'Mapping', icon: Wand2 },
+-    { id: 'scenario', label: 'Layout editor', icon: Settings },
+-    { id: 'settings', label: 'Settings', icon: Settings },
+-    { id: 'exports', label: 'Saved Exports', icon: Database },
++    { id: 'layout', label: 'Layout', icon: Settings2 },
+     { id: 'reports', label: 'Reports', icon: FileText },
++    { id: 'snapshots', label: 'Snapshots', icon: Database },
++    { id: 'settings', label: 'Settings', icon: Settings },
+     { id: 'help', label: 'Help', icon: HelpCircle },
+-  ] as const
++  ]
+ 
+   return (
+     <div className="relative min-h-screen overflow-x-hidden">
+       {/* Single background layer (prevents visible seams / splits) */}
+       <div
+         className="pointer-events-none fixed inset-0 -z-10"
+         style={{
+           background:
+             'radial-gradient(1200px 700px at 10% 0%, rgba(99,102,241,0.25), transparent 60%), radial-gradient(900px 600px at 90% 20%, rgba(56,189,248,0.20), transparent 55%), rgb(17,24,39)',
+         }}
+       />
+       <div className="mx-auto max-w-[1400px] p-4 md:p-6">
+         <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]">
+           <div className="space-y-4">
+             <Card className="p-4">
+-              <div className="text-sm text-slate-300">Cingulum</div>
+-              <div className="text-lg font-semibold">Dream P&amp;L</div>
+-              <div className="text-xs text-slate-400 mt-1">
+-                Built-in model. Upload Xero exports → map once → get a board-grade P&amp;L + drill-down.
++              <div className="flex items-start gap-3">
++                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 via-sky-400 to-cyan-300 text-slate-900 font-black shadow-glass ring-1 ring-white/40">
++                  C
++                </div>
++                <div className="space-y-1">
++                  <div className="text-sm font-semibold text-slate-200">Cingulum</div>
++                  <div className="text-lg font-semibold">P&amp;L Control</div>
++                  <div className="text-xs text-slate-400 mt-1">
++                    Upload Xero exports, map once, and drive a board-grade P&amp;L with drill-down.
++                  </div>
++                </div>
+               </div>
+             </Card>
+ 
+             <Card className="p-3">
+               <div className="flex flex-col gap-1">
+                 {nav.map(item => {
+                   const Icon = item.icon
+                   const active = view === item.id
+                   return (
+                     <button
+                       key={item.id}
+-                      onClick={() => setView(item.id as any)}
++                      onClick={() => setView(item.id)}
+                       className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold border transition ${
+                         active ? 'bg-indigo-500/15 border-indigo-400/30' : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
+                       }`}
+                     >
+                       <Icon className="h-4 w-4 text-slate-200" />
+                       {item.label}
+                     </button>
+                   )
+                 })}
+               </div>
+             </Card>
+ 
+             <UploadPanel />
+           </div>
+ 
+           <div className="space-y-4">
+             {view === 'overview' && <Overview />}
+-            {view === 'legacy' && <LegacyPnLTable />}
+-            {view === 'dream' && <DreamPnLTable />}
++            {view === 'pnlLegacy' && <LegacyPnLTable />}
++            {view === 'pnlManagement' && <DreamPnLTable />}
+             {view === 'mapping' && <MappingEditor />}
+-            {view === 'scenario' && <TemplateEditor />}
++            {view === 'layout' && <TemplateEditor />}
+             {view === 'settings' && <SettingsPage />}
+-            {view === 'exports' && <SavedExports />}
++            {view === 'snapshots' && <SavedExports />}
+             {view === 'reports' && <Reports />}
+             {view === 'help' && <Help />}
+           </div>
+         </div>
+       </div>
+ 
+       <DrilldownDrawer />
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/DreamPnLTable.tsx b/mvp6/src/components/DreamPnLTable.tsx
+index eab30bc249c9f095f240892862a0f6e3a31bf315..d85a7eede63414705a34eec9fd135f4eaed84353 100644
+--- a/mvp6/src/components/DreamPnLTable.tsx
++++ b/mvp6/src/components/DreamPnLTable.tsx
+@@ -1,27 +1,27 @@
+ import React, { useMemo, useState } from 'react'
+-import { ChevronDown, ChevronRight, Pencil, Settings2 } from 'lucide-react'
++import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
+ import { useAppStore } from '../store/appStore'
+ import { computeDepAmort, computeDream, computeDreamTotals } from '../lib/dream/compute'
+ import { DreamGroup, DreamLine } from '../lib/types'
+ import { Button, Card, Chip, Input } from './ui'
+ 
+ function Row({
+   node,
+   depth,
+   months,
+   getVals,
+   onSelect,
+   expanded,
+   toggle,
+ }: {
+   node: DreamGroup | DreamLine
+   depth: number
+   months: number
+   getVals: (id: string) => number[]
+   onSelect: (id: string) => void
+   expanded: Set<string>
+   toggle: (id: string) => void
+ }) {
+   const isGroup = node.kind === 'group'
+   const pad = 12 + depth * 14
+   const vals = isGroup ? null : getVals(node.id)
+@@ -109,106 +109,117 @@ export function DreamPnLTable() {
+ 
+   const rootFiltered = useMemo(() => {
+     if (!q) return template.root
+     const needle = q.toLowerCase()
+     const filter = (node: DreamGroup | DreamLine): DreamGroup | DreamLine | null => {
+       if (node.kind === 'line') return node.label.toLowerCase().includes(needle) ? node : null
+       const kids = node.children.map(filter).filter(Boolean) as (DreamGroup | DreamLine)[]
+       if (node.label.toLowerCase().includes(needle)) return { ...node, children: node.children } // keep as-is
+       if (kids.length) return { ...node, children: kids }
+       return null
+     }
+     return (filter(template.root) as DreamGroup) ?? template.root
+   }, [template, q])
+ 
+   function toggle(id: string) {
+     setExpanded(prev => {
+       const next = new Set(prev)
+       if (next.has(id)) next.delete(id)
+       else next.add(id)
+       return next
+     })
+   }
+ 
+   if (!pl) {
+     return (
+-      <Card className="p-5">
+-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view your Dream P&amp;L.</div>
++      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
++        <div className="flex items-center justify-between gap-3">
++          <div>
++            <div className="text-lg font-semibold">P&amp;L (Management)</div>
++            <div className="text-sm text-slate-200">
++              Upload the Profit &amp; Loss export to unlock the management view and drill-down.
++            </div>
++          </div>
++          <div className="flex gap-2">
++            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
++            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
++          </div>
++        </div>
+       </Card>
+     )
+   }
+ 
+   const getVals = (id: string) => computed?.byLineId[id] ?? Array(pl.months.length).fill(0)
+ 
+   return (
+     <Card className="p-5 overflow-hidden">
+       <div className="flex items-start justify-between gap-4">
+         <div>
+-          <div className="text-lg font-semibold">Dream P&amp;L (management view)</div>
++          <div className="text-lg font-semibold">P&amp;L (Management)</div>
+           <div className="text-sm text-slate-300">
+-            Same underlying Xero data, re-expressed into your Dream structure. Click a line to drill down.
++            Same underlying Xero data, re-expressed into your management layout. Click a line to drill down.
+           </div>
+         </div>
+         <div className="flex items-center gap-2">
+           <Button variant="ghost" onClick={() => setView('mapping')}>
+             <Settings2 className="h-4 w-4" /> Map accounts
+           </Button>
+         </div>
+       </div>
+ 
+       {totals && (
+         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Revenue</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+               {totals.revenue.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo COGS</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+               {totals.cogs.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo OpEx</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+               {totals.opex.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Net</div>
+             <div className="mt-1 text-lg font-semibold tabular-nums">
+               {totals.net.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+             </div>
+           </div>
+         </div>
+       )}
+ 
+       <div className="mt-4 flex items-center justify-between gap-3">
+         <div className="w-80">
+-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search Dream lines…" />
++          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search management lines…" />
+         </div>
+         <div className="text-xs text-slate-400">Unmapped lines show as “Unmapped” until you map accounts.</div>
+       </div>
+ 
+       <div className="mt-4 overflow-auto rounded-2xl border border-white/10">
+         <table className="min-w-full text-sm">
+           <thead className="bg-white/5 sticky top-0 z-10">
+             <tr>
+               <th className="text-left px-3 py-2 font-semibold">Dream category</th>
+               {pl.monthLabels.map(m => (
+                 <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{m}</th>
+               ))}
+             </tr>
+           </thead>
+           <tbody>
+             {rootFiltered.children.map(child => (
+               <Row
+                 key={child.id}
+                 node={child}
+                 depth={0}
+                 months={pl.months.length}
+                 getVals={getVals}
+                 onSelect={id => setSelectedLineId(id)}
+                 expanded={expanded}
+                 toggle={toggle}
+diff --git a/mvp6/src/components/LegacyPnLTable.tsx b/mvp6/src/components/LegacyPnLTable.tsx
+index d4e20aed496bedee3a4474a58d8ba68a61a3f3ad..0b00fccfd4b44a9bf68c33ac7dc706b186115848 100644
+--- a/mvp6/src/components/LegacyPnLTable.tsx
++++ b/mvp6/src/components/LegacyPnLTable.tsx
+@@ -1,95 +1,105 @@
+ import React, { useMemo, useState } from 'react'
+ import { useAppStore } from '../store/appStore'
+-import { Card, Chip, Input } from './ui'
++import { Card, Chip, Input, Button } from './ui'
+ import { XeroPLSection } from '../lib/types'
+ import { computeDepAmort, computeXeroTotals } from '../lib/dream/compute'
+ 
+ const sectionLabels: Record<XeroPLSection, string> = {
+   trading_income: 'Trading Income',
+   cost_of_sales: 'Cost of Sales',
+   other_income: 'Other Income',
+   operating_expenses: 'Operating Expenses',
+   unknown: 'Other / Unclassified',
+ }
+ 
+ export function LegacyPnLTable() {
+   const pl = useAppStore(s => s.pl)
++  const setView = useAppStore(s => s.setView)
+   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
+   const [q, setQ] = useState('')
+ 
+   const sections = useMemo(() => {
+     if (!pl) return []
+     const match = (name: string) => !q || name.toLowerCase().includes(q.toLowerCase())
+     const by: Record<string, typeof pl.accounts> = {}
+     for (const a of pl.accounts) {
+       if (!match(a.name)) continue
+       by[a.section] = by[a.section] ?? []
+       by[a.section].push(a)
+     }
+     return Object.entries(by).map(([section, accounts]) => ({
+       section: section as XeroPLSection,
+       accounts,
+     }))
+   }, [pl, q])
+ 
+   const totals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
+   const depAmort = useMemo(() => (pl ? computeDepAmort(pl) : null), [pl])
+ 
+   const footer = useMemo(() => {
+     if (!totals) return null
+     const n = totals.revenue.length
+     const gross = Array(n).fill(0).map((_, i) => totals.revenue[i] - totals.cogs[i])
+     const ebit = Array(n).fill(0).map((_, i) => totals.revenue[i] - totals.cogs[i] - totals.opex[i])
+     const da = depAmort ?? Array(n).fill(0)
+     const ebitda = Array(n).fill(0).map((_, i) => ebit[i] + (da[i] ?? 0))
+     return {
+       rows: [
+         { label: 'Total Revenue', values: totals.revenue },
+         { label: 'Total COGS', values: totals.cogs },
+         { label: 'Gross Profit', values: gross },
+         { label: 'Total OpEx', values: totals.opex },
+         { label: 'EBITDA', values: ebitda },
+         { label: 'EBIT', values: ebit },
+         { label: 'Net Profit', values: totals.net },
+       ],
+     }
+   }, [totals, depAmort])
+ 
+   if (!pl) {
+     return (
+-      <Card className="p-5">
+-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view the Xero-faithful table.</div>
++      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
++        <div className="flex items-center justify-between gap-3">
++          <div>
++            <div className="text-lg font-semibold">P&amp;L (Legacy)</div>
++            <div className="text-sm text-slate-200">Upload the Profit &amp; Loss export to mirror Xero rows and months.</div>
++          </div>
++          <div className="flex gap-2">
++            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
++            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
++          </div>
++        </div>
+       </Card>
+     )
+   }
+ 
+   return (
+     <Card className="p-5 overflow-hidden">
+       <div className="flex items-center justify-between gap-3">
+         <div>
+-          <div className="text-lg font-semibold">Legacy P&amp;L (Xero-faithful)</div>
++          <div className="text-lg font-semibold">P&amp;L (Legacy)</div>
+           <div className="text-sm text-slate-300">Rows mirror Xero accounts. Columns are months.</div>
+         </div>
+         <div className="w-72">
+           <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search accounts…" />
+         </div>
+       </div>
+ 
+       {/* Top-level 12-month totals (same as Dream P&L) */}
+       {totals && (
+         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Revenue</div>
+             <div className="text-lg font-semibold">{Math.round(totals.revenue.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo COGS</div>
+             <div className="text-lg font-semibold">{Math.round(totals.cogs.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo OpEx</div>
+             <div className="text-lg font-semibold">{Math.round(totals.opex.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+             <div className="text-xs text-slate-300">12-mo Net</div>
+             <div className="text-lg font-semibold">{Math.round(totals.net.reduce((a, b) => a + b, 0)).toLocaleString()}</div>
+diff --git a/mvp6/src/components/MappingEditor.tsx b/mvp6/src/components/MappingEditor.tsx
+index 06fb55d79d8cf606542a688d475e835359add0ff..10c4736253fe2b1c7d0dd3e70da8e9c4b9b0f04d 100644
+--- a/mvp6/src/components/MappingEditor.tsx
++++ b/mvp6/src/components/MappingEditor.tsx
+@@ -42,123 +42,132 @@ export function MappingEditor() {
+ 
+   const selectedLine = useMemo(() => lines.find(l => l.id === selectedLineId) ?? null, [lines, selectedLineId])
+   const accountNames = useMemo(() => (pl ? pl.accounts.map(a => a.name).sort((a, b) => a.localeCompare(b)) : []), [pl])
+ 
+   const mappedSet = useMemo(() => {
+     const s = new Set<string>()
+     for (const ln of lines) for (const a of ln.mappedAccounts) s.add(a)
+     return s
+   }, [lines])
+ 
+   const unmappedAccounts = useMemo(() => accountNames.filter(a => !mappedSet.has(a)), [accountNames, mappedSet])
+ 
+   const filteredLines = useMemo(() => {
+     const needle = qLine.toLowerCase()
+     return lines.filter(l => !needle || l.label.toLowerCase().includes(needle))
+   }, [lines, qLine])
+ 
+   const filteredAccounts = useMemo(() => {
+     const needle = qAcc.toLowerCase()
+     const list = (needle ? accountNames.filter(a => a.toLowerCase().includes(needle)) : unmappedAccounts)
+     return list.slice(0, 200)
+   }, [accountNames, unmappedAccounts, qAcc])
+ 
+   if (!pl) {
+     return (
+-      <Card className="p-5">
+-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export first.</div>
++      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
++        <div className="flex items-center justify-between gap-3">
++          <div>
++            <div className="text-lg font-semibold">Mapping</div>
++            <div className="text-sm text-slate-200">Import the Profit &amp; Loss export to start mapping Xero accounts.</div>
++          </div>
++          <div className="flex gap-2">
++            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
++            <Button variant="ghost" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
++          </div>
++        </div>
+       </Card>
+     )
+   }
+ 
+   function toggleAccount(acc: string) {
+     if (!selectedLine) return
+     const existing = new Set(selectedLine.mappedAccounts)
+     if (existing.has(acc)) existing.delete(acc)
+     else existing.add(acc)
+ 
+     setTemplate(setLineMappings(template, selectedLine.id, Array.from(existing).sort((a, b) => a.localeCompare(b))))
+   }
+ 
+   function autoSuggest() {
+     if (!selectedLine) return
+     const scored = unmappedAccounts
+       .map(a => ({ a, s: scoreSuggestion(selectedLine.label, a) }))
+       .filter(x => x.s > 0)
+       .sort((x, y) => y.s - x.s)
+       .slice(0, 10)
+       .map(x => x.a)
+     if (!scored.length) return
+     const merged = Array.from(new Set([...selectedLine.mappedAccounts, ...scored]))
+     setTemplate(setLineMappings(template, selectedLine.id, merged))
+   }
+ 
+   return (
+-    <Card className="p-5 overflow-hidden">
+-      <div className="flex items-start justify-between gap-4">
+-        <div>
+-          <div className="text-lg font-semibold">Mapping editor</div>
+-          <div className="text-sm text-slate-300">
+-            Assign Xero accounts to Dream lines. Unmapped accounts are highlighted by default (so you can mop them up fast).
++      <Card className="p-5 overflow-hidden">
++        <div className="flex items-start justify-between gap-4">
++          <div>
++            <div className="text-lg font-semibold">Mapping</div>
++            <div className="text-sm text-slate-300">
++              Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default (so you can mop them up fast).
++            </div>
+           </div>
+-        </div>
+-        <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
++          <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
+       </div>
+ 
+       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[380px,1fr]">
+         {/* Left: Dream lines */}
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+           <div className="flex items-center gap-2">
+             <Search className="h-4 w-4 text-slate-300" />
+-            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search Dream lines…" />
++            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search layout lines…" />
+           </div>
+ 
+           <div className="mt-3 max-h-[520px] overflow-auto pr-1">
+             {filteredLines.map(l => (
+               <div
+                 key={l.id}
+                 className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm cursor-pointer border ${
+                   selectedLineId === l.id ? 'bg-indigo-500/15 border-indigo-400/30' : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
+                 }`}
+                 onClick={() => setSelectedLineIdLocal(l.id)}
+               >
+                 <div className="min-w-0">
+                   <div className="truncate font-semibold">{l.label}</div>
+                   <div className="text-xs text-slate-400">
+                     {l.mappedAccounts.length ? `${l.mappedAccounts.length} mapped` : 'Unmapped'}
+                   </div>
+                 </div>
+                 <ChevronRight className="h-4 w-4 text-slate-400" />
+               </div>
+             ))}
+           </div>
+         </div>
+ 
+         {/* Right: Accounts picker */}
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+           {!selectedLine ? (
+-            <div className="text-sm text-slate-300">Select a Dream line to map accounts.</div>
++            <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
+           ) : (
+             <>
+               <div className="flex items-start justify-between gap-3">
+                 <div>
+                   <div className="text-base font-semibold">{selectedLine.label}</div>
+                   <div className="text-xs text-slate-400">Tap accounts to toggle. Think “photo editing”: fast, reversible, obvious.</div>
+                 </div>
+                 <Button variant="ghost" onClick={autoSuggest}>
+                   <Wand2 className="h-4 w-4" /> Suggest
+                 </Button>
+               </div>
+ 
+               <div className="mt-3">
+                 <Label>Mapped accounts</Label>
+                 <div className="mt-2 flex flex-wrap gap-2">
+                   {selectedLine.mappedAccounts.length === 0 && <Chip>None yet</Chip>}
+                   {selectedLine.mappedAccounts.map(a => (
+                     <Chip
+                       key={a}
+                       className="cursor-pointer hover:bg-rose-500/10"
+                       title="Click to remove"
+                       onClick={() => toggleAccount(a)}
+                     >
+                       <Check className="h-3 w-3" /> {a}
+                     </Chip>
+diff --git a/mvp6/src/components/SavedExports.tsx b/mvp6/src/components/SavedExports.tsx
+index b1214c6c2f6224b27a2a2adaa5eda36cb4af753d..c41764203260ed2ce32496cbbd77b13be3d33015 100644
+--- a/mvp6/src/components/SavedExports.tsx
++++ b/mvp6/src/components/SavedExports.tsx
+@@ -1,68 +1,76 @@
+ import React, { useState } from 'react'
+ import { useAppStore } from '../store/appStore'
+-import { Card, Input, Label } from './ui'
++import { Card, Input, Label, Button } from './ui'
+ 
+ export function SavedExports() {
+   const snapshots = useAppStore(s => s.snapshots)
+   const addSnapshot = useAppStore(s => s.addSnapshot)
+   const loadSnapshot = useAppStore(s => s.loadSnapshot)
+   const deleteSnapshot = useAppStore(s => s.deleteSnapshot)
+   const [name, setName] = useState('')
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4">
+       <Card className="p-4">
+         <div className="flex items-center justify-between gap-3">
+           <div>
+-            <div className="text-sm font-semibold text-slate-100">Saved Exports</div>
+-            <div className="text-xs text-slate-400">Capture the current scenario + uploads as a snapshot.</div>
++            <div className="text-sm font-semibold text-slate-100">Snapshots</div>
++            <div className="text-xs text-slate-400">Capture the current scenario + uploads as a reusable snapshot.</div>
+           </div>
+           <div className="flex gap-2">
+             <Input
+               className="w-56"
+               placeholder="Name this snapshot"
+               value={name}
+               onChange={(e) => setName(e.target.value)}
+             />
+             <button
+               type="button"
+               onClick={() => {
+                 if (!name.trim()) return
+                 addSnapshot(name.trim())
+                 setName('')
+               }}
+               className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
+             >
+               Save snapshot
+             </button>
+           </div>
+         </div>
+ 
+         <div className="mt-4 space-y-2">
+           {snapshots.length === 0 ? (
+-            <div className="text-xs text-slate-300">No snapshots saved yet.</div>
++            <Card className="p-3 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
++              <div className="flex items-center justify-between gap-2">
++                <div>
++                  <div className="text-sm font-semibold text-slate-100">No snapshots yet</div>
++                  <div className="text-xs text-slate-200">Save your current mapping + uploads to reuse later.</div>
++                </div>
++                <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Load P&amp;L</Button>
++              </div>
++            </Card>
+           ) : (
+             snapshots.map(snap => (
+               <div key={snap.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                 <div>
+                   <div className="text-sm font-semibold text-slate-100">{snap.name}</div>
+                   <div className="text-xs text-slate-400">{new Date(snap.createdAt).toLocaleString()}</div>
+                 </div>
+                 <div className="flex gap-2">
+                   <button
+                     type="button"
+                     onClick={() => loadSnapshot(snap.id)}
+                     className="rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100"
+                   >
+                     Load
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => deleteSnapshot(snap.id)}
+                     className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-100"
+                   >
+                     Delete
+                   </button>
+                 </div>
+               </div>
+             ))
+diff --git a/mvp6/src/components/TemplateEditor.tsx b/mvp6/src/components/TemplateEditor.tsx
+index d445ea8787c8f8d21ea8c8d40d807b0ef6b16e94..1c20eb7204d23fca5618c42917d65d17588c5924 100644
+--- a/mvp6/src/components/TemplateEditor.tsx
++++ b/mvp6/src/components/TemplateEditor.tsx
+@@ -68,53 +68,53 @@ export function TemplateEditor() {
+     setSelectedChildIdx(to)
+   }
+ 
+   function del() {
+     if (!selectedNode) return
+     if (selectedNode.id === template.root.id) return
+     setTemplate(removeNode(template, selectedNode.id))
+     setSelectedChildIdx(null)
+   }
+ 
+   async function importTemplateFile(file: File | null) {
+     if (!file) return
+     const txt = await file.text()
+     try {
+       const parsed = JSON.parse(txt)
+       setTemplate(parsed)
+     } catch (e) {
+       alert('Invalid JSON template.')
+     }
+   }
+ 
+   return (
+     <Card className="p-5 overflow-hidden">
+       <div className="flex items-start justify-between gap-4">
+         <div>
+-          <div className="text-lg font-semibold">Dream P&amp;L layout editor</div>
++          <div className="text-lg font-semibold">Layout</div>
+           <div className="text-sm text-slate-300">
+-            Edit categories and line items like an iPhone editor: select, rename, move, add, delete. Mappings stay separate.
++            Edit categories and line items like an iPhone editor: select, rename, move, add, delete. Mapping stays separate.
+           </div>
+         </div>
+         <div className="flex items-center gap-2">
+           <Button variant="ghost" onClick={() => resetTemplate()}>
+             <RotateCcw className="h-4 w-4" /> Reset
+           </Button>
+         </div>
+       </div>
+ 
+       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr]">
+         {/* Left: Structure */}
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+           <Label>Top-level groups</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+             {template.root.children
+               .filter(isGroup)
+               .map(g => (
+                 <Chip
+                   key={g.id}
+                   className={`cursor-pointer ${selectedGroupId === g.id ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                   onClick={() => {
+                     setSelectedGroupId(g.id)
+                     setSelectedChildIdx(null)
+                     setRename('')
+                   }}
+diff --git a/mvp6/src/components/UploadPanel.tsx b/mvp6/src/components/UploadPanel.tsx
+index 2442de87980fed4d25608682c0e7f4b94c537771..ef9ce6b5dbc806a340f77f94475f92028e397ccb 100644
+--- a/mvp6/src/components/UploadPanel.tsx
++++ b/mvp6/src/components/UploadPanel.tsx
+@@ -54,69 +54,71 @@ export function UploadPanel() {
+   return (
+     <Card className="p-5">
+       <div className="flex items-start justify-between gap-4">
+         <div>
+           <div className="text-lg font-semibold">Load Xero exports</div>
+           <div className="text-sm text-slate-300">
+             Upload the Xero <span className="font-semibold">Profit &amp; Loss</span> export and (optional){' '}
+             <span className="font-semibold">General Ledger Detail</span> export for drill-down.
+           </div>
+         </div>
+         <Button variant="ghost" onClick={() => { setPL(null); setGL(null); setStatus(''); setErr('') }}>
+           <Trash2 className="h-4 w-4" /> Clear
+         </Button>
+       </div>
+ 
+       {/* Sidebar is narrow even on large screens; keep this 1-column to avoid squishing */}
+       <div className="mt-5 grid grid-cols-1 gap-4">
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+           <div className="flex items-center justify-between">
+             <div className="font-semibold">Profit &amp; Loss</div>
+             {pl ? <Chip tone="good">Loaded</Chip> : <Chip>Required</Chip>}
+           </div>
+           <div className="mt-3 flex">
+             <input
+               ref={plInput}
++              id="pl-upload-input"
+               type="file"
+               accept=".xlsx,.xls,.csv"
+               className="hidden"
+               onChange={e => onPickPL(e.target.files?.[0] ?? null)}
+             />
+             <Button className="w-full" onClick={() => plInput.current?.click()}>
+               <Upload className="h-4 w-4" /> Choose file
+             </Button>
+           </div>
+           {pl && (
+             <div className="mt-3 text-xs text-slate-300">
+               {pl.accounts.length.toLocaleString()} accounts · {pl.months.length} months
+             </div>
+           )}
+         </div>
+ 
+         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+           <div className="flex items-center justify-between">
+             <div className="font-semibold">General Ledger Detail</div>
+             {gl ? <Chip tone="good">Loaded</Chip> : <Chip>Optional</Chip>}
+           </div>
+           <div className="mt-3 flex">
+             <input
+               ref={glInput}
++              id="gl-upload-input"
+               type="file"
+               accept=".xlsx,.xls,.csv"
+               className="hidden"
+               onChange={e => onPickGL(e.target.files?.[0] ?? null)}
+             />
+             <Button className="w-full" variant="ghost" onClick={() => glInput.current?.click()}>
+               <FileText className="h-4 w-4" /> Choose file
+             </Button>
+           </div>
+           {gl && <div className="mt-3 text-xs text-slate-300">{gl.txns.length.toLocaleString()} transactions</div>}
+         </div>
+       </div>
+ 
+       <div className="mt-4">
+         {status && <div className="text-sm text-slate-200">{status}</div>}
+         {err && <div className="mt-2 text-sm text-rose-200">{err}</div>}
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/components/report/ReportBuilderPanel.tsx b/mvp6/src/components/report/ReportBuilderPanel.tsx
+index 5e9df1f8d5ad000212423a10b71777701db8a8e8..75dc724128cbef7f340159adeb04f513626cdf2c 100644
+--- a/mvp6/src/components/report/ReportBuilderPanel.tsx
++++ b/mvp6/src/components/report/ReportBuilderPanel.tsx
+@@ -12,51 +12,51 @@ export type BuilderState = {
+   onChange: (s: Partial<BuilderState>) => void
+ }
+ 
+ export function ReportBuilderPanel(props: BuilderState) {
+   const { dataSource, includeScenario, recommendedSource, mappingCompleteness, mappingWarnings, comparisonMode, onChange } = props
+ 
+   return (
+     <Card className="p-4 space-y-4">
+       <div>
+         <div className="text-sm font-semibold text-slate-100">Report Builder</div>
+         <div className="text-xs text-slate-400">Choose data source and scenario overlay. No filler controls.</div>
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-2">
+         <div>
+           <Label>Data source (required)</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+             {(['legacy', 'dream'] as const).map(src => (
+               <button
+                 key={src}
+                 onClick={() => onChange({ dataSource: src })}
+                 className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                   dataSource === src ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
+                 }`}
+               >
+-                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Dream P&L (mapped model)'}
++                {src === 'legacy' ? 'P&L (Legacy)' : 'P&L (Management)'}
+                 {recommendedSource === src ? ' • default' : ''}
+               </button>
+             ))}
+           </div>
+           {recommendedSource === 'legacy' && (
+             <div className="mt-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+               Dream mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
+             </div>
+           )}
+         </div>
+ 
+         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-200 space-y-1">
+           <div className="font-semibold text-slate-100">Mapping quality</div>
+           <div>Mapped coverage: {(mappingCompleteness * 100).toFixed(0)}%</div>
+           {mappingWarnings.map((w, idx) => (
+             <div key={idx} className="text-amber-100">{w}</div>
+           ))}
+         </div>
+ 
+         <div>
+           <Label>Scenario overlay</Label>
+           <div className="mt-2 flex flex-wrap gap-2">
+             <button
+               onClick={() => onChange({ includeScenario: true })}
+               className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+diff --git a/mvp6/src/store/appStore.ts b/mvp6/src/store/appStore.ts
+index 24e54d5899aa8dbddbd5913e059f02edc6027790..79da46919a6dff3d7fc3124a9bc0ba2e5df44805 100644
+--- a/mvp6/src/store/appStore.ts
++++ b/mvp6/src/store/appStore.ts
+@@ -1,31 +1,40 @@
+ import { create } from 'zustand'
+ import { persist } from 'zustand/middleware'
+ import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
+ import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
+ 
+-export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
++export type View =
++  | 'overview'
++  | 'pnlLegacy'
++  | 'pnlManagement'
++  | 'mapping'
++  | 'layout'
++  | 'reports'
++  | 'snapshots'
++  | 'settings'
++  | 'help'
+ 
+ type AppState = {
+   view: View
+   setView: (v: View) => void
+ 
+   pl: XeroPL | null
+   setPL: (pl: XeroPL | null) => void
+ 
+   gl: GL | null
+   setGL: (gl: GL | null) => void
+ 
+   template: DreamTemplate
+   setTemplate: (t: DreamTemplate) => void
+   resetTemplate: () => void
+ 
+   selectedLineId: string | null
+   setSelectedLineId: (id: string | null) => void
+ 
+   scenario: ScenarioInputs
+   setScenario: (s: Partial<ScenarioInputs>) => void
+ 
+   defaults: {
+     suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+ 
+EOF
+)
