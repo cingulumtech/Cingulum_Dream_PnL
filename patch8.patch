@@ -1,0 +1,1285 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mvp6/.gitignore b/mvp6/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..44c4d47088d6912a391f049ef0fc686885c52f8f
+--- /dev/null
++++ b/mvp6/.gitignore
+@@ -0,0 +1,5 @@
++node_modules
++.DS_Store
++dist
++dist-ssr
++.vite
+diff --git a/mvp6/src/components/Help.tsx b/mvp6/src/components/Help.tsx
+index 3b0e50b334a384748189677d54e0a5b7dff9e147..09c3a95ce0bf6c15b855b2e84e4838f58d8b363b 100644
+--- a/mvp6/src/components/Help.tsx
++++ b/mvp6/src/components/Help.tsx
+@@ -10,92 +10,98 @@ function Section({ title, children }: { title: string; children: React.ReactNode
+   )
+ }
+ 
+ function Formula({ children }: { children: React.ReactNode }) {
+   return (
+     <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 font-mono text-xs text-slate-200">
+       {children}
+     </div>
+   )
+ }
+ 
+ export function Help() {
+   return (
+     <Card className="p-5">
+       <div className="flex items-start justify-between gap-4">
+         <div>
+           <div className="text-lg font-semibold">Help</div>
+           <div className="mt-1 text-sm text-slate-300">
+             A clear explanation of how the app stays auditable and how the scenario math works.
+           </div>
+         </div>
+         <Chip>Last updated: MVP6</Chip>
+       </div>
+ 
+       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+-        <Section title="How this stays auditable">
++        <Section title="Auditability model">
+           <div>
+-            • <span className="text-slate-100">Current</span> is always computed directly from the uploaded Xero Profit &amp; Loss.
++            • <span className="text-slate-100">Current</span> = direct from uploaded Xero P&amp;L (no transformations).
+           </div>
+           <div>
+-            • <span className="text-slate-100">Dream P&amp;L</span> is a pure re-expression: it sums Xero accounts into your management
+-            categories.
++            • <span className="text-slate-100">Dream P&amp;L</span> = re-expression only: mapped accounts roll up to management lines. No synthetic maths.
+           </div>
+           <div>
+-            • <span className="text-slate-100">Scenario</span> is replacement-based: it subtracts only what you explicitly mark as legacy
+-            income (e.g., TMS) and then adds bundle revenue. Nothing is “double-counted” unless you turn it on.
++            • <span className="text-slate-100">Scenario</span> = explicit replacement: remove matched legacy revenue, then add bundle revenue and optional bundle costs.
+           </div>
+           <div className="mt-3 text-xs text-slate-400">
+-            Tip: drill-down confidence comes from being able to click a line and see the underlying accounts and GL transactions.
++            Trust comes from drill-down: every Dream line can open the mapped Xero accounts and (if uploaded) the matching GL transactions.
+           </div>
+         </Section>
+ 
+-        <Section title="Replacement modelling (the rule)">
++        <Section title="Replacement rule (core math)">
+           <div>
+-            Bundles are not additive revenue. The scenario does:
+-            <Formula>Scenario = Base − Legacy TMS (and optional consult revenue) + (CBA revenue + cgTMS revenue)</Formula>
++            Bundles are replacements, not add-ons. The scenario always follows:
++            <Formula>Scenario = Current − Legacy TMS (± consult removal) + CBA bundle + cgTMS bundle</Formula>
+           </div>
+           <div className="mt-3">
+-            Costs are treated separately via a toggle:
+-            <Formula>ΔCOGS = (Costs per CBA × CBAs/month) + (Costs per Program × Programs/month)</Formula>
+-            <div className="mt-2 text-xs text-slate-400">
+-              If the “Apply bundle costs” toggle is off, the scenario changes revenue only and assumes your existing P&amp;L already
+-              contains those costs.
+-            </div>
++            Movement KPI math depends on comparison mode (Reports): last3 vs prev3, scenario vs current, or month vs prior.
+           </div>
+         </Section>
+ 
+-        <Section title="Doctor consults & service fee">
++        <Section title="Bundle costs toggle">
+           <div>
+-            Patient fees are not the same as your actual cost. This model assumes you retain a global <span className="text-slate-100">service fee %</span>
+-            and the remainder is paid to the doctor.
++            Control whether bundle COGS are injected into the scenario or assumed already in your P&amp;L.
+           </div>
+-          <Formula>
+-            Doctor payout (actual cost) = Patient fee × (1 − ServiceFee%)
+-          </Formula>
+-          <div className="mt-3">
+-            Within cgTMS, if you include a 6-week consult, the model automatically includes the corresponding 6-month consult for the same
+-            patients (same fee + count per patient).
++          <Formula>When ON: ΔCOGS = (CBA costs × CBA volume) + (cgTMS costs × Program volume)</Formula>
++          <div className="mt-2 text-xs text-slate-400">
++            When OFF, only revenue changes. Use this if your current P&amp;L already contains the bundle delivery costs.
+           </div>
+         </Section>
+ 
+-        <Section title="Shifting the needle">
++        <Section title="Doctor service fee logic">
+           <div>
+-            These are hypothetical levers that can materially change profitability. They are kept separate from the operational bundle
+-            settings so it stays spreadsheet-clear.
++            Patient fees are split automatically using the global service-fee %. The remainder is the doctor payout (your cost).
+           </div>
+-          <div className="mt-2">
+-            • <span className="text-slate-100">Rent</span>: either set a new fixed monthly rent or apply a monthly % change (compounded).
++          <Formula>Doctor payout = Patient fee × (1 − ServiceFee%)</Formula>
++          <div className="mt-2 text-xs text-slate-400">
++            If 6-week consults are enabled, the 6-month consult is automatically included for the same patients with the same fee.
+           </div>
+-          <div>
+-            • <span className="text-slate-100">TMS machines</span>: derive programs/month from machines × patients/week/machine × weeks/year × utilisation.
++        </Section>
++
++        <Section title="Troubleshooting checklist">
++          <div>1) Confirm which accounts are tagged as legacy TMS revenue (and optional consult matchers).</div>
++          <div>2) Check whether “Apply bundle costs” is ON or OFF — this drives COGS movements.</div>
++          <div>3) Review mapping completeness: if &lt;85%, Reports will default to Legacy for accuracy.</div>
++          <div>4) Re-run Saved Export from a snapshot to confirm movements are stable.</div>
++        </Section>
++
++        <Section title="Where to go next">
++          <div>• <span className="text-slate-100">Mapping</span>: Map remaining accounts to improve Dream completeness.</div>
++          <div>• <span className="text-slate-100">Overview</span>: Adjust levers (rent, machines, volumes) and see the P&amp;L shift.</div>
++          <div>• <span className="text-slate-100">Reports</span>: Generate investor PDF with chosen datasource + scenario overlay.</div>
++        </Section>
++
++        <Section title="Simple flow (one-page mental model)">
++          <div className="font-mono text-[11px] leading-relaxed text-slate-200">
++            Uploads → Map accounts → Dream P&amp;L → Scenario rule → Reports/Snapshots
++            <div className="text-slate-400 mt-2">Every step keeps a trail: dataset hashes, template layout hash, and saved report configs.</div>
+           </div>
+         </Section>
+       </div>
+ 
+       <div className="mt-6 text-xs text-slate-400">
+-        If something feels “off”, the fastest check is: confirm (1) which accounts are being removed as legacy streams and (2) whether bundle
+-        costs are being added to scenario COGS.
++        Need confidence fast? Load a snapshot, open Mapping to confirm account coverage, then hit Reports to regenerate the PDF using the saved
++        data source and comparison mode.
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/components/Reports.tsx b/mvp6/src/components/Reports.tsx
+index f5e1cde4128e0759629a9ca45717064aef684a1f..bc1d6297a857357e69711352d9972ceea14d799b 100644
+--- a/mvp6/src/components/Reports.tsx
++++ b/mvp6/src/components/Reports.tsx
+@@ -1,126 +1,141 @@
+ import React, { useEffect, useMemo, useRef, useState } from 'react'
+ import { jsPDF } from 'jspdf'
+ import html2canvas from 'html2canvas'
+ import { useAppStore } from '../store/appStore'
+ import { ReportBuilderPanel } from './report/ReportBuilderPanel'
+ import { ReportPreview } from './report/ReportPreview'
+ import { InvestorReportTemplate } from './report/InvestorReportTemplate'
+ import { Card } from './ui'
+ import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
++import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
+ 
+ export function Reports() {
+   const pl = useAppStore(s => s.pl)
+   const scenario = useAppStore(s => s.scenario)
+   const dreamTemplate = useAppStore(s => s.template)
++  const defaults = useAppStore(s => s.defaults)
++  const storeReportConfig = useAppStore(s => s.reportConfig)
++  const setReportConfig = useAppStore(s => s.setReportConfig)
+ 
+-  const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>({
+-    dataSource: 'legacy',
+-    includeScenario: true,
+-    comparisonMode: 'last3_vs_prev3',
+-  })
++  const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
++    storeReportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
++  )
+   const [userChoseSource, setUserChoseSource] = useState(false)
+   const [status, setStatus] = useState<string | null>(null)
+   const previewRef = useRef<HTMLDivElement>(null)
+ 
++  useEffect(() => {
++    setBuilder(storeReportConfig)
++  }, [storeReportConfig])
++
+   const reportData = useMemo(
+     () =>
+       getReportData({
+         dataSource: builder.dataSource,
+         pl,
+         template: dreamTemplate,
+         scenario,
+         includeScenario: builder.includeScenario,
+         comparisonMode: builder.comparisonMode,
+       }),
+     [builder.dataSource, builder.includeScenario, builder.comparisonMode, pl, dreamTemplate, scenario]
+   )
+ 
+   useEffect(() => {
+     if (!pl) return
+     if (userChoseSource) return
+     if (builder.dataSource !== reportData.recommendedSource) {
+-      setBuilder(prev => ({ ...prev, dataSource: reportData.recommendedSource }))
++        setBuilder(prev => {
++          const next = { ...prev, dataSource: reportData.recommendedSource }
++          setReportConfig(next)
++          return next
++        })
+     }
+   }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource])
+ 
+   const handleChange = (s: Partial<typeof builder>) => {
+     if ('dataSource' in s) setUserChoseSource(true)
+     setBuilder(prev => {
+       const next = { ...prev, ...s }
+       // Auto-align comparison mode when toggling scenario
+       if ('includeScenario' in s && s.includeScenario !== undefined) {
+         if (s.includeScenario && next.comparisonMode === 'last3_vs_prev3') next.comparisonMode = 'scenario_vs_current'
+         if (!s.includeScenario && next.comparisonMode === 'scenario_vs_current') next.comparisonMode = 'last3_vs_prev3'
+       }
++      setReportConfig(next)
+       return next
+     })
+   }
+ 
+   const generate = async () => {
+     if (!reportData.baseTotals) {
+       setStatus('Upload P&L first to generate a report.')
+       return
+     }
+     if (!previewRef.current) {
+       setStatus('Preview not ready.')
+       return
+     }
+     setStatus('Generating...')
+     const element = previewRef.current
+     const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
+     const imgData = canvas.toDataURL('image/png')
+-    const pdf = new jsPDF('p', 'pt', 'a4')
++    const metrics = getPageMetrics(defaults.exportSettings)
++    const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
+     const pageWidth = pdf.internal.pageSize.getWidth()
+     const pageHeight = pdf.internal.pageSize.getHeight()
+-    const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
++    const ratio = Math.min(
++      (pageWidth - metrics.marginPt * 2) / canvas.width,
++      (pageHeight - metrics.marginPt * 2) / canvas.height
++    )
+     const imgWidth = canvas.width * ratio
+     const imgHeight = canvas.height * ratio
+-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
++    pdf.addImage(imgData, 'PNG', metrics.marginPt, metrics.marginPt, imgWidth, imgHeight)
+     pdf.save('Investor_Report.pdf')
+     setStatus('Report generated.')
+     setTimeout(() => setStatus(null), 2000)
+   }
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]">
+       <ReportBuilderPanel
+         dataSource={builder.dataSource}
+         includeScenario={builder.includeScenario}
+         recommendedSource={reportData.recommendedSource}
+         mappingCompleteness={reportData.dataQuality.mappingCompleteness}
+         mappingWarnings={[
+           ...reportData.dataQuality.warnings,
+           ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
+           ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
+             ? ['Dream mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+             : []),
+         ]}
+         comparisonMode={builder.comparisonMode}
+         onChange={handleChange}
+       />
+ 
+       <div className="space-y-3">
+         {reportData.fallbackReason && (
+           <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
+             {reportData.fallbackReason}
+           </Card>
+         )}
+-        <ReportPreview previewRef={previewRef}>
++        <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
+           <InvestorReportTemplate data={reportData} />
+         </ReportPreview>
+         <div className="flex items-center gap-3">
+           <button
+             type="button"
+             onClick={generate}
+             className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
+             disabled={!pl || !reportData.baseTotals}
+           >
+             Generate investor PDF
+           </button>
+           {status ? <div className="text-xs text-slate-300">{status}</div> : null}
+           {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
+         </div>
+       </div>
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/SavedExports.tsx b/mvp6/src/components/SavedExports.tsx
+index b1214c6c2f6224b27a2a2adaa5eda36cb4af753d..23233c85c0649bbfe47a01e6c2cefdd5fe9cc884 100644
+--- a/mvp6/src/components/SavedExports.tsx
++++ b/mvp6/src/components/SavedExports.tsx
+@@ -1,74 +1,239 @@
+-import React, { useState } from 'react'
++import React, { useMemo, useState } from 'react'
+ import { useAppStore } from '../store/appStore'
+-import { Card, Input, Label } from './ui'
++import { Card, Chip, Input, Label, Button } from './ui'
+ 
+ export function SavedExports() {
+   const snapshots = useAppStore(s => s.snapshots)
+   const addSnapshot = useAppStore(s => s.addSnapshot)
+   const loadSnapshot = useAppStore(s => s.loadSnapshot)
+   const deleteSnapshot = useAppStore(s => s.deleteSnapshot)
++  const renameSnapshot = useAppStore(s => s.renameSnapshot)
++  const duplicateSnapshot = useAppStore(s => s.duplicateSnapshot)
++  const setView = useAppStore(s => s.setView)
+   const [name, setName] = useState('')
++  const [renameId, setRenameId] = useState<string | null>(null)
++  const [renameValue, setRenameValue] = useState('')
++  const [compareBase, setCompareBase] = useState<string | null>(null)
++  const [compareTarget, setCompareTarget] = useState<string | null>(null)
++
++  const compareRows = useMemo(() => {
++    const base = snapshots.find(s => s.id === compareBase)
++    const target = snapshots.find(s => s.id === compareTarget)
++    if (!base || !target) return []
++    return base.summary.kpis.map(kpi => {
++      const other = target.summary.kpis.find(k => k.label === kpi.label)
++      const delta = other && kpi.current != null && other.current != null ? other.current - kpi.current : null
++      return {
++        label: kpi.label,
++        base: kpi.current,
++        target: other?.current ?? null,
++        delta,
++      }
++    })
++  }, [compareBase, compareTarget, snapshots])
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4">
+       <Card className="p-4">
+         <div className="flex items-center justify-between gap-3">
+           <div>
+             <div className="text-sm font-semibold text-slate-100">Saved Exports</div>
+             <div className="text-xs text-slate-400">Capture the current scenario + uploads as a snapshot.</div>
+           </div>
+           <div className="flex gap-2">
+             <Input
+               className="w-56"
+               placeholder="Name this snapshot"
+               value={name}
+               onChange={(e) => setName(e.target.value)}
+             />
+             <button
+               type="button"
+               onClick={() => {
+                 if (!name.trim()) return
+                 addSnapshot(name.trim())
+                 setName('')
+               }}
+               className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
+             >
+               Save snapshot
+             </button>
+           </div>
+         </div>
+ 
+         <div className="mt-4 space-y-2">
+           {snapshots.length === 0 ? (
+             <div className="text-xs text-slate-300">No snapshots saved yet.</div>
+           ) : (
+             snapshots.map(snap => (
+-              <div key={snap.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+-                <div>
+-                  <div className="text-sm font-semibold text-slate-100">{snap.name}</div>
+-                  <div className="text-xs text-slate-400">{new Date(snap.createdAt).toLocaleString()}</div>
++              <div key={snap.id} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
++                <div className="flex flex-wrap items-start justify-between gap-3">
++                  <div>
++                    {renameId === snap.id ? (
++                      <div className="flex items-center gap-2">
++                        <Input
++                          className="w-56"
++                          value={renameValue}
++                          onChange={(e) => setRenameValue(e.target.value)}
++                          placeholder="Snapshot name"
++                        />
++                        <Button
++                          onClick={() => {
++                            if (!renameValue.trim()) return
++                            renameSnapshot(snap.id, renameValue.trim())
++                            setRenameId(null)
++                            setRenameValue('')
++                          }}
++                        >
++                          Save
++                        </Button>
++                        <Button variant="ghost" onClick={() => setRenameId(null)}>
++                          Cancel
++                        </Button>
++                      </div>
++                    ) : (
++                      <div className="text-sm font-semibold text-slate-100">{snap.name}</div>
++                    )}
++                    <div className="text-xs text-slate-400">{new Date(snap.createdAt).toLocaleString()}</div>
++                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-300">
++                      {snap.fingerprints.pl ? <Chip className="px-2 py-1">P&L {snap.fingerprints.pl.label} · {snap.fingerprints.pl.hash}</Chip> : <Chip className="px-2 py-1">P&L missing</Chip>}
++                      {snap.fingerprints.gl ? <Chip className="px-2 py-1">GL {snap.fingerprints.gl.label}</Chip> : <Chip className="px-2 py-1">GL missing</Chip>}
++                      <Chip className="px-2 py-1">Template v{snap.fingerprints.templateVersion}</Chip>
++                      <Chip className="px-2 py-1">Layout {snap.fingerprints.layoutHash}</Chip>
++                    </div>
++                  </div>
++                  <div className="flex flex-wrap gap-2">
++                    <Button
++                      variant="ghost"
++                      onClick={() => {
++                        loadSnapshot(snap.id)
++                        setView('reports')
++                      }}
++                    >
++                      Generate report
++                    </Button>
++                    <Button
++                      onClick={() => loadSnapshot(snap.id)}
++                      variant="primary"
++                      className="bg-emerald-500/20 border-emerald-400/30 text-emerald-100"
++                    >
++                      Load
++                    </Button>
++                    <Button variant="ghost" onClick={() => duplicateSnapshot(snap.id)}>
++                      Duplicate
++                    </Button>
++                    <Button
++                      variant="ghost"
++                      onClick={() => {
++                        setRenameId(snap.id)
++                        setRenameValue(snap.name)
++                      }}
++                    >
++                      Rename
++                    </Button>
++                    <Button variant="danger" onClick={() => deleteSnapshot(snap.id)}>
++                      Delete
++                    </Button>
++                  </div>
+                 </div>
+-                <div className="flex gap-2">
+-                  <button
+-                    type="button"
+-                    onClick={() => loadSnapshot(snap.id)}
+-                    className="rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100"
+-                  >
+-                    Load
+-                  </button>
+-                  <button
+-                    type="button"
+-                    onClick={() => deleteSnapshot(snap.id)}
+-                    className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-100"
+-                  >
+-                    Delete
+-                  </button>
++
++                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
++                  <div className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
++                    <div className="font-semibold text-slate-100 mb-1">Scenario config</div>
++                    <div>State: {snap.scenario.state}</div>
++                    <div>Pricing: ${snap.scenario.cbaPrice} / ${snap.scenario.programPrice}</div>
++                    <div>Volume: {snap.scenario.cbaMonthlyCount} CBA / {snap.scenario.programMonthlyCount} cgTMS</div>
++                    <div>Costs applied: {snap.scenario.addBundleCostsToScenario ? 'Yes' : 'No'}</div>
++                  </div>
++                  <div className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
++                    <div className="font-semibold text-slate-100 mb-1">Report config</div>
++                    <div>Source: {snap.reportConfig.dataSource}</div>
++                    <div>Scenario overlay: {snap.reportConfig.includeScenario ? 'On' : 'Off'}</div>
++                    <div>Comparison: {snap.reportConfig.comparisonMode}</div>
++                    <div>Export: {snap.exportSettings.pageSize.toUpperCase()} · {snap.exportSettings.marginMm}mm</div>
++                  </div>
++                  <div className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
++                    <div className="font-semibold text-slate-100 mb-1">Key KPIs</div>
++                    <div className="space-y-1">
++                      {snap.summary.kpis.slice(0, 3).map(kpi => (
++                        <div key={kpi.label} className="flex justify-between">
++                          <span>{kpi.label}</span>
++                          <span className="text-slate-100">{Math.round(kpi.current ?? 0).toLocaleString()}</span>
++                        </div>
++                      ))}
++                    </div>
++                  </div>
+                 </div>
+               </div>
+             ))
+           )}
+         </div>
+       </Card>
++
++      {snapshots.length >= 2 ? (
++        <Card className="p-4 space-y-3">
++          <div className="flex items-center justify-between gap-3">
++            <div>
++              <div className="text-sm font-semibold text-slate-100">Compare snapshots</div>
++              <div className="text-xs text-slate-400">Quick KPI deltas between any two saved exports.</div>
++            </div>
++            <Chip className="px-2 py-1 h-7">Δ KPI</Chip>
++          </div>
++          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
++            <div>
++              <Label>Base</Label>
++              <select
++                className="mt-1 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 outline-none"
++                value={compareBase ?? ''}
++                onChange={(e) => setCompareBase(e.target.value || null)}
++              >
++                <option value="">Select snapshot</option>
++                {snapshots.map(s => (
++                  <option key={s.id} value={s.id}>{s.name}</option>
++                ))}
++              </select>
++            </div>
++            <div>
++              <Label>Target</Label>
++              <select
++                className="mt-1 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 outline-none"
++                value={compareTarget ?? ''}
++                onChange={(e) => setCompareTarget(e.target.value || null)}
++              >
++                <option value="">Select snapshot</option>
++                {snapshots.map(s => (
++                  <option key={s.id} value={s.id}>{s.name}</option>
++                ))}
++              </select>
++            </div>
++          </div>
++          {compareRows.length > 0 ? (
++            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
++              {compareRows.map(row => (
++                <div key={row.label} className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
++                  <div className="font-semibold text-slate-100">{row.label}</div>
++                  <div className="flex justify-between text-slate-300">
++                    <span>Base</span>
++                    <span>{row.base != null ? Math.round(row.base).toLocaleString() : '—'}</span>
++                  </div>
++                  <div className="flex justify-between text-slate-300">
++                    <span>Target</span>
++                    <span>{row.target != null ? Math.round(row.target).toLocaleString() : '—'}</span>
++                  </div>
++                  <div className="flex justify-between text-slate-100">
++                    <span>Δ</span>
++                    <span className={row.delta != null && row.delta >= 0 ? 'text-emerald-200' : 'text-rose-200'}>
++                      {row.delta != null ? Math.round(row.delta).toLocaleString() : '—'}
++                    </span>
++                  </div>
++                </div>
++              ))}
++            </div>
++          ) : (
++            <div className="text-xs text-slate-300">Select two snapshots to see KPI movement.</div>
++          )}
++        </Card>
++      ) : null}
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/SettingsPage.tsx b/mvp6/src/components/SettingsPage.tsx
+index 03d460e7a9b9fc7059af2cd6d423606df13a27f7..949149a2bcd8b1fbd90bc0297ed7e61bc8c5bbbc 100644
+--- a/mvp6/src/components/SettingsPage.tsx
++++ b/mvp6/src/components/SettingsPage.tsx
+@@ -1,117 +1,183 @@
+ import React, { useState } from 'react'
+ import { useAppStore } from '../store/appStore'
+-import { Card, Input, Label } from './ui'
++import { Card, Input, Label, Chip } from './ui'
++import { RECOMMENDED_DEFAULTS } from '../lib/defaults'
+ 
+ export function SettingsPage() {
+   const defaults = useAppStore(s => s.defaults)
+   const setDefaults = useAppStore(s => s.setDefaults)
++  const resetDefaults = useAppStore(s => s.resetDefaults)
+   const [localDefaults, setLocalDefaults] = useState(defaults)
++  const [savedState, setSavedState] = useState<'idle' | 'saved'>('idle')
++
++  React.useEffect(() => {
++    setLocalDefaults(defaults)
++  }, [defaults])
+ 
+   const updateState = (state: 'NSW/QLD' | 'WA' | 'VIC', field: 'suggestedCbaPrice' | 'suggestedProgramPrice' | 'mriCostByState' | 'mriPatientByState', val: number) => {
+     setLocalDefaults(prev => ({
+       ...prev,
+       [field]: { ...prev[field], [state]: val },
+     }))
+   }
+ 
+   const save = () => {
+     setDefaults(localDefaults)
++    setSavedState('saved')
++    setTimeout(() => setSavedState('idle'), 1500)
+   }
+ 
+   const reset = () => {
+-    const resetDefaults = {
+-      suggestedCbaPrice: { 'NSW/QLD': 1325, WA: 1475, VIC: 925 },
+-      suggestedProgramPrice: { 'NSW/QLD': 10960, WA: 11110, VIC: 10560 },
+-      mriCostByState: { 'NSW/QLD': 380, WA: 750, VIC: 0 },
+-      mriPatientByState: { 'NSW/QLD': 400, WA: 770, VIC: 0 },
+-      doctorServiceFeePct: 15,
+-    }
+-    setLocalDefaults(resetDefaults)
+-    setDefaults(resetDefaults)
++    setLocalDefaults(RECOMMENDED_DEFAULTS)
++    resetDefaults()
++    setSavedState('saved')
++    setTimeout(() => setSavedState('idle'), 1500)
+   }
+ 
+   return (
+     <div className="grid grid-cols-1 gap-4">
+-      <Card className="p-4">
+-        <div className="flex items-center justify-between">
++      <Card className="p-4 space-y-4">
++        <div className="flex items-start justify-between">
+           <div>
+-            <div className="text-sm font-semibold text-slate-100">Framework defaults</div>
+-            <div className="text-xs text-slate-400">Edit the preset values used by “Use framework defaults”.</div>
++            <div className="text-sm font-semibold text-slate-100">Pricing by state</div>
++            <div className="text-xs text-slate-400">Suggests bundle prices + MRI defaults when you switch state in the scenario.</div>
+           </div>
+           <div className="flex gap-2">
+             <button
+               type="button"
+               onClick={reset}
+               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-white/10"
+             >
+-              Reset
++              Reset to recommended
+             </button>
+             <button
+               type="button"
+               onClick={save}
+               className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
+             >
+               Save
+             </button>
+           </div>
+         </div>
+ 
+-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
++        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+           {(['NSW/QLD', 'WA', 'VIC'] as const).map(state => (
+             <div key={state} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+-              <div className="text-xs font-semibold text-slate-200">{state}</div>
++              <div className="text-xs font-semibold text-slate-200 flex items-center justify-between">
++                <span>{state}</span>
++                <Chip className="px-2 py-0.5 h-6">{state === 'WA' ? 'Premium' : 'Baseline'}</Chip>
++              </div>
+               <div>
+                 <Label>CBA price</Label>
+                 <Input
+                   className="mt-1"
+                   type="number"
+                   value={localDefaults.suggestedCbaPrice[state]}
+                   onChange={(e) => updateState(state, 'suggestedCbaPrice', Number(e.target.value))}
+                 />
+               </div>
+               <div>
+                 <Label>Program price</Label>
+                 <Input
+                   className="mt-1"
+                   type="number"
+                   value={localDefaults.suggestedProgramPrice[state]}
+                   onChange={(e) => updateState(state, 'suggestedProgramPrice', Number(e.target.value))}
+                 />
+               </div>
+               <div>
+                 <Label>MRI cost (your cost)</Label>
+                 <Input
+                   className="mt-1"
+                   type="number"
+                   value={localDefaults.mriCostByState[state]}
+                   onChange={(e) => updateState(state, 'mriCostByState', Number(e.target.value))}
+                 />
+               </div>
+               <div>
+                 <Label>MRI patient fee</Label>
+                 <Input
+                   className="mt-1"
+                   type="number"
+                   value={localDefaults.mriPatientByState[state]}
+                   onChange={(e) => updateState(state, 'mriPatientByState', Number(e.target.value))}
+                 />
+               </div>
+             </div>
+           ))}
+         </div>
+ 
+-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+-          <div>
+-            <Label>Doctor service fee retained (%)</Label>
+-            <Input
+-              className="mt-1"
+-              type="number"
+-              value={localDefaults.doctorServiceFeePct}
+-              onChange={(e) => setLocalDefaults({ ...localDefaults, doctorServiceFeePct: Number(e.target.value) })}
+-            />
++        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
++          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
++            <div className="text-sm font-semibold text-slate-100">Global defaults</div>
++            <div className="text-xs text-slate-400">Used everywhere for doctor payouts.</div>
++            <div className="mt-3">
++              <Label>Doctor service fee retained (%)</Label>
++              <Input
++                className="mt-1"
++                type="number"
++                value={localDefaults.doctorServiceFeePct}
++                onChange={(e) => setLocalDefaults({ ...localDefaults, doctorServiceFeePct: Number(e.target.value) })}
++              />
++            </div>
++          </div>
++
++          <div className="rounded-xl border border-white/10 bg-white/5 p-3 md:col-span-2">
++            <div className="flex items-center justify-between gap-3">
++              <div>
++                <div className="text-sm font-semibold text-slate-100">Export settings</div>
++                <div className="text-xs text-slate-400">Controls PDF size + margins for Saved Exports and Reports.</div>
++              </div>
++              <Chip className="px-2 py-1 h-7">Page layout</Chip>
++            </div>
++            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
++              <div>
++                <Label>Page size</Label>
++                <div className="mt-2 flex flex-wrap gap-2">
++                  {(['a4', 'letter'] as const).map(size => (
++                    <button
++                      key={size}
++                      type="button"
++                      onClick={() => setLocalDefaults({ ...localDefaults, exportSettings: { ...localDefaults.exportSettings, pageSize: size } })}
++                      className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
++                        localDefaults.exportSettings.pageSize === size
++                          ? 'border-indigo-400/40 bg-indigo-500/20 text-white'
++                          : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
++                      }`}
++                    >
++                      {size === 'a4' ? 'A4' : 'Letter'}
++                    </button>
++                  ))}
++                </div>
++              </div>
++              <div>
++                <Label>Margins (mm)</Label>
++                <Input
++                  className="mt-2"
++                  type="number"
++                  min={4}
++                  value={localDefaults.exportSettings.marginMm}
++                  onChange={(e) =>
++                    setLocalDefaults({
++                      ...localDefaults,
++                      exportSettings: { ...localDefaults.exportSettings, marginMm: Number(e.target.value) },
++                    })
++                  }
++                />
++                <div className="mt-1 text-[11px] text-slate-400">Clamped between 4mm and 1/3 of the page width.</div>
++              </div>
++              <div className="rounded-xl border border-indigo-400/10 bg-indigo-500/5 px-3 py-2 text-xs text-slate-200">
++                <div className="font-semibold text-slate-100">Recommended</div>
++                <div>A4 with 12mm margins keeps the preview flush with investor PDF output.</div>
++              </div>
++            </div>
+           </div>
+         </div>
++
++        {savedState === 'saved' ? (
++          <div className="text-xs text-emerald-200">Saved. Future scenarios, exports, and reports will use these defaults.</div>
++        ) : null}
+       </Card>
+     </div>
+   )
+ }
+diff --git a/mvp6/src/components/report/ReportPreview.tsx b/mvp6/src/components/report/ReportPreview.tsx
+index e2e8d720c0da8474db2f7cfcdc6dcb8bf5c42266..f0041eeee5beede64d33957d1029a633cec7bcf4 100644
+--- a/mvp6/src/components/report/ReportPreview.tsx
++++ b/mvp6/src/components/report/ReportPreview.tsx
+@@ -1,29 +1,40 @@
+ import React from 'react'
+ import { Card } from '../ui'
++import { ExportSettings } from '../../lib/defaults'
++import { getPageMetrics } from '../../lib/reportExport'
+ 
+-export function ReportPreview({ previewRef, children }: { previewRef: React.RefObject<HTMLDivElement>; children: React.ReactNode }) {
++export function ReportPreview({
++  previewRef,
++  children,
++  exportSettings,
++}: {
++  previewRef: React.RefObject<HTMLDivElement>
++  children: React.ReactNode
++  exportSettings: ExportSettings
++}) {
++  const metrics = getPageMetrics(exportSettings)
+   return (
+     <Card className="p-3">
+       <style>{`
+-        @page { size: A4; margin: 12mm; }
++        @page { size: ${metrics.pageLabel}; margin: ${metrics.marginMm}mm; }
+         @media print {
+           .report-root {
+-            width: calc(210mm - 24mm);
++            width: ${metrics.contentWidthPx}px;
+             max-width: none;
+           }
+         }
+       `}</style>
+       <div className="text-sm font-semibold text-slate-100 mb-2">Report Preview</div>
+       <div className="text-xs text-slate-400 mb-2">Live preview of the first pages. Export preserves this layout.</div>
+       <div className="rounded-2xl border border-white/10 bg-slate-950 p-3 overflow-auto max-h-[70vh]">
+         <div
+           ref={previewRef}
+           className="origin-top-left report-root"
+-          style={{ width: '794px', minHeight: '1122px' }}
++          style={{ width: `${metrics.contentWidthPx}px`, minHeight: `${metrics.contentHeightPx}px` }}
+         >
+           {children}
+         </div>
+       </div>
+     </Card>
+   )
+ }
+diff --git a/mvp6/src/lib/defaults.ts b/mvp6/src/lib/defaults.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2df6a9c1475416e53c9ffb1aece6bf2280b9654f
+--- /dev/null
++++ b/mvp6/src/lib/defaults.ts
+@@ -0,0 +1,25 @@
++export type ExportSettings = {
++  pageSize: 'a4' | 'letter'
++  marginMm: number
++}
++
++export type FrameworkDefaults = {
++  suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
++  suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
++  mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
++  mriPatientByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
++  doctorServiceFeePct: number
++  exportSettings: ExportSettings
++}
++
++export const RECOMMENDED_DEFAULTS: FrameworkDefaults = {
++  suggestedCbaPrice: { 'NSW/QLD': 1325, WA: 1475, VIC: 925 },
++  suggestedProgramPrice: { 'NSW/QLD': 10960, WA: 11110, VIC: 10560 },
++  mriCostByState: { 'NSW/QLD': 380, WA: 750, VIC: 0 },
++  mriPatientByState: { 'NSW/QLD': 400, WA: 770, VIC: 0 },
++  doctorServiceFeePct: 15,
++  exportSettings: {
++    pageSize: 'a4',
++    marginMm: 12,
++  },
++}
+diff --git a/mvp6/src/lib/reportExport.ts b/mvp6/src/lib/reportExport.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d691826bfefff476f2f6be3bd29a4b05e086cfce
+--- /dev/null
++++ b/mvp6/src/lib/reportExport.ts
+@@ -0,0 +1,35 @@
++import { ExportSettings } from './defaults'
++
++const PAGE_DIMENSIONS = {
++  a4: { widthMm: 210, heightMm: 297 },
++  letter: { widthMm: 216, heightMm: 279 },
++}
++
++const mmToPx = (mm: number) => (mm * 96) / 25.4
++const mmToPt = (mm: number) => (mm * 72) / 25.4
++
++function clampMargin(mm: number, pageWidthMm: number) {
++  if (!Number.isFinite(mm)) return 12
++  const maxMargin = pageWidthMm / 3
++  return Math.max(4, Math.min(maxMargin, mm))
++}
++
++export function getPageMetrics(settings: ExportSettings) {
++  const dims = PAGE_DIMENSIONS[settings.pageSize] ?? PAGE_DIMENSIONS.a4
++  const marginMm = clampMargin(settings.marginMm ?? 12, dims.widthMm)
++  const contentWidthMm = Math.max(0, dims.widthMm - marginMm * 2)
++  const contentHeightMm = Math.max(0, dims.heightMm - marginMm * 2)
++
++  return {
++    pageSize: settings.pageSize ?? 'a4',
++    marginMm,
++    marginPt: mmToPt(marginMm),
++    contentWidthPx: mmToPx(contentWidthMm),
++    contentHeightPx: mmToPx(contentHeightMm),
++    pageLabel: settings.pageSize === 'letter' ? 'Letter' : 'A4',
++  }
++}
++
++export function pageSizeForJsPdf(pageSize: ExportSettings['pageSize']) {
++  return pageSize === 'letter' ? 'letter' : 'a4'
++}
+diff --git a/mvp6/src/lib/snapshotUtils.ts b/mvp6/src/lib/snapshotUtils.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9263a5b88992de36071dd2469e0fdb3e9953d538
+--- /dev/null
++++ b/mvp6/src/lib/snapshotUtils.ts
+@@ -0,0 +1,95 @@
++import { DreamTemplate, GL, ScenarioInputs, XeroPL } from './types'
++import { ComparisonMode, DataSource, getReportData, ReportData } from './reportData'
++import { ExportSettings } from './defaults'
++
++export type DatasetFingerprint = {
++  id: string
++  hash: string
++  label: string
++}
++
++export type SnapshotReportConfig = {
++  dataSource: DataSource
++  includeScenario: boolean
++  comparisonMode: ComparisonMode
++}
++
++export type SnapshotSummary = {
++  kpis: ReportData['kpis']
++  periodLabel: string
++  comparisonLabel: string
++  movementBadge: string
++  dataSourceUsed: DataSource
++}
++
++export function hashString(input: string): string {
++  let hash = 0
++  for (let i = 0; i < input.length; i++) {
++    hash = (hash << 5) - hash + input.charCodeAt(i)
++    hash |= 0
++  }
++  return Math.abs(hash).toString(36)
++}
++
++export function fingerprintPl(pl: XeroPL | null): DatasetFingerprint | undefined {
++  if (!pl) return undefined
++  const base = `${pl.months.length}m-${pl.accounts.length}a`
++  const hashSource = pl.accounts
++    .slice(0, 25)
++    .map(a => `${a.name}:${Math.round(a.total ?? 0)}`)
++    .join('|')
++  const hash = hashString(`${pl.months.join(',')}|${hashSource}`)
++  return { id: `pl-${base}`, hash, label: `${base}` }
++}
++
++export function fingerprintGl(gl: GL | null): DatasetFingerprint | undefined {
++  if (!gl) return undefined
++  const base = `${gl.txns.length}txns`
++  const sample = gl.txns.slice(0, 25).map(t => `${t.account}-${t.date}-${Math.round(t.amount)}`).join('|')
++  const hash = hashString(sample)
++  return { id: `gl-${base}`, hash, label: base }
++}
++
++export function fingerprintTemplate(template: DreamTemplate): { templateVersion: string; layoutHash: string } {
++  const layoutHash = hashString(JSON.stringify(template.root ?? {}))
++  return { templateVersion: template.id ?? 'template', layoutHash }
++}
++
++export function buildSnapshotSummary(opts: {
++  pl: XeroPL | null
++  template: DreamTemplate
++  scenario: ScenarioInputs
++  reportConfig: SnapshotReportConfig
++}): SnapshotSummary {
++  const report = getReportData({
++    dataSource: opts.reportConfig.dataSource,
++    pl: opts.pl,
++    template: opts.template,
++    scenario: opts.scenario,
++    includeScenario: opts.reportConfig.includeScenario,
++    comparisonMode: opts.reportConfig.comparisonMode,
++  })
++
++  return {
++    kpis: report.kpis,
++    periodLabel: report.periodLabel,
++    comparisonLabel: report.comparisonLabel,
++    movementBadge: report.movementBadge,
++    dataSourceUsed: report.dataSourceUsed,
++  }
++}
++
++export function ensureReportConfig(config?: Partial<SnapshotReportConfig>): SnapshotReportConfig {
++  return {
++    dataSource: config?.dataSource ?? 'legacy',
++    includeScenario: config?.includeScenario ?? true,
++    comparisonMode: config?.comparisonMode ?? 'last3_vs_prev3',
++  }
++}
++
++export function ensureExportSettings(settings?: Partial<ExportSettings>): ExportSettings {
++  return {
++    pageSize: settings?.pageSize ?? 'a4',
++    marginMm: settings?.marginMm ?? 12,
++  }
++}
+diff --git a/mvp6/src/store/appStore.ts b/mvp6/src/store/appStore.ts
+index 24e54d5899aa8dbddbd5913e059f02edc6027790..6afa5ececee19c3490dab9ec4a2384b50e8df351 100644
+--- a/mvp6/src/store/appStore.ts
++++ b/mvp6/src/store/appStore.ts
+@@ -1,73 +1,94 @@
+ import { create } from 'zustand'
+ import { persist } from 'zustand/middleware'
+ import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
+ import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
++import { FrameworkDefaults, RECOMMENDED_DEFAULTS } from '../lib/defaults'
++import {
++  buildSnapshotSummary,
++  DatasetFingerprint,
++  ensureExportSettings,
++  ensureReportConfig,
++  fingerprintGl,
++  fingerprintPl,
++  fingerprintTemplate,
++  SnapshotReportConfig,
++  SnapshotSummary,
++} from '../lib/snapshotUtils'
+ 
+ export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
+ 
+ type AppState = {
+   view: View
+   setView: (v: View) => void
+ 
+   pl: XeroPL | null
+   setPL: (pl: XeroPL | null) => void
+ 
+   gl: GL | null
+   setGL: (gl: GL | null) => void
+ 
+   template: DreamTemplate
+   setTemplate: (t: DreamTemplate) => void
+   resetTemplate: () => void
+ 
+   selectedLineId: string | null
+   setSelectedLineId: (id: string | null) => void
+ 
+   scenario: ScenarioInputs
+   setScenario: (s: Partial<ScenarioInputs>) => void
+ 
+-  defaults: {
+-    suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+-    suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+-    mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+-    mriPatientByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+-    doctorServiceFeePct: number
+-  }
++  defaults: FrameworkDefaults
+   setDefaults: (d: Partial<AppState['defaults']>) => void
++  resetDefaults: () => void
++
++  reportConfig: SnapshotReportConfig
++  setReportConfig: (cfg: Partial<SnapshotReportConfig>) => void
+ 
+   snapshots: {
+     id: string
+     name: string
+     createdAt: string
+     scenario: ScenarioInputs
+     template: DreamTemplate
+     pl: XeroPL | null
+     gl: GL | null
++    reportConfig: SnapshotReportConfig
++    exportSettings: FrameworkDefaults['exportSettings']
++    fingerprints: {
++      pl?: DatasetFingerprint
++      gl?: DatasetFingerprint
++      templateVersion: string
++      layoutHash: string
++    }
++    summary: SnapshotSummary
+   }[]
+   addSnapshot: (name: string) => void
+   loadSnapshot: (id: string) => void
+   deleteSnapshot: (id: string) => void
++  renameSnapshot: (id: string, name: string) => void
++  duplicateSnapshot: (id: string) => void
+ }
+ 
+ export const useAppStore = create<AppState>()(
+   persist(
+     (set, get) => ({
+       view: 'overview',
+       setView: (v) => set({ view: v }),
+ 
+       pl: null,
+       setPL: (pl) => set({ pl }),
+ 
+       gl: null,
+       setGL: (gl) => set({ gl }),
+ 
+       template: DEFAULT_DREAM_TEMPLATE,
+       setTemplate: (t) => set({ template: t }),
+       resetTemplate: () => set({ template: DEFAULT_DREAM_TEMPLATE }),
+ 
+       selectedLineId: null,
+       setSelectedLineId: (id) => set({ selectedLineId: id }),
+ 
+       scenario: {
+         enabled: false,
+         legacyTmsAccountMatchers: ['tms', 'cgtms', 'rTMS', 'transcranial'],
+         includeDoctorConsultsInBundle: false,
+@@ -124,103 +145,159 @@ export const useAppStore = create<AppState>()(
+         prog6MoConsultFee: 450,
+         prog6MoConsultCount: 1,
+         progInclude6MoCreyos: false,
+         prog6MoCreyosCost: 0,
+         prog6MoCreyosPatientFee: 0,
+         progTreatmentDeliveryCost: 0,
+         progOtherCogsPerProgram: 0,
+ 
+         // Shifting-the-needle levers
+         rentEnabled: false,
+         rentAccountMatchers: ['rent', 'lease'],
+         rentMode: 'fixed',
+         rentFixedMonthly: 0,
+         rentPercentPerMonth: 0,
+ 
+         machinesEnabled: false,
+         tmsMachines: 1,
+         patientsPerMachinePerWeek: 4,
+         weeksPerYear: 52,
+         utilisation: 0.65,
+         excludedConsultAccounts: [],
+         excludedConsultTxnKeys: [],
+       },
+       setScenario: (s) => set({ scenario: { ...get().scenario, ...s } }),
+ 
+-      defaults: {
+-        suggestedCbaPrice: { 'NSW/QLD': 1325, WA: 1475, VIC: 925 },
+-        suggestedProgramPrice: { 'NSW/QLD': 10960, WA: 11110, VIC: 10560 },
+-        mriCostByState: { 'NSW/QLD': 380, WA: 750, VIC: 0 },
+-        mriPatientByState: { 'NSW/QLD': 400, WA: 770, VIC: 0 },
+-        doctorServiceFeePct: 15,
+-      },
+-      setDefaults: (d) => set({ defaults: { ...get().defaults, ...d } }),
++      defaults: RECOMMENDED_DEFAULTS,
++      setDefaults: (d) => set({ defaults: { ...get().defaults, ...d, exportSettings: ensureExportSettings({ ...get().defaults.exportSettings, ...d?.exportSettings }) } }),
++      resetDefaults: () => set({ defaults: RECOMMENDED_DEFAULTS }),
++
++      reportConfig: ensureReportConfig(),
++      setReportConfig: (cfg) => set({ reportConfig: { ...get().reportConfig, ...cfg } }),
+ 
+       snapshots: [],
+       addSnapshot: (name) => {
+         const state = get()
++        const reportConfig = ensureReportConfig(state.reportConfig)
++        const exportSettings = ensureExportSettings(state.defaults.exportSettings)
++        const templateFingerprint = fingerprintTemplate(state.template)
+         const snapshot = {
+           id: crypto.randomUUID(),
+           name,
+           createdAt: new Date().toISOString(),
+           scenario: state.scenario,
+           template: state.template,
+           pl: state.pl,
+           gl: state.gl,
++          reportConfig,
++          exportSettings,
++          fingerprints: {
++            pl: fingerprintPl(state.pl),
++            gl: fingerprintGl(state.gl),
++            templateVersion: templateFingerprint.templateVersion,
++            layoutHash: templateFingerprint.layoutHash,
++          },
++          summary: buildSnapshotSummary({
++            pl: state.pl,
++            template: state.template,
++            scenario: state.scenario,
++            reportConfig,
++          }),
+         }
+         set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20) })
+       },
+       loadSnapshot: (id) => {
+         const state = get()
+         const snap = state.snapshots.find(s => s.id === id)
+         if (!snap) return
+         set({
+           scenario: snap.scenario,
+           template: snap.template,
+           pl: snap.pl,
+           gl: snap.gl,
++          reportConfig: snap.reportConfig,
++          defaults: { ...state.defaults, exportSettings: snap.exportSettings },
+         })
+       },
+       deleteSnapshot: (id) => {
+         set({ snapshots: get().snapshots.filter(s => s.id !== id) })
+       },
++      renameSnapshot: (id, name) => {
++        set({ snapshots: get().snapshots.map(s => (s.id === id ? { ...s, name } : s)) })
++      },
++      duplicateSnapshot: (id) => {
++        const state = get()
++        const snap = state.snapshots.find(s => s.id === id)
++        if (!snap) return
++        const copy = { ...snap, id: crypto.randomUUID(), name: `${snap.name} (copy)`, createdAt: new Date().toISOString() }
++        set({ snapshots: [copy, ...state.snapshots].slice(0, 20) })
++      },
+     }),
+     {
+       name: 'cingulum-dream-pnl',
+       partialize: (state) => ({
+         template: state.template,
+         scenario: state.scenario,
+         defaults: state.defaults,
+         snapshots: state.snapshots,
++        reportConfig: state.reportConfig,
+       }),
+       // Keep backward compatibility when we add new scenario keys (avoid old persisted state wiping defaults)
+       merge: (persisted: any, current) => {
+         const defaults = current.scenario
+         const incoming = persisted?.scenario ?? {}
+ 
+         const sanitizeScenario = (src: any, fallback: typeof defaults): typeof defaults => {
+           const result: any = { ...fallback }
+           for (const [key, value] of Object.entries(src ?? {})) {
+             if (value === undefined || value === null) continue
+             if (typeof value === 'string' && value.trim() === '') continue
+             if (Array.isArray(value)) {
+               // For matcher arrays, keep defaults when the persisted array is empty
+               result[key] = value.length ? value : (fallback as any)[key] ?? []
+               continue
+             }
+             result[key] = value as any
+           }
+           return result as typeof defaults
+         }
+ 
++        const mergedDefaults = { ...RECOMMENDED_DEFAULTS, ...(persisted?.defaults ?? current.defaults) }
++        mergedDefaults.exportSettings = ensureExportSettings(mergedDefaults.exportSettings)
++
++        const hydrateSnapshots = (snaps: any[] | undefined) =>
++          (snaps ?? []).map((s) => {
++            const reportConfig = ensureReportConfig(s.reportConfig ?? current.reportConfig)
++            const exportSettings = ensureExportSettings(s.exportSettings ?? mergedDefaults.exportSettings)
++            const templateFingerprint = fingerprintTemplate(s.template ?? current.template)
++            return {
++              ...s,
++              reportConfig,
++              exportSettings,
++              fingerprints: s.fingerprints ?? {
++                pl: fingerprintPl(s.pl ?? null),
++                gl: fingerprintGl(s.gl ?? null),
++                templateVersion: templateFingerprint.templateVersion,
++                layoutHash: templateFingerprint.layoutHash,
++              },
++              summary: s.summary ?? buildSnapshotSummary({
++                pl: s.pl ?? null,
++                template: s.template ?? current.template,
++                scenario: s.scenario ?? current.scenario,
++                reportConfig,
++              }),
++            }
++          })
++
+         return {
+           ...current,
+           ...persisted,
+           template: persisted?.template ?? current.template,
+           scenario: sanitizeScenario(incoming, defaults),
+-          defaults: persisted?.defaults ?? current.defaults,
+-          snapshots: persisted?.snapshots ?? current.snapshots,
++          defaults: mergedDefaults as FrameworkDefaults,
++          snapshots: hydrateSnapshots(persisted?.snapshots ?? current.snapshots),
++          reportConfig: ensureReportConfig(persisted?.reportConfig ?? current.reportConfig),
+         }
+       },
+     }
+   )
+ )
+ 
+EOF
+)
