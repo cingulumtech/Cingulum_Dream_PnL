@@ -6,21 +6,33 @@ import { ReportBuilderPanel } from './report/ReportBuilderPanel'
 import { ReportPreview } from './report/ReportPreview'
 import { InvestorReportTemplate } from './report/InvestorReportTemplate'
 import { Card } from './ui'
-import { DataSource, getReportData } from '../lib/reportData'
+import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 
 export function Reports() {
   const pl = useAppStore(s => s.pl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
 
-  const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean }>({ dataSource: 'legacy', includeScenario: true })
+  const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>({
+    dataSource: 'legacy',
+    includeScenario: true,
+    comparisonMode: 'last3_vs_prev3',
+  })
   const [userChoseSource, setUserChoseSource] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
 
   const reportData = useMemo(
-    () => getReportData({ dataSource: builder.dataSource, pl, template: dreamTemplate, scenario, includeScenario: builder.includeScenario }),
-    [builder.dataSource, builder.includeScenario, pl, dreamTemplate, scenario]
+    () =>
+      getReportData({
+        dataSource: builder.dataSource,
+        pl,
+        template: dreamTemplate,
+        scenario,
+        includeScenario: builder.includeScenario,
+        comparisonMode: builder.comparisonMode,
+      }),
+    [builder.dataSource, builder.includeScenario, builder.comparisonMode, pl, dreamTemplate, scenario]
   )
 
   useEffect(() => {
@@ -33,7 +45,15 @@ export function Reports() {
 
   const handleChange = (s: Partial<typeof builder>) => {
     if ('dataSource' in s) setUserChoseSource(true)
-    setBuilder(prev => ({ ...prev, ...s }))
+    setBuilder(prev => {
+      const next = { ...prev, ...s }
+      // Auto-align comparison mode when toggling scenario
+      if ('includeScenario' in s && s.includeScenario !== undefined) {
+        if (s.includeScenario && next.comparisonMode === 'last3_vs_prev3') next.comparisonMode = 'scenario_vs_current'
+        if (!s.includeScenario && next.comparisonMode === 'scenario_vs_current') next.comparisonMode = 'last3_vs_prev3'
+      }
+      return next
+    })
   }
 
   const generate = async () => {
@@ -75,6 +95,7 @@ export function Reports() {
             ? ['Dream mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
             : []),
         ]}
+        comparisonMode={builder.comparisonMode}
         onChange={handleChange}
       />
 

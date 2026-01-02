@@ -1,12 +1,19 @@
-import { applyBundledScenario, computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals, DreamTotals, findGroup } from './dream/compute'
+import { applyBundledScenario, computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals, DreamTotals } from './dream/compute'
 import { DreamGroup, DreamLine, DreamTemplate, ScenarioInputs, XeroPL } from './types'
 
 export type DataSource = 'legacy' | 'dream'
+export type ComparisonMode = 'last3_vs_prev3' | 'scenario_vs_current' | 'month_vs_prior'
 
 export type DriverItem = {
   label: string
-  delta: number
+  sectionType: 'income' | 'expense'
+  currentValue: number | null
+  compareValue: number | null
+  delta: number | null
+  pctDelta: number | null
   contributionPct: number
+  profitImpact: number | null
+  note?: string
 }
 
 export type DriverResult = {
@@ -18,7 +25,6 @@ export type DriverResult = {
 
 export type TrendStats = {
   last3vsPrev3?: string
-  volatility?: string
 }
 
 export type VarianceAttribution = {
@@ -43,6 +49,7 @@ export type ReportData = {
   periodLabel: string
   dataSourceLabel: string
   dataQualityBadge: string
+  dataQualityBadgeLabel: string
   baseTotals: DreamTotals | null
   scenarioTotals: DreamTotals | null
   trendRows: { month: string; current: number; scenario?: number | null }[]
@@ -58,12 +65,20 @@ export type ReportData = {
   pnlSummary: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad' }[]
   dataQuality: DataQuality
   scenarioNotes: string[]
+  comparisonMode: ComparisonMode
+  comparisonLabel: string
+  movementBadge: string
 }
 
 const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 
 function money(n: number) {
   return MONEY_FORMATTER.format(n)
+}
+
+function pct(num: number | null | undefined) {
+  if (num == null || Number.isNaN(num)) return '—'
+  return `${num.toFixed(1)}%`
 }
 
 function flattenLinesWithSection(root: DreamGroup, parentSection: 'rev' | 'cogs' | 'opex' | null = null): { line: DreamLine; section: 'rev' | 'cogs' | 'opex' | null }[] {
@@ -119,42 +134,11 @@ function avg(arr: number[]) {
   return arr.reduce((a, b) => a + (b ?? 0), 0) / arr.length
 }
 
-function last3vsPrev3(values: number[]): { delta: number; prev: number } | null {
+function last3vsPrev3(values: number[]): { currentTotal: number; compareTotal: number } | null {
   if (!values || values.length < 6) return null
-  const last3 = avg(values.slice(-3))
-  const prev3 = avg(values.slice(-6, -3))
-  return { delta: last3 - prev3, prev: prev3 }
-}
-
-function volatility(values: number[]) {
-  if (!values.length) return 0
-  const mean = avg(values)
-  const variance = avg(values.map(v => (v - mean) ** 2))
-  return Math.sqrt(variance)
-}
-
-function driverFromSeries(entries: { label: string; values: number[] }[], disabledReason?: string): DriverResult {
-  if (disabledReason) return { items: [], disabledReason }
-  if (!entries.length) return { items: [], disabledReason: 'No data available.' }
-  if (entries.every(e => e.values.length < 6)) return { items: [], disabledReason: 'Need at least 6 months of data for drivers.' }
-
-  const deltas = entries
-    .map(e => ({ label: e.label, delta: sum(e.values.slice(-3)) - sum(e.values.slice(-6, -3)) }))
-    .filter(e => !Number.isNaN(e.delta))
-
-  const sorted = deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-  const top = sorted.filter(e => Math.abs(e.delta) > 0).slice(0, 5)
-  if (!top.length) return { items: [], disabledReason: 'Not enough movement to rank drivers.' }
-
-  const absValues = top.map(t => Math.abs(t.delta))
-  const varianceSpan = Math.max(...absValues) - Math.min(...absValues)
-  const suspicious = absValues.length >= 2 && varianceSpan < 1
-  const denom = absValues.reduce((a, b) => a + b, 0) || 1
-
-  return {
-    items: top.map(t => ({ label: t.label, delta: t.delta, contributionPct: (Math.abs(t.delta) / denom) * 100 })),
-    suspicious,
-  }
+  const currentTotal = sum(values.slice(-3))
+  const compareTotal = sum(values.slice(-6, -3))
+  return { currentTotal, compareTotal }
 }
 
 function sum(arr: number[]) {
@@ -189,10 +173,80 @@ function describeScenario(scenario: ScenarioInputs): string[] {
   return notes
 }
 
-function formatWhatChanged(label: string, delta: number, prev: number) {
-  const direction = delta >= 0 ? 'up' : 'down'
-  const pct = prev === 0 ? 0 : (delta / Math.abs(prev)) * 100
-  return `${label} ${direction} ${money(delta)} vs prior 3 months (${pct.toFixed(1)}%).`
+function computeComparison(mode: ComparisonMode, currentSeries: number[], compareSeries: number[], scenarioTotals?: DreamTotals | null): { currentTotal: number | null; compareTotal: number | null; delta: number | null; pctDelta: number | null; label: string } {
+  if (mode === 'scenario_vs_current') {
+    if (!scenarioTotals) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Scenario TTM – Current TTM' }
+    const currentTotal = sum(compareSeries)
+    const compareTotal = sum(currentSeries)
+    const delta = currentTotal - compareTotal
+    const pctDelta = compareTotal === 0 ? null : (delta / Math.abs(compareTotal)) * 100
+    return { currentTotal, compareTotal, delta, pctDelta, label: 'Scenario TTM – Current TTM' }
+  }
+  if (mode === 'month_vs_prior') {
+    if (currentSeries.length < 2) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Last month vs prior month' }
+    const currentTotal = currentSeries[currentSeries.length - 1] ?? 0
+    const compareTotal = currentSeries[currentSeries.length - 2] ?? 0
+    const delta = currentTotal - compareTotal
+    const pctDelta = compareTotal === 0 ? null : (delta / Math.abs(compareTotal)) * 100
+    return { currentTotal, compareTotal, delta, pctDelta, label: 'Last month vs prior month' }
+  }
+  const window = last3vsPrev3(currentSeries)
+  if (!window) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Last 3 months vs prior 3 months' }
+  const delta = window.currentTotal - window.compareTotal
+  const pctDelta = window.compareTotal === 0 ? null : (delta / Math.abs(window.compareTotal)) * 100
+  return { currentTotal: window.currentTotal, compareTotal: window.compareTotal, delta, pctDelta, label: 'Last 3 months vs prior 3 months' }
+}
+
+function makeDataQualityBadge(source: DataSource, completeness: number, missingKeyCount: number): { badge: string; level: 'good' | 'partial' | 'bad' } {
+  if (source === 'legacy') return { badge: 'Data quality: Legacy (Good)', level: 'good' }
+  if (completeness >= 0.85) return { badge: 'Data quality: Good', level: 'good' }
+  if (completeness >= 0.5) return { badge: `Data quality: Partial (${Math.round(completeness * 100)}% mapped; missing ${missingKeyCount} key)`, level: 'partial' }
+  return { badge: `Data quality: Incomplete (${Math.round(completeness * 100)}% mapped; missing ${missingKeyCount} key)`, level: 'bad' }
+}
+
+function getDrivers(opts: {
+  entries: { label: string; values: number[]; sectionType: 'income' | 'expense' }[]
+  mode: ComparisonMode
+  scenarioTotals: DreamTotals | null
+  scenarioEntries?: { label: string; values: number[]; sectionType: 'income' | 'expense' }[]
+}): DriverResult {
+  const { entries, mode, scenarioTotals, scenarioEntries } = opts
+  if (!entries.length) return { items: [], disabledReason: 'Not enough mapped data to show drivers.' }
+  if (mode === 'last3_vs_prev3' && entries.every(e => e.values.length < 6)) return { items: [], disabledReason: 'Need at least 6 months of data for drivers.' }
+
+  const deltas = entries.map((e, idx) => {
+    const compareSeries = mode === 'scenario_vs_current' && scenarioEntries?.[idx] ? scenarioEntries[idx].values : e.values
+    const cmp = computeComparison(mode, e.values, compareSeries, scenarioTotals)
+    const polarity = e.sectionType === 'income' ? 1 : -1
+    const profitImpact = cmp.delta == null ? null : cmp.delta * polarity
+    return {
+      label: e.label,
+      sectionType: e.sectionType,
+      currentValue: cmp.currentTotal,
+      compareValue: cmp.compareTotal,
+      delta: cmp.delta,
+      pctDelta: cmp.pctDelta,
+      profitImpact,
+    }
+  })
+
+  const deltasFiltered = deltas.filter(d => d.delta != null)
+  const sorted = deltasFiltered.sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
+  const top = sorted.filter(d => Math.abs(d.delta ?? 0) > 0).slice(0, 5)
+  if (!top.length) return { items: [], disabledReason: 'Not enough movement to rank drivers.' }
+
+  const absValues = top.map(t => Math.abs(t.delta ?? 0))
+  const varianceSpan = Math.max(...absValues) - Math.min(...absValues)
+  const suspicious = absValues.length >= 2 && varianceSpan < 1
+  const denom = absValues.reduce((a, b) => a + b, 0) || 1
+
+  const items: DriverItem[] = top.map(t => ({
+    ...t,
+    contributionPct: (Math.abs(t.delta ?? 0) / denom) * 100,
+    pctDelta: t.pctDelta ?? null,
+  }))
+
+  return { items, suspicious }
 }
 
 export function getReportData(opts: {
@@ -202,10 +256,13 @@ export function getReportData(opts: {
   scenario: ScenarioInputs
   includeScenario: boolean
   completenessThreshold?: number
+  comparisonMode?: ComparisonMode
 }): ReportData {
-  const { dataSource, pl, template, scenario, includeScenario, completenessThreshold = 0.85 } = opts
+  const { dataSource, pl, template, scenario, includeScenario, completenessThreshold = 0.85, comparisonMode } = opts
   const mapping = calcMappingStats(pl, template)
   const recommendedSource: DataSource = mapping.completeness >= completenessThreshold ? 'dream' : 'legacy'
+  const scenarioActive = includeScenario && scenario.enabled
+  const mode: ComparisonMode = comparisonMode ? comparisonMode : scenarioActive ? 'scenario_vs_current' : 'last3_vs_prev3'
 
   const buildForSource = (source: DataSource): ReportData => {
     const hasData = !!pl
@@ -218,6 +275,7 @@ export function getReportData(opts: {
         periodLabel: 'Upload a P&L export to begin.',
         dataSourceLabel: 'No data',
         dataQualityBadge: 'Missing data',
+        dataQualityBadgeLabel: 'Data quality: Missing',
         baseTotals: null,
         scenarioTotals: null,
         trendRows: [],
@@ -236,6 +294,9 @@ export function getReportData(opts: {
           warnings: ['Upload a P&L export to enable reporting.'],
         },
         scenarioNotes: describeScenario(scenario),
+        comparisonMode: mode,
+        comparisonLabel: 'No data',
+        movementBadge: 'Movement unavailable',
       }
     }
 
@@ -253,7 +314,6 @@ export function getReportData(opts: {
       baseTotals = computeXeroTotals(pl)
     }
 
-    const scenarioActive = includeScenario && scenario.enabled
     const scenarioTotals = scenarioActive ? applyBundledScenario(baseTotals, pl, scenario) : null
 
     const depAmort = computeDepAmort(pl)
@@ -267,8 +327,8 @@ export function getReportData(opts: {
 
     const kpis = [
       { label: 'TTM net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta, tone: netDelta != null ? (netDelta >= 0 ? 'good' : 'bad') : undefined },
-      { label: 'Avg monthly profit', current: avg(baseTotals.net) },
-      { label: 'Gross margin', current: avg(baseTotals.revenue) === 0 ? 0 : ((avg(baseTotals.revenue) - avg(baseTotals.cogs)) / Math.max(1, Math.abs(avg(baseTotals.revenue)))) * 100 },
+      { label: 'TTM revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
+      { label: 'Gross margin %', current: ((sum(baseTotals.revenue) - sum(baseTotals.cogs)) / Math.max(1, Math.abs(sum(baseTotals.revenue)))) * 100 },
       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
     ]
 
@@ -278,16 +338,14 @@ export function getReportData(opts: {
     const opexChange = last3vsPrev3(baseTotals.opex)
 
     const whatChanged: string[] = []
-    if (netChange) whatChanged.push(formatWhatChanged('Net profit', netChange.delta, netChange.prev))
-    if (revChange) whatChanged.push(formatWhatChanged('Revenue', revChange.delta, revChange.prev))
-    if (gmChange) whatChanged.push(formatWhatChanged('Gross margin', gmChange.delta, gmChange.prev))
-    if (opexChange) whatChanged.push(formatWhatChanged('Opex', opexChange.delta, opexChange.prev))
+    if (netChange) whatChanged.push(`Net profit moved ${money(netChange.currentTotal - netChange.compareTotal)} vs prior 3 months.`)
+    if (revChange) whatChanged.push(`Revenue moved ${money(revChange.currentTotal - revChange.compareTotal)} vs prior 3 months.`)
+    if (gmChange) whatChanged.push(`Gross profit moved ${money(gmChange.currentTotal - gmChange.compareTotal)} vs prior 3 months.`)
+    if (opexChange) whatChanged.push(`Opex moved ${money(opexChange.currentTotal - opexChange.compareTotal)} vs prior 3 months.`)
     if (!whatChanged.length) whatChanged.push('Not enough history (need 6+ months) to explain recent movements.')
 
     const trendStats: TrendStats = {}
-    if (netChange) trendStats.last3vsPrev3 = formatWhatChanged('Net profit', netChange.delta, netChange.prev)
-    const vol = volatility(baseTotals.net)
-    if (!Number.isNaN(vol)) trendStats.volatility = `${vol.toFixed(0)} std-dev`
+    if (netChange) trendStats.last3vsPrev3 = `Net profit ${money(netChange.currentTotal - netChange.compareTotal)} vs prior 3 months.`
 
     const trendRows = months.map((m, i) => ({ month: m, current: baseTotals.net[i] ?? 0, scenario: scenarioTotals ? scenarioTotals.net[i] ?? null : null }))
 
@@ -298,19 +356,19 @@ export function getReportData(opts: {
     const revenueEntries = source === 'dream'
       ? flattenLinesWithSection(template.root)
           .filter(l => l.section === 'rev')
-          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0) }))
-      : pl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values }))
+          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'income' as const }))
+      : pl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values, sectionType: 'income' as const }))
 
     const costEntries = source === 'dream'
       ? flattenLinesWithSection(template.root)
           .filter(l => l.section === 'cogs' || l.section === 'opex')
-          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0) }))
+          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'expense' as const }))
       : pl.accounts
           .filter(a => a.section === 'cost_of_sales' || a.section === 'operating_expenses')
-          .map(a => ({ label: a.name, values: a.values }))
+          .map(a => ({ label: a.name, values: a.values, sectionType: 'expense' as const }))
 
-    const revenueDrivers = driverFromSeries(revenueEntries, driverDisabled)
-    const costDrivers = driverFromSeries(costEntries, driverDisabled)
+    const revenueDrivers = getDrivers({ entries: revenueEntries, mode, scenarioTotals })
+    const costDrivers = getDrivers({ entries: costEntries, mode, scenarioTotals })
 
     const pnlSummary = [
       { label: 'Revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
@@ -324,11 +382,13 @@ export function getReportData(opts: {
     const executiveSummary: string[] = []
     executiveSummary.push(`Datasource: ${source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy Xero export'}`)
     if (netDelta != null) executiveSummary.push(`Scenario impact: ${money(netDelta)} vs current.`)
-    executiveSummary.push(...whatChanged.slice(0, 3))
+    const comparison = computeComparison(mode, baseTotals.net, scenarioTotals ? scenarioTotals.net : baseTotals.net, scenarioTotals)
+    executiveSummary.push(`Comparison mode: ${comparison.label}`)
+    executiveSummary.push(...whatChanged.slice(0, 2))
     const topMoverSentences = [...revenueDrivers.items, ...costDrivers.items]
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-      .slice(0, 3)
-      .map(d => `${d.label} (${money(d.delta)}; ${d.contributionPct.toFixed(1)}% of movement)`)
+      .sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
+      .slice(0, 2)
+      .map(d => `${d.label} Δ ${d.delta != null ? money(d.delta) : '—'} (${pct(d.pctDelta ?? null)})`)
     if (topMoverSentences.length) executiveSummary.push(`Top movement drivers: ${topMoverSentences.join(' • ')}`)
 
     const dataQuality: DataQuality = {
@@ -343,7 +403,7 @@ export function getReportData(opts: {
     if (scenarioActive && mapping.completeness < completenessThreshold && source === 'dream') dataQuality.disabledSections.push('waterfall')
 
     const dataSourceLabel = source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy P&L (Xero export)'
-    const dataQualityBadge = source === 'dream' ? `${Math.round(mapping.completeness * 100)}% mapped` : 'Legacy source'
+    const dataQualityBadge = makeDataQualityBadge(source, mapping.completeness, mapping.missingKeyAccounts.length)
 
     const varianceAttribution = scenarioTotals ? buildVarianceAttribution(baseTotals, scenarioTotals) : undefined
 
@@ -359,7 +419,8 @@ export function getReportData(opts: {
       fallbackReason: undefined,
       periodLabel,
       dataSourceLabel,
-      dataQualityBadge,
+      dataQualityBadge: dataQualityBadge.badge,
+      dataQualityBadgeLabel: dataQualityBadge.badge,
       baseTotals,
       scenarioTotals,
       trendRows,
@@ -372,6 +433,9 @@ export function getReportData(opts: {
       pnlSummary,
       dataQuality,
       scenarioNotes: describeScenario(scenario),
+      comparisonMode: mode,
+      comparisonLabel: comparison.label,
+      movementBadge: `Movement = ${comparison.label} (${source === 'dream' ? 'Mapped model' : 'Actuals'})`,
     }
   }
 

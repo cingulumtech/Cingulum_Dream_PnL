@@ -11,7 +11,7 @@ function money(n: number | null | undefined) {
 }
 
 function pct(n: number | null | undefined) {
-  if (n == null) return '—'
+  if (n == null || Number.isNaN(n)) return '—'
   return `${PCT_FORMATTER.format(n)}%`
 }
 
@@ -39,7 +39,10 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
     pnlSummary,
     dataQuality,
     scenarioNotes,
-  } = data
+    comparisonLabel,
+    movementBadge,
+    fallbackReason,
+  } = data as ReportData & { fallbackReason?: string }
 
   const showTrend = trendRows.length > 0
   const showScenario = !!varianceAttribution && !dataQuality.disabledSections.includes('waterfall')
@@ -47,10 +50,13 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
 
   const missingMapping = dataQuality.missingAccounts.slice(0, 6)
   const mappingHint = missingMapping.length ? ` Map these next: ${missingMapping.join(', ')}.` : ' Map missing accounts to unlock drivers.'
-  const disabledList = dataQuality.disabledSections.length ? dataQuality.disabledSections.join(', ') : 'None'
+  const warningLines: string[] = []
+  if (fallbackReason) warningLines.push(fallbackReason)
+  if (dataQuality.disabledSections.length) warningLines.push(`Sections disabled: ${dataQuality.disabledSections.join(', ')}`)
+  if (drivers.revenue.disabledReason || drivers.cost.disabledReason) warningLines.push('Drivers incomplete. Go to Mapping to unlock movement insights.')
 
   return (
-    <div className="bg-slate-950 text-slate-100 font-sans w-[900px] mx-auto p-8 space-y-8">
+    <div className="bg-slate-950 text-slate-100 font-sans w-full max-w-none mx-auto p-8 space-y-8">
       {/* Page 1 */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -58,9 +64,10 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
           <div className="text-2xl font-semibold">Cingulum Dream P&L</div>
           <div className="text-sm text-slate-400">{periodLabel}</div>
           <div className="mt-2 text-xs text-slate-300">Datasource: {dataSourceLabel}</div>
+          <div className="mt-1 text-[11px] text-slate-300">{movementBadge}</div>
         </div>
         <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
-          Data quality: {dataQualityBadge}
+          {dataQualityBadge}
         </div>
       </div>
 
@@ -68,9 +75,13 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
         {kpis.map(k => (
           <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-slate-400">{k.label}</div>
-            <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(k.current)}</div>
+            <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
+              {k.label.toLowerCase().includes('%') ? pct(k.current) : money(k.current)}
+            </div>
             {k.variance != null && (
-              <div className="text-xs text-slate-400">Scenario: {money(k.scenario ?? null)} ({money(k.variance)} vs current)</div>
+              <div className="text-xs text-slate-400">
+                Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
+              </div>
             )}
           </div>
         ))}
@@ -95,11 +106,19 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
         </div>
       </div>
 
+      {warningLines.length > 0 && (
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+          {warningLines.map((w, i) => (
+            <div key={i}>{w}</div>
+          ))}
+        </div>
+      )}
+
       {/* Page 2 */}
       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold">Net profit trend with scenario overlay</div>
-          <div className="text-xs text-slate-400">{trendStats.last3vsPrev3 ?? 'Need 6+ months for movement stats.'}</div>
+          <div className="text-xs text-slate-400">{comparisonLabel}</div>
         </div>
         {showTrend ? (
           <div className="h-72">
@@ -117,83 +136,88 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
         ) : (
           <Callout title="Trend unavailable" detail="Upload at least 6 months of data to plot profit trend." />
         )}
-        <div className="grid grid-cols-3 gap-3 text-xs text-slate-200">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-2">Volatility: <span className="font-semibold text-slate-100">{trendStats.volatility ?? 'n/a'}</span></div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-2">Mapping gaps: <span className="font-semibold text-slate-100">{dataQuality.missingAccounts.length}</span></div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-2">Sections disabled: <span className="font-semibold text-slate-100">{disabledList}</span></div>
-        </div>
       </div>
 
-      {/* Page 3 */}
+      {/* Page 3: Drivers */}
       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Scenario variance attribution</div>
-          <div className="text-xs text-slate-400">Explains where the scenario delta comes from.</div>
+          <div className="text-sm font-semibold">Income drivers (Actual + Movement)</div>
+          <div className="text-xs text-slate-400">{movementBadge}</div>
         </div>
-        {showScenario && varianceAttribution ? (
-          <div className="grid grid-cols-1 gap-2">
-            {varianceAttribution.map((row, idx) => (
-              <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                <div className="text-sm text-slate-200">{row.label}</div>
-                <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
-              </div>
-            ))}
+        {drivers.revenue.disabledReason ? (
+          <Callout
+            title="Drivers unavailable"
+            detail={`${drivers.revenue.disabledReason}${drivers.revenue.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
+          />
+        ) : drivers.revenue.items.length ? (
+          <div className="text-[11px] text-slate-200">
+            <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
+              <div className="w-1/4">Driver</div>
+              <div className="w-1/5 text-right">Actual</div>
+              <div className="w-1/5 text-right">Comparison</div>
+              <div className="w-1/5 text-right">Δ (profit impact)</div>
+              <div className="w-1/5 text-right">Contribution</div>
+            </div>
+            {drivers.revenue.items.map(d => {
+              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
+              return (
+                <div key={d.label} className="flex items-center border-b border-white/5 py-1">
+                  <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
+                  <div className="w-1/5 text-right">{money(d.currentValue)}</div>
+                  <div className="w-1/5 text-right">{money(d.compareValue)}</div>
+                  <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
+                    {money(d.delta)} ({pct(d.pctDelta)})
+                  </div>
+                  <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
+                </div>
+              )
+            })}
+            <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (income up is good, down is bad).</div>
           </div>
         ) : (
-          <Callout title="Scenario waterfall disabled" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
+          <Callout title="No revenue drivers" detail="Not enough movement to surface revenue drivers." />
         )}
-        <div className="text-xs text-slate-300">Assumptions: {scenarioNotes.join(' • ')}</div>
       </div>
 
-      {/* Page 4 */}
-      <div className="page-break grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-          <div className="text-sm font-semibold">Revenue drivers (movement)</div>
-          {drivers.revenue.disabledReason ? (
-            <Callout
-              title="Drivers unavailable"
-              detail={`${drivers.revenue.disabledReason}${drivers.revenue.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
-            />
-          ) : drivers.revenue.items.length ? (
-            <div className="space-y-2">
-              {drivers.revenue.items.map(d => (
-                <div key={d.label} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
-                  <div>
-                    <div className="font-semibold text-slate-100">{d.label}</div>
-                    <div className="text-slate-400">Contribution {pct(d.contributionPct)}</div>
-                  </div>
-                  <div className={`font-semibold ${d.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{money(d.delta)}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Callout title="No revenue drivers" detail="Not enough movement to surface revenue drivers." />
-          )}
+      {/* Page 4: Cost drivers */}
+      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold">Cost drivers (Actual + Movement)</div>
+          <div className="text-xs text-slate-400">{movementBadge}</div>
         </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-          <div className="text-sm font-semibold">Cost drivers (movement)</div>
-          {drivers.cost.disabledReason ? (
-            <Callout
-              title="Drivers unavailable"
-              detail={`${drivers.cost.disabledReason}${drivers.cost.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
-            />
-          ) : drivers.cost.items.length ? (
-            <div className="space-y-2">
-              {drivers.cost.items.map(d => (
-                <div key={d.label} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
-                  <div>
-                    <div className="font-semibold text-slate-100">{d.label}</div>
-                    <div className="text-slate-400">Contribution {pct(d.contributionPct)}</div>
-                  </div>
-                  <div className={`font-semibold ${d.delta <= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{money(d.delta)}</div>
-                </div>
-              ))}
+        {drivers.cost.disabledReason ? (
+          <Callout
+            title="Drivers unavailable"
+            detail={`${drivers.cost.disabledReason}${drivers.cost.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
+          />
+        ) : drivers.cost.items.length ? (
+          <div className="text-[11px] text-slate-200">
+            <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
+              <div className="w-1/4">Driver</div>
+              <div className="w-1/5 text-right">Actual</div>
+              <div className="w-1/5 text-right">Comparison</div>
+              <div className="w-1/5 text-right">Δ (profit impact)</div>
+              <div className="w-1/5 text-right">Contribution</div>
             </div>
-          ) : (
-            <Callout title="No cost drivers" detail="Not enough movement to surface cost drivers." />
-          )}
-        </div>
+            {drivers.cost.items.map(d => {
+              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
+              return (
+                <div key={d.label} className="flex items-center border-b border-white/5 py-1">
+                  <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
+                  <div className="w-1/5 text-right">{money(d.currentValue)}</div>
+                  <div className="w-1/5 text-right">{money(d.compareValue)}</div>
+                  <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
+                    {money(d.delta)} ({pct(d.pctDelta)})
+                  </div>
+                  <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
+                </div>
+              )
+            })}
+            <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (cost down is good, up is bad).</div>
+          </div>
+        ) : (
+          <Callout title="No cost drivers" detail="Not enough movement to surface cost drivers." />
+        )}
       </div>
 
       {/* Page 5 */}
@@ -225,6 +249,27 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
         ) : (
           <Callout title="P&L summary unavailable" detail="Upload a P&L to see investor summary lines." />
         )}
+      </div>
+
+      {/* Page 6: Scenario attribution */}
+      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold">Scenario variance attribution</div>
+          <div className="text-xs text-slate-400">Explains where the scenario delta comes from.</div>
+        </div>
+        {showScenario && varianceAttribution ? (
+          <div className="grid grid-cols-1 gap-2">
+            {varianceAttribution.map((row, idx) => (
+              <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <div className="text-sm text-slate-200">{row.label}</div>
+                <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Callout title="Scenario attribution unavailable" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
+        )}
+        <div className="text-xs text-slate-300">Assumptions: {scenarioNotes.join(' • ')}</div>
       </div>
 
       {/* Appendix */}
