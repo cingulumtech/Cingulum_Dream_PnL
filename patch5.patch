@@ -1,0 +1,620 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..4a64610f68852f77722c7a8170bb57b2bb663460
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,4 @@
++node_modules/
++npm-debug.log*
++*.log
++dist/
+diff --git a/mvp6/src/components/Overview.tsx b/mvp6/src/components/Overview.tsx
+index 75264d3561775158d2f9e97de75434f851f076f0..3a15c0924815c03701fd306b35192ae6074ff7ff 100644
+--- a/mvp6/src/components/Overview.tsx
++++ b/mvp6/src/components/Overview.tsx
+@@ -1,67 +1,88 @@
+ import React, { useMemo, useState } from 'react'
+ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+ import { useAppStore } from '../store/appStore'
+ import { applyBundledScenario, computeXeroTotals } from '../lib/dream/compute'
+ import { Card, Chip, Input, Label } from './ui'
+ 
+ function sum(arr: number[]) {
+   return arr.reduce((a, b) => a + (b ?? 0), 0)
+ }
+ 
+ function avg(arr: number[]) {
+   return arr.length ? sum(arr) / arr.length : 0
+ }
+ 
+ function money(n: number) {
+   return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+ }
+ 
++function moneyShort(n: number) {
++  const abs = Math.abs(n)
++  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`
++  if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}k`
++  return money(n)
++}
++
+ function toNum(v: string) {
+   const n = Number(v)
+   return Number.isFinite(n) ? n : 0
+ }
+ 
+ function compileMatchers(matchers: string[], fallback?: RegExp[]) {
+   const cleaned = (matchers ?? []).map(s => String(s || '').trim()).filter(Boolean)
+   if (!cleaned.length) {
+     if (!fallback || !fallback.length) return null
+     try {
+       return new RegExp(fallback.map(r => r.source).join('|'), 'i')
+     } catch {
+       return null
+     }
+   }
+   // Treat each line as a substring match (escape regex chars).
+   const pattern = cleaned.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+   try {
+     return new RegExp(pattern, 'i')
+   } catch {
+     return null
+   }
+ }
+ 
++function compileList(patterns: string[]) {
++  return (patterns ?? [])
++    .map(s => {
++      const trimmed = String(s ?? '').trim()
++      if (!trimmed) return null
++      try {
++        return new RegExp(trimmed, 'i')
++      } catch {
++        return null
++      }
++    })
++    .filter(Boolean) as RegExp[]
++}
++
+ function OverviewTooltip({ active, payload, label, showScenario }: any) {
+   if (!active || !payload || !payload.length) return null
+   const byKey: Record<string, any> = {}
+   for (const p of payload) {
+     if (p?.dataKey) byKey[p.dataKey] = p
+   }
+ 
+   return (
+     <div className="rounded-2xl border border-white/10 bg-slate-950/90 backdrop-blur-xl px-4 py-3">
+       <div className="text-sm font-semibold text-slate-100">{label}</div>
+       <div className="mt-2 space-y-1 text-sm">
+         <div className="flex items-center justify-between gap-6">
+           <span className="font-semibold" style={{ color: byKey.current?.stroke ?? "#E2E8F0" }}>current</span>
+           <span className="font-semibold" style={{ color: byKey.current?.stroke ?? "#F8FAFC" }}>{money(Number(byKey.current?.value ?? 0))}</span>
+         </div>
+         {showScenario && byKey.scenario && (
+           <div className="flex items-center justify-between gap-6">
+             <span className="font-semibold" style={{ color: byKey.scenario?.stroke ?? "#E2E8F0" }}>scenario</span>
+             <span className="font-semibold" style={{ color: byKey.scenario?.stroke ?? "#F8FAFC" }}>{money(Number(byKey.scenario?.value ?? 0))}</span>
+           </div>
+         )}
+       </div>
+     </div>
+   )
+ }
+@@ -218,50 +239,52 @@ function ConsultCostItem(props: {
+             disabled={!checked || readOnly}
+           />
+         </div>
+       </div>
+       <div className="mt-3 space-y-1 text-xs text-slate-300">
+         <div className="flex flex-wrap items-center gap-2">
+           Actual payout per consult:{' '}
+           <span className="font-semibold text-slate-100">{money(actualPerConsult)}</span>
+           <span className="text-slate-400">(service fee {serviceFeePct}% retained)</span>
+         </div>
+         <div>
+           Actual cost per patient (this line): <span className="font-semibold text-slate-100">{money(actualPerPatient)}</span>
+         </div>
+         <div className="text-slate-400">
+           Monthly total at {patientLabel} {patientCount}: <span className="text-slate-200">{money(perMonth)}</span>
+         </div>
+         {note ? <div className="text-slate-400">{note}</div> : null}
+       </div>
+     </div>
+   )
+ }
+ 
+ export function Overview() {
+   const pl = useAppStore(s => s.pl)
+   const gl = useAppStore(s => s.gl)
++  const plLoadedAt = useAppStore(s => s.plLoadedAt)
++  const glLoadedAt = useAppStore(s => s.glLoadedAt)
+   const scenario = useAppStore(s => s.scenario)
+   const setScenario = useAppStore(s => s.setScenario)
+   const defaults = useAppStore(s => s.defaults)
+   const [consultModalOpen, setConsultModalOpen] = useState(false)
+ 
+   const baseTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
+ 
+   const derivedProgramCount = useMemo(() => {
+     if (!scenario.machinesEnabled) return null
+     const machines = Math.max(0, scenario.tmsMachines ?? 0)
+     const perWeek = Math.max(0, scenario.patientsPerMachinePerWeek ?? 0)
+     const util = Math.min(1, Math.max(0, scenario.utilisation ?? 0))
+     const weeksPerMonth = Math.max(0, (scenario.weeksPerYear ?? 52) / 12)
+     return machines * perWeek * weeksPerMonth * util
+   }, [scenario.machinesEnabled, scenario.tmsMachines, scenario.patientsPerMachinePerWeek, scenario.utilisation, scenario.weeksPerYear])
+ 
+   const baseRentLatest = useMemo(() => {
+     if (!pl) return null
+     const rx = compileMatchers(scenario.rentAccountMatchers ?? [], [/rent/i, /lease/i])
+     if (!rx) return null
+     let latest: number | null = null
+     for (const a of pl.accounts) {
+       if (a.section !== 'operating_expenses') continue
+       if (!rx.test(a.name)) continue
+       for (let i = pl.monthLabels.length - 1; i >= 0; i--) {
+@@ -275,125 +298,200 @@ export function Overview() {
+     }
+     return latest
+   }, [pl, scenario.rentAccountMatchers])
+ 
+   const consultGroups = useMemo(() => {
+     if (!gl) return []
+     const rx = compileMatchers(scenario.legacyConsultAccountMatchers ?? [], [])
+     if (!rx) return []
+     const groups: Record<string, any> = {}
+     for (const [idx, txn] of (gl.txns ?? []).entries()) {
+       const label = `${txn.account ?? 'Unmapped'}`
+       if (!rx.test(label) && !(txn.description && rx.test(txn.description))) continue
+       if (!groups[label]) groups[label] = { account: label, txns: [] as any[] }
+       const key = `${label}-${txn.date}-${txn.amount}-${txn.description ?? ''}-${idx}`
+       groups[label].txns.push({ key, ...txn })
+     }
+     return Object.values(groups)
+   }, [gl, scenario.legacyConsultAccountMatchers])
+ 
+   const scenarioTotals = useMemo(() => {
+     if (!pl || !baseTotals) return null
+     if (!scenario.enabled) return null
+     return applyBundledScenario(baseTotals, pl, scenario)
+   }, [pl, baseTotals, scenario])
+ 
++  const matcherPreview = useMemo(() => {
++    if (!pl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
++    const tmsPatterns = compileList(scenario.legacyTmsAccountMatchers ?? [])
++    const consultPatterns = scenario.includeDoctorConsultsInBundle ? compileList(scenario.legacyConsultAccountMatchers ?? []) : []
++    const excluded = new Set(scenario.excludedConsultAccounts ?? [])
++    const totals = { revenue: 0, cogs: 0, opex: 0 }
++    const accounts: { name: string; total: number; section: string; kind: 'tms' | 'consult' }[] = []
++
++    const shouldRemove = (name: string, kind: 'tms' | 'consult') => {
++      const patterns = kind === 'tms' ? tmsPatterns : consultPatterns
++      return patterns.length ? patterns.some(re => re.test(name)) : false
++    }
++
++    for (const a of pl.accounts) {
++      const matchedTms = shouldRemove(a.name, 'tms')
++      const matchedConsult = shouldRemove(a.name, 'consult')
++      if (!matchedTms && !matchedConsult) continue
++      if (matchedConsult && excluded.has(a.name)) continue
++
++      const kind = matchedTms ? 'tms' : 'consult'
++      accounts.push({ name: a.name, total: a.total, section: a.section, kind })
++      const target =
++        a.section === 'trading_income' || a.section === 'other_income'
++          ? 'revenue'
++          : a.section === 'cost_of_sales'
++            ? 'cogs'
++            : 'opex'
++      totals[target as 'revenue' | 'cogs' | 'opex'] += a.total ?? 0
++    }
++    return { accounts, totals }
++  }, [pl, scenario.includeDoctorConsultsInBundle, scenario.legacyConsultAccountMatchers, scenario.legacyTmsAccountMatchers, scenario.excludedConsultAccounts])
++
+   if (!pl || !baseTotals) {
+     return (
+       <Card className="p-5">
+         <div className="text-sm text-slate-300">
+           Start by uploading a Profit &amp; Loss export. Then map accounts once, and the app becomes “decision-grade”.
+         </div>
+       </Card>
+     )
+   }
+ 
+   const rows = pl.monthLabels.map((label, i) => {
+     const row: any = {
+       month: label,
+       current: baseTotals.net[i] ?? 0,
+     }
+     if (scenario.enabled && scenarioTotals) row.scenario = scenarioTotals.net[i] ?? 0
+     return row
+   })
+ 
+   const currentTotal = sum(baseTotals.net)
+   const scenarioTotal = scenarioTotals ? sum(scenarioTotals.net) : null
+   const delta = scenarioTotal == null ? 0 : scenarioTotal - currentTotal
+ 
+   const best = (arr: number[]) => (arr.length ? Math.max(...arr) : 0)
+   const worst = (arr: number[]) => (arr.length ? Math.min(...arr) : 0)
+ 
+   const derivedProgramsRounded = derivedProgramCount != null ? Math.round(derivedProgramCount) : 0
+   const effectivePrograms = scenario.machinesEnabled && derivedProgramCount != null ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
+   const baseRentAvg = baseRentLatest ?? 0
+   const programDisplayCount = scenario.machinesEnabled ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
++  const doctorPayoutPct = Math.max(0, Math.min(100, 100 - (scenario.doctorServiceFeePct ?? 0)))
++  const assumptionChips = [
++    scenario.enabled ? 'Replacement scenario on' : null,
++    scenario.includeDoctorConsultsInBundle ? 'Consult revenue removed from base' : null,
++    scenario.addBundleCostsToScenario ? 'Bundle costs added to scenario COGS' : null,
++    scenario.rentEnabled ? `Rent override (${scenario.rentMode === 'fixed' ? 'fixed' : 'monthly %'})` : null,
++    scenario.machinesEnabled ? 'Programs derived from capacity' : 'Programs set manually',
++    scenario.state ? `Clinic state: ${scenario.state}` : null,
++  ].filter(Boolean) as string[]
+ 
+   return (
+     <>
+     <div className="grid grid-cols-1 gap-4">
++      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
++        <Card className="p-4 space-y-2">
++          <div className="text-sm font-semibold text-slate-100">Data status</div>
++          <div className="text-xs text-slate-300">
++            P&amp;L: {pl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-rose-200 font-semibold">Missing</span>}
++            {plLoadedAt ? <span className="text-slate-400"> · updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
++          </div>
++          <div className="text-xs text-slate-300">
++            GL: {gl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-amber-200 font-semibold">Optional</span>}
++            {glLoadedAt ? <span className="text-slate-400"> · updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
++          </div>
++          <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult matcher previews &amp; drill-down.</div>
++        </Card>
++
++        <Card className="p-4 space-y-2">
++          <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
++          <div className="text-xs text-slate-300">Replacement rule: remove matched legacy TMS (and consult, if enabled) then add CBA + cgTMS bundle revenue. Costs can be added explicitly.</div>
++          <div className="text-xs text-slate-400">
++            Matchers active: {scenario.legacyTmsAccountMatchers?.length ?? 0} TMS ·{' '}
++            {scenario.includeDoctorConsultsInBundle ? `${scenario.legacyConsultAccountMatchers?.length ?? 0} consult` : 'consult off'}
++          </div>
++        </Card>
++
++        <Card className="p-4 space-y-2">
++          <div className="text-sm font-semibold text-slate-100">Results &amp; sensitivity</div>
++          <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} → {scenarioTotal == null ? '—' : money(scenarioTotal)}</div>
++          <div className="text-xs text-slate-300">High-leverage levers: rent override, TMS capacity (programs), consult inclusion, bundle COGS toggle.</div>
++        </Card>
++      </div>
++
+       <Card className="p-5">
+         <div className="flex items-start justify-between gap-4">
+           <div>
+             <div className="text-lg font-semibold text-slate-100">Strategic Overview</div>
+             <div className="text-sm text-slate-300 mt-1">
+               “If we ran the business this way instead of the current way, what would actually change — and is it worth it?”
+             </div>
+           </div>
+           {scenario.enabled ? (
+             <Chip tone={delta >= 0 ? 'good' : 'bad'} className="shrink-0">
+               Δ {money(delta)}
+             </Chip>
+           ) : (
+             <Chip className="shrink-0">Scenario off</Chip>
+           )}
+         </div>
+ 
+         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+             <div className="text-xs text-slate-300">Current 12-mo profit</div>
+             <div className="text-lg font-semibold text-slate-100 mt-1">{money(currentTotal)}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+             <div className="text-xs text-slate-300">Scenario 12-mo profit</div>
+             <div className="text-lg font-semibold text-slate-100 mt-1">
+               {scenarioTotal == null ? '—' : money(scenarioTotal)}
+             </div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+             <div className="text-xs text-slate-300">Avg monthly profit (current)</div>
+             <div className="text-lg font-semibold text-slate-100 mt-1">{money(avg(baseTotals.net))}</div>
+           </div>
+           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+             <div className="text-xs text-slate-300">Best / worst (current)</div>
+             <div className="text-lg font-semibold text-slate-100 mt-1">
+               {money(best(baseTotals.net))} / {money(worst(baseTotals.net))}
+             </div>
+           </div>
+         </div>
+ 
+         <div className="mt-4 h-[300px]">
++          <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
++            <span>P&amp;L trend (current vs scenario)</span>
++            <span>Δ shown as scenario - current</span>
++          </div>
+           <ResponsiveContainer width="100%" height="100%">
+             <LineChart data={rows} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+               <XAxis dataKey="month" tick={{ fill: 'rgba(226,232,240,0.7)', fontSize: 12 }} />
+               <YAxis tick={{ fill: 'rgba(226,232,240,0.7)', fontSize: 12 }} width={70} />
+               {/* Key forces a clean remount so disabled series never lingers in hover state */}
+               <Tooltip
+                 key={scenario.enabled ? 'scenario-on' : 'scenario-off'}
+                 content={<OverviewTooltip showScenario={scenario.enabled && !!scenarioTotals} />}
+               />
+               <Line type="monotone" name="Current" dataKey="current" dot={false} strokeWidth={2} stroke="#38bdf8" />
+               {scenario.enabled && (
+                 <Line type="monotone" name="Scenario" dataKey="scenario" dot={false} strokeWidth={2} stroke="#22c55e" />
+               )}
+             </LineChart>
+           </ResponsiveContainer>
+         </div>
+ 
+         <div className="mt-5 space-y-4">
+           <div className="rounded-2xl border border-indigo-400/10 bg-gradient-to-br from-slate-900/80 via-slate-900/60 to-indigo-900/40 p-4 shadow-lg">
+             <div className="flex items-start justify-between gap-4">
+               <div>
+                 <div className="text-sm font-semibold text-slate-100">Shifting the needle</div>
+                 <div className="text-xs text-slate-300 mt-1">
+                   High-leverage levers that can swing profitability (without changing clinical volume).
+                 </div>
+@@ -674,50 +772,86 @@ export function Overview() {
+                         legacyConsultAccountMatchers: e.target.value
+                           .split(/\r?\n/)
+                           .map(s => s.trim())
+                           .filter(Boolean),
+                       })
+                     }
+                     placeholder={'consult\nappointment\ndr\ndoctor'}
+                   />
+                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                     <button
+                       type="button"
+                       onClick={() => setConsultModalOpen(true)}
+                       className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-indigo-500/15"
+                     >
+                       Review &amp; exclude consult transactions
+                     </button>
+                     <span>
+                       Excluded accounts: {(scenario.excludedConsultAccounts ?? []).length} · Excluded txns:{' '}
+                       {(scenario.excludedConsultTxnKeys ?? []).length}
+                     </span>
+                   </div>
+                 </div>
+               )}
+             </div>
+ 
++            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
++              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
++                <div className="text-xs font-semibold text-slate-100">Matcher preview</div>
++                <div className="text-xs text-slate-300 mt-1">Accounts removed: {matcherPreview.accounts.length}</div>
++                <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
++                  {matcherPreview.accounts.length === 0 ? (
++                    <div className="text-slate-400">No accounts matched the current regex.</div>
++                  ) : (
++                    matcherPreview.accounts.map(acc => (
++                      <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
++                        <span className="font-semibold text-slate-100">{acc.name}</span>
++                        <span className="text-slate-400 uppercase text-[10px]">{acc.kind}</span>
++                        <span className="text-slate-200">{money(acc.total)}</span>
++                      </div>
++                    ))
++                  )}
++                </div>
++                <div className="mt-2 text-[11px] text-slate-400">
++                  Totals removed → Revenue: <span className="text-slate-200">{money(matcherPreview.totals.revenue)}</span> · COGS:{' '}
++                  <span className="text-slate-200">{money(matcherPreview.totals.cogs)}</span> · Opex:{' '}
++                  <span className="text-slate-200">{money(matcherPreview.totals.opex)}</span>
++                </div>
++              </div>
++
++              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
++                <div className="text-xs font-semibold text-slate-100">Capacity &amp; payout model</div>
++                <div className="text-[11px] text-slate-300">
++                  Programs / month: <span className="font-semibold text-slate-100">{programDisplayCount}</span> ({scenario.machinesEnabled ? 'capacity-derived' : 'manual'}).
++                  Capacity inputs: {scenario.tmsMachines} machines · {scenario.patientsPerMachinePerWeek} patients/wk · utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
++                </div>
++                <div className="text-[11px] text-slate-300">
++                  Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee → doctor payout {doctorPayoutPct}% of patient fee.
++                </div>
++              </div>
++            </div>
++
+             {/* Bundle streams */}
+             {(() => {
+               const mriDefault = mriDefaultForState(scenario.state, defaults)
+               const svcFactor = 1 - Math.min(1, Math.max(0, (scenario.doctorServiceFeePct ?? 0) / 100))
+               const cbaConsultActual = (scenario.cbaInitialConsultFee ?? 0) * svcFactor * (scenario.cbaInitialConsultCount ?? 0)
+               const cbaIncluded =
+                 (scenario.cbaIncludeMRI ? (scenario.cbaMriCost ?? mriDefault) : 0) +
+                 (scenario.cbaIncludeQuicktome ? (scenario.cbaQuicktomeCost ?? 0) : 0) +
+                 (scenario.cbaIncludeCreyos ? (scenario.cbaCreyosCost ?? 0) : 0) +
+                 (scenario.cbaIncludeInitialConsult ? cbaConsultActual : 0) +
+                 (scenario.cbaOtherCogsPerAssessment ?? 0)
+ 
+               const wkActual = (scenario.prog6WkConsultFee ?? 0) * svcFactor * (scenario.prog6WkConsultCount ?? 0)
+               const moActual = wkActual // 6-month follow-up mirrors 6-week count + fee
+               const progIncluded =
+                 (scenario.progIncludePostMRI ? (scenario.progMriCost ?? mriDefault) : 0) +
+                 (scenario.progIncludeQuicktome ? (scenario.progQuicktomeCost ?? 0) : 0) +
+                 (scenario.progInclude6WkConsult ? wkActual : 0) +
+                 (scenario.progInclude6WkConsult ? moActual : 0) +
+                 (scenario.progIncludeAdjunctAllowance ? (scenario.progAdjunctAllowance ?? 0) : 0) +
+                 (scenario.progTreatmentDeliveryCost ?? 0) +
+                 (scenario.progOtherCogsPerProgram ?? 0)
+ 
+               const cbaApplied = scenario.addBundleCostsToScenario ? cbaIncluded : 0
+               const progApplied = scenario.addBundleCostsToScenario ? progIncluded : 0
+@@ -1007,59 +1141,74 @@ export function Overview() {
+                         onPatientFee={() => {}}
+                         actual={scenario.progOtherCogsPerProgram}
+                         onActual={(n) => setScenario({ progOtherCogsPerProgram: n })}
+                         showPatientFee={false}
+                       />
+                     </div>
+ 
+                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+                       <div className="text-slate-300">
+                         Included costs / program: <span className="font-semibold text-slate-100">{money(progIncluded)}</span>
+                         <span className="text-slate-400"> · applied to scenario: {scenario.addBundleCostsToScenario ? 'yes' : 'no'}</span>
+                       </div>
+                       <div className="text-slate-300">
+                         Gross margin / program: <span className="font-semibold text-slate-100">{money((scenario.programPrice ?? 0) - progIncluded)}</span>
+                       </div>
+                     </div>
+ 
+                     <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
+                       Scenario calculation (monthly):
+                       <div className="mt-1 text-slate-200">
+                         Δ revenue = CBA×{money(scenario.cbaPrice ?? 0)} + Program×{money(scenario.programPrice ?? 0)}
+                       </div>
+                       <div className="text-slate-200">
+                         Δ COGS = {scenario.addBundleCostsToScenario ? `CBA×${money(cbaApplied)} + Program×${money(progApplied)}` : '0 (costs assumed already in P&L)'}
+                       </div>
++                      <div className="text-slate-200">
++                        Bundle cost impact: CBA {moneyShort(cbaApplied)} /mo · Program {moneyShort(progApplied)} /mo (applied when toggle is ON).
++                      </div>
+                     </div>
+                   </div>
+                 </div>
+               )
+             })()}
+           </div>
+             <div className="mt-4 text-xs text-slate-400">
+               Next iteration: plug scenario revenue into the Dream lines (so you can drill down into assumptions the same way it drills into GL).
+             </div>
++            <div className="mt-3 flex flex-wrap gap-2">
++              <span className="text-[11px] uppercase tracking-wide text-slate-400">Assumptions used:</span>
++              {assumptionChips.length === 0 ? (
++                <span className="text-xs text-slate-400">None (scenario off)</span>
++              ) : (
++                assumptionChips.map(chip => (
++                  <span key={chip} className="text-xs font-semibold text-slate-100 rounded-full bg-white/5 border border-white/10 px-3 py-1">
++                    {chip}
++                  </span>
++                ))
++              )}
++            </div>
+           </div>
+       </Card>
+     </div>
+     {consultModalOpen ? (
+       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur">
+         <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
+           <div className="flex items-center justify-between gap-3">
+             <div>
+               <div className="text-sm font-semibold text-slate-100">Consult transaction review</div>
+               <div className="text-xs text-slate-400">Group by Xero account. Exclude whole accounts or individual txns.</div>
+             </div>
+             <button
+               type="button"
+               onClick={() => setConsultModalOpen(false)}
+               className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/10"
+             >
+               Close
+             </button>
+           </div>
+ 
+           <div className="mt-4 max-h-[60vh] overflow-auto space-y-3">
+             {consultGroups.length === 0 ? (
+               <div className="text-xs text-slate-300">No consult transactions matched the current regex.</div>
+             ) : (
+               consultGroups.map(group => {
+diff --git a/mvp6/src/store/appStore.ts b/mvp6/src/store/appStore.ts
+index 24e54d5899aa8dbddbd5913e059f02edc6027790..4204971e6755fb3eb98a20e6b18483d044b73d07 100644
+--- a/mvp6/src/store/appStore.ts
++++ b/mvp6/src/store/appStore.ts
+@@ -1,86 +1,90 @@
+ import { create } from 'zustand'
+ import { persist } from 'zustand/middleware'
+ import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
+ import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
+ 
+ export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
+ 
+ type AppState = {
+   view: View
+   setView: (v: View) => void
+ 
+   pl: XeroPL | null
++  plLoadedAt: string | null
+   setPL: (pl: XeroPL | null) => void
+ 
+   gl: GL | null
++  glLoadedAt: string | null
+   setGL: (gl: GL | null) => void
+ 
+   template: DreamTemplate
+   setTemplate: (t: DreamTemplate) => void
+   resetTemplate: () => void
+ 
+   selectedLineId: string | null
+   setSelectedLineId: (id: string | null) => void
+ 
+   scenario: ScenarioInputs
+   setScenario: (s: Partial<ScenarioInputs>) => void
+ 
+   defaults: {
+     suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     mriPatientByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
+     doctorServiceFeePct: number
+   }
+   setDefaults: (d: Partial<AppState['defaults']>) => void
+ 
+   snapshots: {
+     id: string
+     name: string
+     createdAt: string
+     scenario: ScenarioInputs
+     template: DreamTemplate
+     pl: XeroPL | null
+     gl: GL | null
+   }[]
+   addSnapshot: (name: string) => void
+   loadSnapshot: (id: string) => void
+   deleteSnapshot: (id: string) => void
+ }
+ 
+ export const useAppStore = create<AppState>()(
+   persist(
+     (set, get) => ({
+       view: 'overview',
+       setView: (v) => set({ view: v }),
+ 
+       pl: null,
+-      setPL: (pl) => set({ pl }),
++      plLoadedAt: null,
++      setPL: (pl) => set({ pl, plLoadedAt: pl ? new Date().toISOString() : null }),
+ 
+       gl: null,
+-      setGL: (gl) => set({ gl }),
++      glLoadedAt: null,
++      setGL: (gl) => set({ gl, glLoadedAt: gl ? new Date().toISOString() : null }),
+ 
+       template: DEFAULT_DREAM_TEMPLATE,
+       setTemplate: (t) => set({ template: t }),
+       resetTemplate: () => set({ template: DEFAULT_DREAM_TEMPLATE }),
+ 
+       selectedLineId: null,
+       setSelectedLineId: (id) => set({ selectedLineId: id }),
+ 
+       scenario: {
+         enabled: false,
+         legacyTmsAccountMatchers: ['tms', 'cgtms', 'rTMS', 'transcranial'],
+         includeDoctorConsultsInBundle: false,
+         legacyConsultAccountMatchers: ['consult', 'appointment', 'dr ', 'doctor'],
+ 
+         state: 'NSW/QLD',
+ 
+         doctorServiceFeePct: 15,
+ 
+         // Volumes (per month)
+         cbaMonthlyCount: 0,
+         programMonthlyCount: 0,
+ 
+         // Revenue (default to the current framework totals)
+         cbaPrice: 1325,
+         programPrice: 10960,
+ 
+EOF
+)
