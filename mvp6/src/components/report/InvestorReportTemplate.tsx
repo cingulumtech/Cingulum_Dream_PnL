@@ -198,14 +198,14 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
             {k.variance != null && (
               <div className="text-xs text-slate-400">
                 Scenario: {formatValue(k.scenario ?? null, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} (
-                {formatValue(k.label.toLowerCase().includes('%') ? (k.scenario ?? 0) - (k.current ?? 0) : k.variance, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} vs current)
+                {formatValue(
+                  k.label.toLowerCase().includes('%') ? (k.scenario ?? 0) - (k.current ?? 0) : k.variance,
+                  k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency')
+                )}{' '}
+                vs current)
               </div>
-              {k.variance != null && (
-                <div className="text-xs text-slate-400">
-                  Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
-                </div>
-              )}
-            </div>
+            )}
+          </div>
           ))}
         </div>
 

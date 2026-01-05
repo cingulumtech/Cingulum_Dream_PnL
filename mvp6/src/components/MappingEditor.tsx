@@ -294,10 +294,10 @@ export function MappingEditor() {
                       </Chip>
                     ))}
                   </div>
-                    <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
-                      <MousePointer2 className="h-3 w-3" />
-                      Drag a mapped chip outside this box to unassign quickly.
-                    </div>
+                  <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
+                    <MousePointer2 className="h-3 w-3" />
+                    Drag a mapped chip outside this box to unassign quickly.
+                  </div>
                 </div>
 
                 <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -335,7 +335,8 @@ export function MappingEditor() {
                     </span>
                   )}
                 </div>
-              </>
+              </div>
+            </>
             )}
           </div>
 
@@ -396,7 +397,6 @@ export function MappingEditor() {
             </div>
           </div>
         </div>
-      </div>
     </Card>
   )
 }
