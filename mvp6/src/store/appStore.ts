@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
 import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
+import { ensureTemplateMetadata } from '../lib/dream/schema'
 
 export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
 
@@ -16,8 +17,15 @@ type AppState = {
   setGL: (gl: GL | null) => void
 
   template: DreamTemplate
-  setTemplate: (t: DreamTemplate) => void
+  setTemplate: (t: DreamTemplate, opts?: { skipHistory?: boolean; preserveVersion?: boolean }) => void
   resetTemplate: () => void
+  undoTemplate: () => void
+  redoTemplate: () => void
+  canUndo: () => boolean
+  canRedo: () => boolean
+  templateHistory: DreamTemplate[]
+  templateFuture: DreamTemplate[]
+  lastTemplateSavedAt: string | null
 
   selectedLineId: string | null
   setSelectedLineId: (id: string | null) => void
@@ -61,8 +69,52 @@ export const useAppStore = create<AppState>()(
       setGL: (gl) => set({ gl }),
 
       template: DEFAULT_DREAM_TEMPLATE,
-      setTemplate: (t) => set({ template: t }),
-      resetTemplate: () => set({ template: DEFAULT_DREAM_TEMPLATE }),
+      templateHistory: [],
+      templateFuture: [],
+      lastTemplateSavedAt: null,
+      setTemplate: (t, opts) => {
+        set(state => {
+          const next = ensureTemplateMetadata(t, { preserveVersion: opts?.preserveVersion })
+          const history = opts?.skipHistory ? state.templateHistory : [state.template, ...state.templateHistory].slice(0, 20)
+          return {
+            template: next,
+            templateHistory: history,
+            templateFuture: [],
+            lastTemplateSavedAt: new Date().toISOString(),
+          }
+        })
+      },
+      resetTemplate: () =>
+        set(state => ({
+          templateHistory: [state.template, ...state.templateHistory].slice(0, 20),
+          templateFuture: [],
+          template: ensureTemplateMetadata(DEFAULT_DREAM_TEMPLATE, { preserveVersion: true }),
+          lastTemplateSavedAt: new Date().toISOString(),
+        })),
+      undoTemplate: () =>
+        set(state => {
+          if (!state.templateHistory.length) return state
+          const [prev, ...rest] = state.templateHistory
+          return {
+            template: prev,
+            templateHistory: rest,
+            templateFuture: [state.template, ...state.templateFuture].slice(0, 20),
+            lastTemplateSavedAt: new Date().toISOString(),
+          }
+        }),
+      redoTemplate: () =>
+        set(state => {
+          if (!state.templateFuture.length) return state
+          const [next, ...rest] = state.templateFuture
+          return {
+            template: next,
+            templateHistory: [state.template, ...state.templateHistory].slice(0, 20),
+            templateFuture: rest,
+            lastTemplateSavedAt: new Date().toISOString(),
+          }
+        }),
+      canUndo: () => get().templateHistory.length > 0,
+      canRedo: () => get().templateFuture.length > 0,
 
       selectedLineId: null,
       setSelectedLineId: (id) => set({ selectedLineId: id }),
@@ -175,7 +227,10 @@ export const useAppStore = create<AppState>()(
         if (!snap) return
         set({
           scenario: snap.scenario,
-          template: snap.template,
+          template: ensureTemplateMetadata(snap.template, { preserveVersion: true }),
+          templateHistory: [],
+          templateFuture: [],
+          lastTemplateSavedAt: new Date().toISOString(),
           pl: snap.pl,
           gl: snap.gl,
         })
@@ -188,6 +243,9 @@ export const useAppStore = create<AppState>()(
       name: 'cingulum-dream-pnl',
       partialize: (state) => ({
         template: state.template,
+        templateHistory: state.templateHistory,
+        templateFuture: state.templateFuture,
+        lastTemplateSavedAt: state.lastTemplateSavedAt,
         scenario: state.scenario,
         defaults: state.defaults,
         snapshots: state.snapshots,
@@ -215,7 +273,10 @@ export const useAppStore = create<AppState>()(
         return {
           ...current,
           ...persisted,
-          template: persisted?.template ?? current.template,
+          template: ensureTemplateMetadata(persisted?.template ?? current.template, { preserveVersion: true }),
+          templateHistory: (persisted?.templateHistory ?? []).slice(0, 20),
+          templateFuture: (persisted?.templateFuture ?? []).slice(0, 20),
+          lastTemplateSavedAt: persisted?.lastTemplateSavedAt ?? current.lastTemplateSavedAt,
           scenario: sanitizeScenario(incoming, defaults),
           defaults: persisted?.defaults ?? current.defaults,
           snapshots: persisted?.snapshots ?? current.snapshots,
