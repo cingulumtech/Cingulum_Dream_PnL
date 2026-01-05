@@ -1,8 +1,5 @@
 import { DreamGroup, DreamLine, DreamTemplate } from '../types'
-
-export function cloneTemplate(t: DreamTemplate): DreamTemplate {
-  return JSON.parse(JSON.stringify(t))
-}
+import { cloneTemplate } from './schema'
 
 export function findPath(root: DreamGroup, id: string, path: string[] = []): string[] | null {
   if (root.id === id) return path.concat(root.id)
@@ -10,6 +7,30 @@ export function findPath(root: DreamGroup, id: string, path: string[] = []): str
     if (child.id === id) return path.concat(root.id, child.id)
     if (child.kind === 'group') {
       const hit = findPath(child, id, path.concat(root.id))
+      if (hit) return hit
+    }
+  }
+  return null
+}
+
+export function findNode(root: DreamGroup, id: string): DreamGroup | DreamLine | null {
+  if (root.id === id) return root
+  for (const child of root.children) {
+    if (child.id === id) return child
+    if (child.kind === 'group') {
+      const hit = findNode(child, id)
+      if (hit) return hit
+    }
+  }
+  return null
+}
+
+export function findParent(root: DreamGroup, id: string): { parent: DreamGroup; index: number } | null {
+  for (let i = 0; i < root.children.length; i++) {
+    const child = root.children[i]
+    if (child.id === id) return { parent: root, index: i }
+    if (child.kind === 'group') {
+      const hit = findParent(child, id)
       if (hit) return hit
     }
   }
