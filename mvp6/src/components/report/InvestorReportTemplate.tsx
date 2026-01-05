@@ -17,11 +17,8 @@ function pct(n: number | null | undefined) {
   return `${PCT_FORMATTER.format(n)}%`
 }
 
-export function profitImpactClass(profitImpact: number | null): string {
-  if (profitImpact == null) return 'text-slate-200'
-  if (profitImpact > 0) return 'text-emerald-300'
-  if (profitImpact < 0) return 'text-rose-300'
-  return 'text-slate-200'
+function formatValue(value: number | null | undefined, format?: 'currency' | 'percentage') {
+  return format === 'percentage' ? pct(value) : money(value)
 }
 
 function Callout({ title, detail }: { title: string; detail: string }) {
@@ -193,12 +190,17 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {kpis.map(k => (
-            <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="text-xs text-slate-400">{k.label}</div>
-              <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
-                {k.label.toLowerCase().includes('%') ? pct(k.current) : money(k.current)}
+      <div className="grid grid-cols-2 gap-3">
+        {kpis.map(k => (
+          <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs text-slate-400">{k.label}</div>
+            <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
+              {formatValue(k.current, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))}
+            </div>
+            {k.variance != null && (
+              <div className="text-xs text-slate-400">
+                Scenario: {formatValue(k.scenario ?? null, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} (
+                {formatValue(k.label.toLowerCase().includes('%') ? (k.scenario ?? 0) - (k.current ?? 0) : k.variance, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} vs current)
               </div>
               {k.variance != null && (
                 <div className="text-xs text-slate-400">
@@ -324,10 +326,10 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
               {pnlSummary.map(row => (
                 <tr key={row.label} className="border-t border-white/5">
                   <td className="py-1">{row.label}</td>
-                  <td className="py-1 text-right">{money(row.current)}</td>
-                  <td className="py-1 text-right">{row.scenario != null ? money(row.scenario) : '—'}</td>
+                  <td className="py-1 text-right">{formatValue(row.current, row.format)}</td>
+                  <td className="py-1 text-right">{row.scenario != null ? formatValue(row.scenario, row.format) : '—'}</td>
                   <td className={`py-1 text-right ${((row.variance ?? 0) >= 0) ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {row.variance != null ? money(row.variance) : '—'}
+                    {row.variance != null ? formatValue(row.variance, row.format) : '—'}
                   </td>
                 </tr>
               ))}

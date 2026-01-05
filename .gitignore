@@ -1,4 +1,4 @@
 node_modules/
-npm-debug.log*
-*.log
+mvp6/node_modules/
 dist/
+.vite/
