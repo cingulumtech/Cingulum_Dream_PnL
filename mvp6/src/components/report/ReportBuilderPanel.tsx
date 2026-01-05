@@ -24,7 +24,7 @@ export function ReportBuilderPanel(props: BuilderState) {
 
       <div className="grid grid-cols-1 gap-2">
         <div>
-          <Label>Data source (required)</Label>
+          <Label>Data source (Legacy / Management)</Label>
           <div className="mt-2 flex flex-wrap gap-2">
             {(['legacy', 'management'] as const).map(src => (
               <button

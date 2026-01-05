@@ -32,69 +32,75 @@ export function Help() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Section title="How this stays auditable">
+        <Section title="Auditability model">
           <div>
-            • <span className="text-slate-100">Current</span> is always computed directly from the uploaded Xero Profit &amp; Loss.
+            • <span className="text-slate-100">Current</span> = direct from uploaded Xero P&amp;L (no transformations).
           </div>
           <div>
-            • <span className="text-slate-100">Dream P&amp;L</span> is a pure re-expression: it sums Xero accounts into your management
-            categories.
+            • <span className="text-slate-100">Dream P&amp;L</span> = re-expression only: mapped accounts roll up to management lines. No synthetic maths.
           </div>
           <div>
-            • <span className="text-slate-100">Scenario</span> is replacement-based: it subtracts only what you explicitly mark as legacy
-            income (e.g., TMS) and then adds bundle revenue. Nothing is “double-counted” unless you turn it on.
+            • <span className="text-slate-100">Scenario</span> = explicit replacement: remove matched legacy revenue, then add bundle revenue and optional bundle costs.
           </div>
           <div className="mt-3 text-xs text-slate-400">
-            Tip: drill-down confidence comes from being able to click a line and see the underlying accounts and GL transactions.
+            Trust comes from drill-down: every Dream line can open the mapped Xero accounts and (if uploaded) the matching GL transactions.
           </div>
         </Section>
 
-        <Section title="Replacement modelling (the rule)">
+        <Section title="Replacement rule (core math)">
           <div>
-            Bundles are not additive revenue. The scenario does:
-            <Formula>Scenario = Base − Legacy TMS (and optional consult revenue) + (CBA revenue + cgTMS revenue)</Formula>
+            Bundles are replacements, not add-ons. The scenario always follows:
+            <Formula>Scenario = Current − Legacy TMS (± consult removal) + CBA bundle + cgTMS bundle</Formula>
           </div>
           <div className="mt-3">
-            Costs are treated separately via a toggle:
-            <Formula>ΔCOGS = (Costs per CBA × CBAs/month) + (Costs per Program × Programs/month)</Formula>
-            <div className="mt-2 text-xs text-slate-400">
-              If the “Apply bundle costs” toggle is off, the scenario changes revenue only and assumes your existing P&amp;L already
-              contains those costs.
-            </div>
+            Movement KPI math depends on comparison mode (Reports): last3 vs prev3, scenario vs current, or month vs prior.
           </div>
         </Section>
 
-        <Section title="Doctor consults & service fee">
+        <Section title="Bundle costs toggle">
           <div>
-            Patient fees are not the same as your actual cost. This model assumes you retain a global <span className="text-slate-100">service fee %</span>
-            and the remainder is paid to the doctor.
+            Control whether bundle COGS are injected into the scenario or assumed already in your P&amp;L.
           </div>
-          <Formula>
-            Doctor payout (actual cost) = Patient fee × (1 − ServiceFee%)
-          </Formula>
-          <div className="mt-3">
-            Within cgTMS, if you include a 6-week consult, the model automatically includes the corresponding 6-month consult for the same
-            patients (same fee + count per patient).
+          <Formula>When ON: ΔCOGS = (CBA costs × CBA volume) + (cgTMS costs × Program volume)</Formula>
+          <div className="mt-2 text-xs text-slate-400">
+            When OFF, only revenue changes. Use this if your current P&amp;L already contains the bundle delivery costs.
           </div>
         </Section>
 
-        <Section title="Shifting the needle">
+        <Section title="Doctor service fee logic">
           <div>
-            These are hypothetical levers that can materially change profitability. They are kept separate from the operational bundle
-            settings so it stays spreadsheet-clear.
+            Patient fees are split automatically using the global service-fee %. The remainder is the doctor payout (your cost).
           </div>
-          <div className="mt-2">
-            • <span className="text-slate-100">Rent</span>: either set a new fixed monthly rent or apply a monthly % change (compounded).
+          <Formula>Doctor payout = Patient fee × (1 − ServiceFee%)</Formula>
+          <div className="mt-2 text-xs text-slate-400">
+            If 6-week consults are enabled, the 6-month consult is automatically included for the same patients with the same fee.
           </div>
-          <div>
-            • <span className="text-slate-100">TMS machines</span>: derive programs/month from machines × patients/week/machine × weeks/year × utilisation.
+        </Section>
+
+        <Section title="Troubleshooting checklist">
+          <div>1) Confirm which accounts are tagged as legacy TMS revenue (and optional consult matchers).</div>
+          <div>2) Check whether “Apply bundle costs” is ON or OFF — this drives COGS movements.</div>
+          <div>3) Review mapping completeness: if &lt;85%, Reports will default to Legacy for accuracy.</div>
+          <div>4) Re-run Saved Export from a snapshot to confirm movements are stable.</div>
+        </Section>
+
+        <Section title="Where to go next">
+          <div>• <span className="text-slate-100">Mapping</span>: Map remaining accounts to improve Dream completeness.</div>
+          <div>• <span className="text-slate-100">Overview</span>: Adjust levers (rent, machines, volumes) and see the P&amp;L shift.</div>
+          <div>• <span className="text-slate-100">Reports</span>: Generate investor PDF with chosen datasource + scenario overlay.</div>
+        </Section>
+
+        <Section title="Simple flow (one-page mental model)">
+          <div className="font-mono text-[11px] leading-relaxed text-slate-200">
+            Uploads → Map accounts → Dream P&amp;L → Scenario rule → Reports/Snapshots
+            <div className="text-slate-400 mt-2">Every step keeps a trail: dataset hashes, template layout hash, and saved report configs.</div>
           </div>
         </Section>
       </div>
 
       <div className="mt-6 text-xs text-slate-400">
-        If something feels “off”, the fastest check is: confirm (1) which accounts are being removed as legacy streams and (2) whether bundle
-        costs are being added to scenario COGS.
+        Need confidence fast? Load a snapshot, open Mapping to confirm account coverage, then hit Reports to regenerate the PDF using the saved
+        data source and comparison mode.
       </div>
     </Card>
   )

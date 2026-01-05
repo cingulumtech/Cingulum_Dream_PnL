@@ -46,3 +46,8 @@ select option {
   background-color: rgb(15, 23, 42); /* slate-900-ish */
   color: rgb(226, 232, 240);
 }
+
+.page-break {
+  break-after: page;
+  page-break-after: always;
+}
