@@ -13,9 +13,7 @@ export function Reports() {
   const pl = useAppStore(s => s.pl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
-  const defaults = useAppStore(s => s.defaults)
-  const storeReportConfig = useAppStore(s => s.reportConfig)
-  const setReportConfig = useAppStore(s => s.setReportConfig)
+  const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
 
   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
     storeReportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
@@ -23,6 +21,7 @@ export function Reports() {
   const [userChoseSource, setUserChoseSource] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
+  const [generatedAt, setGeneratedAt] = useState<Date>(() => new Date())
 
   useEffect(() => {
     setBuilder(storeReportConfig)
@@ -53,6 +52,10 @@ export function Reports() {
     }
   }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource])
 
+  useEffect(() => {
+    setGeneratedAt(new Date())
+  }, [builder, pl, dreamTemplate, scenario])
+
   const handleChange = (s: Partial<typeof builder>) => {
     if ('dataSource' in s) setUserChoseSource(true)
     setBuilder(prev => {
@@ -78,7 +81,14 @@ export function Reports() {
     }
     setStatus('Generating...')
     const element = previewRef.current
-    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
+    const stamp = new Date()
+    setGeneratedAt(stamp)
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      backgroundColor: '#0b1222',
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight,
+    })
     const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
@@ -107,7 +117,7 @@ export function Reports() {
           ...reportData.dataQuality.warnings,
           ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
           ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
-            ? ['Dream mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+            ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
             : []),
         ]}
         comparisonMode={builder.comparisonMode}
@@ -120,9 +130,18 @@ export function Reports() {
             {reportData.fallbackReason}
           </Card>
         )}
-        <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
-          <InvestorReportTemplate data={reportData} />
+        <ReportPreview previewRef={previewRef}>
+          <InvestorReportTemplate
+            data={reportData}
+            meta={{
+              snapshotId: activeSnapshotId,
+              generatedAt,
+            }}
+          />
         </ReportPreview>
+        <div className="text-[11px] text-slate-400">
+          {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
+        </div>
         <div className="flex items-center gap-3">
           <button
             type="button"

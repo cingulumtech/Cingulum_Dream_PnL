@@ -42,6 +42,8 @@ type AppState = {
   reportConfig: SnapshotReportConfig
   setReportConfig: (cfg: Partial<SnapshotReportConfig>) => void
 
+  activeSnapshotId: string | null
+
   snapshots: {
     id: string
     name: string
@@ -63,8 +65,7 @@ type AppState = {
   addSnapshot: (name: string) => void
   loadSnapshot: (id: string) => void
   deleteSnapshot: (id: string) => void
-  renameSnapshot: (id: string, name: string) => void
-  duplicateSnapshot: (id: string) => void
+  clearActiveSnapshot: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -218,6 +219,7 @@ export const useAppStore = create<AppState>()(
       reportConfig: ensureReportConfig(),
       setReportConfig: (cfg) => set({ reportConfig: { ...get().reportConfig, ...cfg } }),
 
+      activeSnapshotId: null,
       snapshots: [],
       addSnapshot: (name) => {
         const state = get()
@@ -247,7 +249,7 @@ export const useAppStore = create<AppState>()(
             reportConfig,
           }),
         }
-        set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20) })
+        set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20), activeSnapshotId: snapshot.id })
       },
       loadSnapshot: (id) => {
         const state = get()
@@ -261,23 +263,18 @@ export const useAppStore = create<AppState>()(
           lastTemplateSavedAt: new Date().toISOString(),
           pl: snap.pl,
           gl: snap.gl,
-          reportConfig: snap.reportConfig,
-          defaults: { ...state.defaults, exportSettings: snap.exportSettings },
+          activeSnapshotId: id,
         })
       },
       deleteSnapshot: (id) => {
-        set({ snapshots: get().snapshots.filter(s => s.id !== id) })
-      },
-      renameSnapshot: (id, name) => {
-        set({ snapshots: get().snapshots.map(s => (s.id === id ? { ...s, name } : s)) })
-      },
-      duplicateSnapshot: (id) => {
         const state = get()
-        const snap = state.snapshots.find(s => s.id === id)
-        if (!snap) return
-        const copy = { ...snap, id: crypto.randomUUID(), name: `${snap.name} (copy)`, createdAt: new Date().toISOString() }
-        set({ snapshots: [copy, ...state.snapshots].slice(0, 20) })
+        const nextSnapshots = state.snapshots.filter(s => s.id !== id)
+        set({
+          snapshots: nextSnapshots,
+          activeSnapshotId: state.activeSnapshotId === id ? null : state.activeSnapshotId,
+        })
       },
+      clearActiveSnapshot: () => set({ activeSnapshotId: null }),
     }),
     {
       name: 'cingulum-dream-pnl',
@@ -289,7 +286,7 @@ export const useAppStore = create<AppState>()(
         scenario: state.scenario,
         defaults: state.defaults,
         snapshots: state.snapshots,
-        reportConfig: state.reportConfig,
+        activeSnapshotId: state.activeSnapshotId,
       }),
       // Keep backward compatibility when we add new scenario keys (avoid old persisted state wiping defaults)
       merge: (persisted: any, current) => {
@@ -346,9 +343,9 @@ export const useAppStore = create<AppState>()(
           templateFuture: (persisted?.templateFuture ?? []).slice(0, 20),
           lastTemplateSavedAt: persisted?.lastTemplateSavedAt ?? current.lastTemplateSavedAt,
           scenario: sanitizeScenario(incoming, defaults),
-          defaults: mergedDefaults as FrameworkDefaults,
-          snapshots: hydrateSnapshots(persisted?.snapshots ?? current.snapshots),
-          reportConfig: ensureReportConfig(persisted?.reportConfig ?? current.reportConfig),
+          defaults: persisted?.defaults ?? current.defaults,
+          snapshots: persisted?.snapshots ?? current.snapshots,
+          activeSnapshotId: persisted?.activeSnapshotId ?? current.activeSnapshotId,
         }
       },
     }
