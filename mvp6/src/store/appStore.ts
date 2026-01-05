@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
-import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
 import { ensureTemplateMetadata } from '../lib/dream/schema'
+import { RECOMMENDED_DEFAULTS } from '../lib/defaults'
+import { ensureExportSettings, ensureReportConfig, fingerprintGl, fingerprintPl, fingerprintTemplate, buildSnapshotSummary } from '../lib/snapshotUtils'
+import { DreamTemplate, GL, ScenarioInputs, XeroPL } from '../lib/types'
 
 export type View =
   | 'overview'
