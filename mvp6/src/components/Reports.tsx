@@ -7,20 +7,26 @@ import { ReportPreview } from './report/ReportPreview'
 import { InvestorReportTemplate } from './report/InvestorReportTemplate'
 import { Card } from './ui'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
+import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
 
 export function Reports() {
   const pl = useAppStore(s => s.pl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
+  const defaults = useAppStore(s => s.defaults)
+  const storeReportConfig = useAppStore(s => s.reportConfig)
+  const setReportConfig = useAppStore(s => s.setReportConfig)
 
-  const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>({
-    dataSource: 'legacy',
-    includeScenario: true,
-    comparisonMode: 'last3_vs_prev3',
-  })
+  const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
+    storeReportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
+  )
   const [userChoseSource, setUserChoseSource] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setBuilder(storeReportConfig)
+  }, [storeReportConfig])
 
   const reportData = useMemo(
     () =>
@@ -39,7 +45,11 @@ export function Reports() {
     if (!pl) return
     if (userChoseSource) return
     if (builder.dataSource !== reportData.recommendedSource) {
-      setBuilder(prev => ({ ...prev, dataSource: reportData.recommendedSource }))
+        setBuilder(prev => {
+          const next = { ...prev, dataSource: reportData.recommendedSource }
+          setReportConfig(next)
+          return next
+        })
     }
   }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource])
 
@@ -52,6 +62,7 @@ export function Reports() {
         if (s.includeScenario && next.comparisonMode === 'last3_vs_prev3') next.comparisonMode = 'scenario_vs_current'
         if (!s.includeScenario && next.comparisonMode === 'scenario_vs_current') next.comparisonMode = 'last3_vs_prev3'
       }
+      setReportConfig(next)
       return next
     })
   }
@@ -69,13 +80,17 @@ export function Reports() {
     const element = previewRef.current
     const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0b1222' })
     const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'pt', 'a4')
+    const metrics = getPageMetrics(defaults.exportSettings)
+    const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-    const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
+    const ratio = Math.min(
+      (pageWidth - metrics.marginPt * 2) / canvas.width,
+      (pageHeight - metrics.marginPt * 2) / canvas.height
+    )
     const imgWidth = canvas.width * ratio
     const imgHeight = canvas.height * ratio
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+    pdf.addImage(imgData, 'PNG', metrics.marginPt, metrics.marginPt, imgWidth, imgHeight)
     pdf.save('Investor_Report.pdf')
     setStatus('Report generated.')
     setTimeout(() => setStatus(null), 2000)
@@ -105,7 +120,7 @@ export function Reports() {
             {reportData.fallbackReason}
           </Card>
         )}
-        <ReportPreview previewRef={previewRef}>
+        <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
           <InvestorReportTemplate data={reportData} />
         </ReportPreview>
         <div className="flex items-center gap-3">
