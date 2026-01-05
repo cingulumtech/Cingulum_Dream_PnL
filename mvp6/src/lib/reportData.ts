@@ -1,8 +1,30 @@
 import { applyBundledScenario, computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals, DreamTotals } from './dream/compute'
 import { DreamGroup, DreamLine, DreamTemplate, ScenarioInputs, XeroPL } from './types'
 
-export type DataSource = 'legacy' | 'dream'
+export type DataSource = 'legacy' | 'management'
 export type ComparisonMode = 'last3_vs_prev3' | 'scenario_vs_current' | 'month_vs_prior'
+
+export const COMPARISON_MODE_METADATA: Record<
+  ComparisonMode,
+  { label: string; badge: string; movementLabel: string; requiresScenario?: boolean }
+> = {
+  last3_vs_prev3: {
+    label: 'Last 3 months vs prior 3 months',
+    badge: 'Movement = Last 3 months vs prior 3 months',
+    movementLabel: 'Last 3 vs prior 3',
+  },
+  scenario_vs_current: {
+    label: 'Scenario TTM – Current TTM',
+    badge: 'Movement = Scenario vs Current (TTM)',
+    movementLabel: 'Scenario vs current',
+    requiresScenario: true,
+  },
+  month_vs_prior: {
+    label: 'Last month vs prior month',
+    badge: 'Movement = Last month vs prior month',
+    movementLabel: 'Month vs prior',
+  },
+}
 
 export type DriverItem = {
   label: string
@@ -41,6 +63,30 @@ export type DataQuality = {
   warnings: string[]
 }
 
+export type FinancialModel = {
+  months: string[]
+  aggregatesByMonth: {
+    month: string
+    current: { revenue: number; cogs: number; opex: number; net: number }
+    scenario?: { revenue: number; cogs: number; opex: number; net: number } | null
+  }[]
+  pnlLines: (ReportData['pnlSummary'][number] & { format?: 'currency' | 'percentage' })[]
+  drivers: ReportData['drivers']
+  assumptionsUsed: string[]
+  dataQuality: DataQuality & { badge: string; badgeLabel: string }
+  provenance: {
+    datasetId: string
+    dataSourceRequested: DataSource
+    dataSourceUsed: DataSource
+    recommendedSource: DataSource
+    fallbackReason?: string
+    diagnostics: string[]
+    comparisonMode: ComparisonMode
+    comparisonLabel: string
+    movementBadge: string
+  }
+}
+
 export type ReportData = {
   dataSourceRequested: DataSource
   dataSourceUsed: DataSource
@@ -54,7 +100,7 @@ export type ReportData = {
   scenarioTotals: DreamTotals | null
   trendRows: { month: string; current: number; scenario?: number | null }[]
   trendStats: TrendStats
-  kpis: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad' }[]
+  kpis: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad'; format?: 'currency' | 'percentage' }[]
   executiveSummary: string[]
   whatChanged: string[]
   varianceAttribution?: VarianceAttribution[]
@@ -62,7 +108,7 @@ export type ReportData = {
     revenue: DriverResult
     cost: DriverResult
   }
-  pnlSummary: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad' }[]
+  pnlSummary: { label: string; current: number; scenario?: number | null; variance?: number | null; tone?: 'good' | 'bad'; format?: 'currency' | 'percentage' }[]
   dataQuality: DataQuality
   scenarioNotes: string[]
   comparisonMode: ComparisonMode
@@ -173,33 +219,39 @@ function describeScenario(scenario: ScenarioInputs): string[] {
   return notes
 }
 
-function computeComparison(mode: ComparisonMode, currentSeries: number[], compareSeries: number[], scenarioTotals?: DreamTotals | null): { currentTotal: number | null; compareTotal: number | null; delta: number | null; pctDelta: number | null; label: string } {
+export function computeComparison(
+  mode: ComparisonMode,
+  currentSeries: number[],
+  compareSeries: number[],
+  scenarioTotals?: DreamTotals | null
+): { currentTotal: number | null; compareTotal: number | null; delta: number | null; pctDelta: number | null; label: string; badge: string } {
+  const meta = COMPARISON_MODE_METADATA[mode]
   if (mode === 'scenario_vs_current') {
-    if (!scenarioTotals) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Scenario TTM – Current TTM' }
+    if (!scenarioTotals) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: meta.label, badge: meta.badge }
     const currentTotal = sum(compareSeries)
     const compareTotal = sum(currentSeries)
     const delta = currentTotal - compareTotal
     const pctDelta = compareTotal === 0 ? null : (delta / Math.abs(compareTotal)) * 100
-    return { currentTotal, compareTotal, delta, pctDelta, label: 'Scenario TTM – Current TTM' }
+    return { currentTotal, compareTotal, delta, pctDelta, label: meta.label, badge: meta.badge }
   }
   if (mode === 'month_vs_prior') {
-    if (currentSeries.length < 2) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Last month vs prior month' }
+    if (currentSeries.length < 2) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: meta.label, badge: meta.badge }
     const currentTotal = currentSeries[currentSeries.length - 1] ?? 0
     const compareTotal = currentSeries[currentSeries.length - 2] ?? 0
     const delta = currentTotal - compareTotal
     const pctDelta = compareTotal === 0 ? null : (delta / Math.abs(compareTotal)) * 100
-    return { currentTotal, compareTotal, delta, pctDelta, label: 'Last month vs prior month' }
+    return { currentTotal, compareTotal, delta, pctDelta, label: meta.label, badge: meta.badge }
   }
   const window = last3vsPrev3(currentSeries)
-  if (!window) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: 'Last 3 months vs prior 3 months' }
+  if (!window) return { currentTotal: null, compareTotal: null, delta: null, pctDelta: null, label: meta.label, badge: meta.badge }
   const delta = window.currentTotal - window.compareTotal
   const pctDelta = window.compareTotal === 0 ? null : (delta / Math.abs(window.compareTotal)) * 100
-  return { currentTotal: window.currentTotal, compareTotal: window.compareTotal, delta, pctDelta, label: 'Last 3 months vs prior 3 months' }
+  return { currentTotal: window.currentTotal, compareTotal: window.compareTotal, delta, pctDelta, label: meta.label, badge: meta.badge }
 }
 
 function makeDataQualityBadge(source: DataSource, completeness: number, missingKeyCount: number): { badge: string; level: 'good' | 'partial' | 'bad' } {
   if (source === 'legacy') return { badge: 'Data quality: Legacy (Good)', level: 'good' }
-  if (completeness >= 0.85) return { badge: 'Data quality: Good', level: 'good' }
+  if (completeness >= 0.85) return { badge: 'Data quality: Management (Good)', level: 'good' }
   if (completeness >= 0.5) return { badge: `Data quality: Partial (${Math.round(completeness * 100)}% mapped; missing ${missingKeyCount} key)`, level: 'partial' }
   return { badge: `Data quality: Incomplete (${Math.round(completeness * 100)}% mapped; missing ${missingKeyCount} key)`, level: 'bad' }
 }
@@ -246,7 +298,14 @@ function getDrivers(opts: {
     pctDelta: t.pctDelta ?? null,
   }))
 
-  return { items, suspicious }
+  const diagnostics = suspicious ? ['Driver deltas were nearly identical. Falling back to Legacy for movement diagnostics.'] : undefined
+
+  return { items, suspicious, diagnostics }
+}
+
+function resolveComparisonMode(requested: ComparisonMode | undefined, scenarioActive: boolean): ComparisonMode {
+  if (requested) return requested
+  return scenarioActive ? 'scenario_vs_current' : 'last3_vs_prev3'
 }
 
 export function getReportData(opts: {
@@ -260,16 +319,19 @@ export function getReportData(opts: {
 }): ReportData {
   const { dataSource, pl, template, scenario, includeScenario, completenessThreshold = 0.85, comparisonMode } = opts
   const mapping = calcMappingStats(pl, template)
-  const recommendedSource: DataSource = mapping.completeness >= completenessThreshold ? 'dream' : 'legacy'
+  const recommendedSource: DataSource = mapping.completeness >= completenessThreshold ? 'management' : 'legacy'
   const scenarioActive = includeScenario && scenario.enabled
-  const mode: ComparisonMode = comparisonMode ? comparisonMode : scenarioActive ? 'scenario_vs_current' : 'last3_vs_prev3'
+  const mode: ComparisonMode = resolveComparisonMode(comparisonMode, scenarioActive)
+  const guardrailSource: DataSource = dataSource === 'management' && mapping.completeness < completenessThreshold ? 'legacy' : dataSource
+  const guardrailReason =
+    guardrailSource !== dataSource ? `Management mapping below ${(completenessThreshold * 100).toFixed(0)}%. Defaulted to Legacy.` : undefined
 
   const buildForSource = (source: DataSource): ReportData => {
     const hasData = !!pl
     if (!hasData) {
       return {
         dataSourceRequested: dataSource,
-        dataSourceUsed: source,
+        dataSourceUsed: guardrailSource,
         recommendedSource,
         fallbackReason: 'No P&L uploaded.',
         periodLabel: 'Upload a P&L export to begin.',
@@ -304,11 +366,11 @@ export function getReportData(opts: {
     let baseTotals: DreamTotals
     let computedDream: ReturnType<typeof computeDream> | null = null
     let completenessWarnings: string[] = []
-    if (source === 'dream') {
+    if (source === 'management') {
       computedDream = computeDream(pl, template)
       baseTotals = computeDreamTotals(pl, template, computedDream)
       if (mapping.completeness < completenessThreshold) {
-        completenessWarnings.push('Dream mapping below 85%. Some sections disabled.')
+        completenessWarnings.push('Management mapping below 85%. Some sections disabled.')
       }
     } else {
       baseTotals = computeXeroTotals(pl)
@@ -324,11 +386,15 @@ export function getReportData(opts: {
     const periodLabel = `Through ${lastMonthLabel}`
 
     const netDelta = scenarioTotals ? sum(scenarioTotals.net) - sum(baseTotals.net) : null
+    const grossMarginCurrent = ((sum(baseTotals.revenue) - sum(baseTotals.cogs)) / Math.max(1, Math.abs(sum(baseTotals.revenue)))) * 100
+    const grossMarginScenario = scenarioTotals
+      ? ((sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs)) / Math.max(1, Math.abs(sum(scenarioTotals.revenue)))) * 100
+      : null
 
     const kpis = [
       { label: 'TTM net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta, tone: netDelta != null ? (netDelta >= 0 ? 'good' : 'bad') : undefined },
       { label: 'TTM revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
-      { label: 'Gross margin %', current: ((sum(baseTotals.revenue) - sum(baseTotals.cogs)) / Math.max(1, Math.abs(sum(baseTotals.revenue)))) * 100 },
+      { label: 'Gross margin %', current: grossMarginCurrent, scenario: grossMarginScenario, variance: grossMarginScenario != null ? grossMarginScenario - grossMarginCurrent : null, format: 'percentage' as const },
       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
     ]
 
@@ -349,17 +415,17 @@ export function getReportData(opts: {
 
     const trendRows = months.map((m, i) => ({ month: m, current: baseTotals.net[i] ?? 0, scenario: scenarioTotals ? scenarioTotals.net[i] ?? null : null }))
 
-    const driverDisabled = source === 'dream' && mapping.completeness < completenessThreshold
+    const driverDisabled = source === 'management' && mapping.completeness < completenessThreshold
       ? 'Not enough mapped data (need 85% of key accounts).'
       : undefined
 
-    const revenueEntries = source === 'dream'
+    const revenueEntries = source === 'management'
       ? flattenLinesWithSection(template.root)
           .filter(l => l.section === 'rev')
           .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'income' as const }))
       : pl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values, sectionType: 'income' as const }))
 
-    const costEntries = source === 'dream'
+    const costEntries = source === 'management'
       ? flattenLinesWithSection(template.root)
           .filter(l => l.section === 'cogs' || l.section === 'opex')
           .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'expense' as const }))
@@ -374,13 +440,14 @@ export function getReportData(opts: {
       { label: 'Revenue', current: sum(baseTotals.revenue), scenario: scenarioTotals ? sum(scenarioTotals.revenue) : null, variance: scenarioTotals ? sum(scenarioTotals.revenue) - sum(baseTotals.revenue) : null },
       { label: 'COGS', current: sum(baseTotals.cogs), scenario: scenarioTotals ? sum(scenarioTotals.cogs) : null, variance: scenarioTotals ? sum(scenarioTotals.cogs) - sum(baseTotals.cogs) : null, tone: scenarioTotals ? (sum(scenarioTotals.cogs) - sum(baseTotals.cogs) <= 0 ? 'good' : 'bad') : undefined },
       { label: 'Gross profit', current: sum(baseTotals.revenue) - sum(baseTotals.cogs), scenario: scenarioTotals ? sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs) : null, variance: scenarioTotals ? (sum(scenarioTotals.revenue) - sum(scenarioTotals.cogs)) - (sum(baseTotals.revenue) - sum(baseTotals.cogs)) : null },
+      { label: 'Gross margin %', current: grossMarginCurrent, scenario: grossMarginScenario, variance: grossMarginScenario != null ? grossMarginScenario - grossMarginCurrent : null, format: 'percentage' as const },
       { label: 'Opex', current: sum(baseTotals.opex), scenario: scenarioTotals ? sum(scenarioTotals.opex) : null, variance: scenarioTotals ? sum(scenarioTotals.opex) - sum(baseTotals.opex) : null, tone: scenarioTotals ? (sum(scenarioTotals.opex) - sum(baseTotals.opex) <= 0 ? 'good' : 'bad') : undefined },
       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
       { label: 'Net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta },
     ]
 
     const executiveSummary: string[] = []
-    executiveSummary.push(`Datasource: ${source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy Xero export'}`)
+    executiveSummary.push(`Datasource: ${source === 'management' ? 'Management P&L (mapped model)' : 'Legacy Xero export'}`)
     if (netDelta != null) executiveSummary.push(`Scenario impact: ${money(netDelta)} vs current.`)
     const comparison = computeComparison(mode, baseTotals.net, scenarioTotals ? scenarioTotals.net : baseTotals.net, scenarioTotals)
     executiveSummary.push(`Comparison mode: ${comparison.label}`)
@@ -400,9 +467,9 @@ export function getReportData(opts: {
     }
 
     if (driverDisabled) dataQuality.disabledSections.push('drivers')
-    if (scenarioActive && mapping.completeness < completenessThreshold && source === 'dream') dataQuality.disabledSections.push('waterfall')
+    if (scenarioActive && mapping.completeness < completenessThreshold && source === 'management') dataQuality.disabledSections.push('waterfall')
 
-    const dataSourceLabel = source === 'dream' ? 'Dream P&L (mapped model)' : 'Legacy P&L (Xero export)'
+    const dataSourceLabel = source === 'management' ? 'Management P&L (mapped model)' : 'Legacy P&L (Xero export)'
     const dataQualityBadge = makeDataQualityBadge(source, mapping.completeness, mapping.missingKeyAccounts.length)
 
     const varianceAttribution = scenarioTotals ? buildVarianceAttribution(baseTotals, scenarioTotals) : undefined
@@ -435,19 +502,117 @@ export function getReportData(opts: {
       scenarioNotes: describeScenario(scenario),
       comparisonMode: mode,
       comparisonLabel: comparison.label,
-      movementBadge: `Movement = ${comparison.label} (${source === 'dream' ? 'Mapped model' : 'Actuals'})`,
+      movementBadge: `${COMPARISON_MODE_METADATA[mode].badge} (${source === 'management' ? 'Mapped model' : 'Actuals'})`,
     }
   }
 
-  let report = buildForSource(dataSource)
+  let report = buildForSource(guardrailSource)
+  if (guardrailReason) {
+    report = { ...report, dataSourceUsed: guardrailSource, fallbackReason: guardrailReason }
+    report.dataQuality.warnings.push(guardrailReason)
+  }
   const fallbackEligible =
-    dataSource === 'dream' &&
+    report.dataSourceUsed === 'management' &&
     pl &&
     (report.drivers.revenue.suspicious || report.drivers.cost.suspicious)
   if (fallbackEligible) {
     const legacyReport = buildForSource('legacy')
-    report = { ...legacyReport, dataSourceRequested: dataSource, dataSourceUsed: 'legacy', fallbackReason: 'Dream drivers looked identical. Fell back to Legacy data.' }
+    const reason = 'Management drivers looked identical. Fell back to Legacy data.'
+    report = {
+      ...legacyReport,
+      dataSourceRequested: dataSource,
+      dataSourceUsed: 'legacy',
+      fallbackReason: reason,
+    }
+    report.dataQuality.warnings.push(reason)
+    report.drivers.revenue.diagnostics = [
+      ...(report.drivers.revenue.diagnostics ?? []),
+      'Revenue drivers looked suspicious when using management mapping.',
+    ]
+    report.drivers.cost.diagnostics = [
+      ...(report.drivers.cost.diagnostics ?? []),
+      'Cost drivers looked suspicious when using management mapping.',
+    ]
   }
 
   return report
+}
+
+export function buildFinancialModel(opts: {
+  datasetId: string
+  dataSource: DataSource
+  pl: XeroPL | null
+  template: DreamTemplate
+  scenarioConfig: ScenarioInputs
+  comparisonMode?: ComparisonMode
+  includeScenario?: boolean
+  completenessThreshold?: number
+}): FinancialModel {
+  const { datasetId, dataSource, pl, template, scenarioConfig, comparisonMode, includeScenario, completenessThreshold } = opts
+  const report = getReportData({
+    dataSource,
+    pl,
+    template,
+    scenario: scenarioConfig,
+    includeScenario: includeScenario ?? !!scenarioConfig.enabled,
+    completenessThreshold,
+    comparisonMode,
+  })
+
+  const months = pl?.monthLabels ?? []
+  const aggregatesByMonth = months.map((month, idx) => ({
+    month,
+    current: {
+      revenue: report.baseTotals?.revenue[idx] ?? 0,
+      cogs: report.baseTotals?.cogs[idx] ?? 0,
+      opex: report.baseTotals?.opex[idx] ?? 0,
+      net: report.baseTotals?.net[idx] ?? 0,
+    },
+    scenario: report.scenarioTotals
+      ? {
+          revenue: report.scenarioTotals.revenue[idx] ?? 0,
+          cogs: report.scenarioTotals.cogs[idx] ?? 0,
+          opex: report.scenarioTotals.opex[idx] ?? 0,
+          net: report.scenarioTotals.net[idx] ?? 0,
+        }
+      : null,
+  }))
+
+  const diagnostics = Array.from(
+    new Set([
+      ...(report.fallbackReason ? [report.fallbackReason] : []),
+      ...(report.dataQuality.warnings ?? []),
+      ...(report.drivers.revenue.diagnostics ?? []),
+      ...(report.drivers.cost.diagnostics ?? []),
+    ])
+  )
+
+  const formatSummary = report.pnlSummary.map(row => ({
+    ...row,
+    format: row.format ?? (row.label.toLowerCase().includes('%') ? 'percentage' : 'currency'),
+  }))
+
+  return {
+    months,
+    aggregatesByMonth,
+    pnlLines: formatSummary,
+    drivers: report.drivers,
+    assumptionsUsed: report.scenarioNotes,
+    dataQuality: {
+      ...report.dataQuality,
+      badge: report.dataQualityBadge,
+      badgeLabel: report.dataQualityBadgeLabel,
+    },
+    provenance: {
+      datasetId,
+      dataSourceRequested: report.dataSourceRequested,
+      dataSourceUsed: report.dataSourceUsed,
+      recommendedSource: report.recommendedSource,
+      fallbackReason: report.fallbackReason,
+      diagnostics,
+      comparisonMode: report.comparisonMode,
+      comparisonLabel: report.comparisonLabel,
+      movementBadge: report.movementBadge,
+    },
+  }
 }

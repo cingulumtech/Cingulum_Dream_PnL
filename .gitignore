@@ -1,0 +1,4 @@
+node_modules/
+mvp6/node_modules/
+dist/
+.vite/

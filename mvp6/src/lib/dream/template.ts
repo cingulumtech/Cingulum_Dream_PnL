@@ -1,4 +1,5 @@
 import { DreamGroup, DreamLine, DreamTemplate } from '../types'
+import { DREAM_TEMPLATE_SCHEMA } from './schema'
 
 const line = (id: string, label: string, mappedAccounts: string[] = []): DreamLine => ({
   id,
@@ -24,6 +25,8 @@ const group = (id: string, label: string, children: (DreamGroup | DreamLine)[]):
 export const DEFAULT_DREAM_TEMPLATE: DreamTemplate = {
   id: 'dream_v1',
   name: 'Dream P&L (Board / Investor View)',
+  schemaVersion: DREAM_TEMPLATE_SCHEMA,
+  version: 1,
   root: group('root', 'Dream P&L', [
     group('rev', 'Revenue', [
       line('rev_cba', 'CBA - Program Revenue'),
