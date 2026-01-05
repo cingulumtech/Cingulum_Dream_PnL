@@ -17,6 +17,13 @@ function pct(n: number | null | undefined) {
   return `${PCT_FORMATTER.format(n)}%`
 }
 
+export function profitImpactClass(profitImpact: number | null): string {
+  if (profitImpact == null) return 'text-slate-200'
+  if (profitImpact > 0) return 'text-emerald-300'
+  if (profitImpact < 0) return 'text-rose-300'
+  return 'text-slate-200'
+}
+
 function Callout({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-100">

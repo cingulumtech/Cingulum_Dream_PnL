@@ -1,7 +1,18 @@
 import React from 'react'
 import { Card } from '../ui'
+import { ExportSettings } from '../../lib/defaults'
+import { getPageMetrics } from '../../lib/reportExport'
 
-export function ReportPreview({ previewRef, children }: { previewRef: React.RefObject<HTMLDivElement>; children: React.ReactNode }) {
+export function ReportPreview({
+  previewRef,
+  children,
+  exportSettings,
+}: {
+  previewRef: React.RefObject<HTMLDivElement>
+  children: React.ReactNode
+  exportSettings: ExportSettings
+}) {
+  const metrics = getPageMetrics(exportSettings)
   return (
     <Card className="p-3">
       <style>{`
@@ -12,7 +23,7 @@ export function ReportPreview({ previewRef, children }: { previewRef: React.RefO
         }
         @media print {
           .report-root {
-            width: calc(210mm - 24mm);
+            width: ${metrics.contentWidthPx}px;
             max-width: none;
           }
         }

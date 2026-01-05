@@ -55,7 +55,14 @@ export type DreamGroup = {
 export type DreamTemplate = {
   id: string
   name: string
+  schemaVersion: string
+  version: number
   root: DreamGroup
+}
+
+export type TemplateValidationIssue = {
+  level: 'error' | 'warning'
+  message: string
 }
 
 export type DreamComputed = {

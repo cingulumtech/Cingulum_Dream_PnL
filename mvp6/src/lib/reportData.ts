@@ -246,7 +246,9 @@ function getDrivers(opts: {
     pctDelta: t.pctDelta ?? null,
   }))
 
-  return { items, suspicious }
+  if (suspicious) return { items: [], suspicious, disabledReason: 'Drivers looked identical; movement too small to rank.' }
+
+  return { items, suspicious: false }
 }
 
 export function getReportData(opts: {
