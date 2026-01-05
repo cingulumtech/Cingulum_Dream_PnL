@@ -64,8 +64,17 @@ export function MappingEditor() {
 
   if (!pl) {
     return (
-      <Card className="p-5">
-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export first.</div>
+      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">Mapping</div>
+            <div className="text-sm text-slate-200">Import the Profit &amp; Loss export to start mapping Xero accounts.</div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+            <Button variant="ghost" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
+          </div>
+        </div>
       </Card>
     )
   }
@@ -93,15 +102,15 @@ export function MappingEditor() {
   }
 
   return (
-    <Card className="p-5 overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold">Mapping editor</div>
-          <div className="text-sm text-slate-300">
-            Assign Xero accounts to Dream lines. Unmapped accounts are highlighted by default (so you can mop them up fast).
+      <Card className="p-5 overflow-hidden">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-lg font-semibold">Mapping</div>
+            <div className="text-sm text-slate-300">
+              Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default (so you can mop them up fast).
+            </div>
           </div>
-        </div>
-        <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
+          <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[380px,1fr]">
@@ -109,7 +118,7 @@ export function MappingEditor() {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-slate-300" />
-            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search Dream lines…" />
+            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search layout lines…" />
           </div>
 
           <div className="mt-3 max-h-[520px] overflow-auto pr-1">
@@ -136,7 +145,7 @@ export function MappingEditor() {
         {/* Right: Accounts picker */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           {!selectedLine ? (
-            <div className="text-sm text-slate-300">Select a Dream line to map accounts.</div>
+            <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
           ) : (
             <>
               <div className="flex items-start justify-between gap-3">

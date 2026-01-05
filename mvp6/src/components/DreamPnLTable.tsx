@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { computeDepAmort, computeDream, computeDreamTotals } from '../lib/dream/compute'
 import { DreamGroup, DreamLine } from '../lib/types'
@@ -131,8 +131,19 @@ export function DreamPnLTable() {
 
   if (!pl) {
     return (
-      <Card className="p-5">
-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view your Dream P&amp;L.</div>
+      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">P&amp;L (Management)</div>
+            <div className="text-sm text-slate-200">
+              Upload the Profit &amp; Loss export to unlock the management view and drill-down.
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
+          </div>
+        </div>
       </Card>
     )
   }
@@ -143,9 +154,9 @@ export function DreamPnLTable() {
     <Card className="p-5 overflow-hidden">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-lg font-semibold">Dream P&amp;L (management view)</div>
+          <div className="text-lg font-semibold">P&amp;L (Management)</div>
           <div className="text-sm text-slate-300">
-            Same underlying Xero data, re-expressed into your Dream structure. Click a line to drill down.
+            Same underlying Xero data, re-expressed into your management layout. Click a line to drill down.
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -186,7 +197,7 @@ export function DreamPnLTable() {
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="w-80">
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search Dream lines…" />
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search management lines…" />
         </div>
         <div className="text-xs text-slate-400">Unmapped lines show as “Unmapped” until you map accounts.</div>
       </div>

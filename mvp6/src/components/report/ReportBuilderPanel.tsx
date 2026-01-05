@@ -34,7 +34,7 @@ export function ReportBuilderPanel(props: BuilderState) {
                   dataSource === src ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
                 }`}
               >
-                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Dream P&L (mapped model)'}
+                {src === 'legacy' ? 'P&L (Legacy)' : 'P&L (Management)'}
                 {recommendedSource === src ? ' • default' : ''}
               </button>
             ))}

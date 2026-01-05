@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useAppStore } from '../store/appStore'
-import { Card, Input, Label } from './ui'
+import { Card, Input, Label, Button } from './ui'
 
 export function SavedExports() {
   const snapshots = useAppStore(s => s.snapshots)
@@ -14,8 +14,8 @@ export function SavedExports() {
       <Card className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-slate-100">Saved Exports</div>
-            <div className="text-xs text-slate-400">Capture the current scenario + uploads as a snapshot.</div>
+            <div className="text-sm font-semibold text-slate-100">Snapshots</div>
+            <div className="text-xs text-slate-400">Capture the current scenario + uploads as a reusable snapshot.</div>
           </div>
           <div className="flex gap-2">
             <Input
@@ -40,7 +40,15 @@ export function SavedExports() {
 
         <div className="mt-4 space-y-2">
           {snapshots.length === 0 ? (
-            <div className="text-xs text-slate-300">No snapshots saved yet.</div>
+            <Card className="p-3 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-slate-100">No snapshots yet</div>
+                  <div className="text-xs text-slate-200">Save your current mapping + uploads to reuse later.</div>
+                </div>
+                <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Load P&amp;L</Button>
+              </div>
+            </Card>
           ) : (
             snapshots.map(snap => (
               <div key={snap.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">

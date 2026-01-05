@@ -3,7 +3,16 @@ import { persist } from 'zustand/middleware'
 import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
 import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
 
-export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
+export type View =
+  | 'overview'
+  | 'pnlLegacy'
+  | 'pnlManagement'
+  | 'mapping'
+  | 'layout'
+  | 'reports'
+  | 'snapshots'
+  | 'settings'
+  | 'help'
 
 type AppState = {
   view: View

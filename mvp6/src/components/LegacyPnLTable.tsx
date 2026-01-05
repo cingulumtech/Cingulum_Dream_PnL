@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { useAppStore } from '../store/appStore'
-import { Card, Chip, Input } from './ui'
+import { Card, Chip, Input, Button } from './ui'
 import { XeroPLSection } from '../lib/types'
 import { computeDepAmort, computeXeroTotals } from '../lib/dream/compute'
 
@@ -14,6 +14,7 @@ const sectionLabels: Record<XeroPLSection, string> = {
 
 export function LegacyPnLTable() {
   const pl = useAppStore(s => s.pl)
+  const setView = useAppStore(s => s.setView)
   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
   const [q, setQ] = useState('')
 
@@ -57,8 +58,17 @@ export function LegacyPnLTable() {
 
   if (!pl) {
     return (
-      <Card className="p-5">
-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view the Xero-faithful table.</div>
+      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">P&amp;L (Legacy)</div>
+            <div className="text-sm text-slate-200">Upload the Profit &amp; Loss export to mirror Xero rows and months.</div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
+          </div>
+        </div>
       </Card>
     )
   }
@@ -67,7 +77,7 @@ export function LegacyPnLTable() {
     <Card className="p-5 overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-lg font-semibold">Legacy P&amp;L (Xero-faithful)</div>
+          <div className="text-lg font-semibold">P&amp;L (Legacy)</div>
           <div className="text-sm text-slate-300">Rows mirror Xero accounts. Columns are months.</div>
         </div>
         <div className="w-72">
