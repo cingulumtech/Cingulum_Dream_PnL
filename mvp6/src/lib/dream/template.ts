@@ -1,4 +1,5 @@
 import { DreamGroup, DreamLine, DreamTemplate } from '../types'
+import { DREAM_TEMPLATE_SCHEMA } from './schema'
 
 const line = (id: string, label: string, mappedAccounts: string[] = []): DreamLine => ({
   id,

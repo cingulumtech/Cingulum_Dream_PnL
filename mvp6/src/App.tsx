@@ -1,6 +1,6 @@
 import React from 'react'
-import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText } from 'lucide-react'
-import { useAppStore } from './store/appStore'
+import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText, Settings2 } from 'lucide-react'
+import { useAppStore, type View } from './store/appStore'
 import { UploadPanel } from './components/UploadPanel'
 import { Overview } from './components/Overview'
 import { LegacyPnLTable } from './components/LegacyPnLTable'
@@ -19,17 +19,17 @@ export function App() {
   const view = useAppStore(s => s.view)
   const setView = useAppStore(s => s.setView)
 
-  const nav = [
+  const nav: { id: View; label: string; icon: React.ComponentType<any> }[] = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'legacy', label: 'Legacy P&L', icon: FileSpreadsheet },
     { id: 'dream', label: 'Atlas P&L', icon: LayoutGrid },
     { id: 'mapping', label: 'Mapping', icon: Wand2 },
-    { id: 'scenario', label: 'Layout editor', icon: Settings },
-    { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'exports', label: 'Saved Exports', icon: Database },
+    { id: 'layout', label: 'Layout', icon: Settings2 },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'snapshots', label: 'Snapshots', icon: Database },
+    { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'help', label: 'Help', icon: HelpCircle },
-  ] as const
+  ]
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -77,12 +77,12 @@ export function App() {
 
           <div className="space-y-4">
             {view === 'overview' && <Overview />}
-            {view === 'legacy' && <LegacyPnLTable />}
-            {view === 'dream' && <DreamPnLTable />}
+            {view === 'pnlLegacy' && <LegacyPnLTable />}
+            {view === 'pnlManagement' && <DreamPnLTable />}
             {view === 'mapping' && <MappingEditor />}
-            {view === 'scenario' && <TemplateEditor />}
+            {view === 'layout' && <TemplateEditor />}
             {view === 'settings' && <SettingsPage />}
-            {view === 'exports' && <SavedExports />}
+            {view === 'snapshots' && <SavedExports />}
             {view === 'reports' && <Reports />}
             {view === 'help' && <Help />}
           </div>

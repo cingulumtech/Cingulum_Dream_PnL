@@ -119,3 +119,8 @@ select option {
     color: #0b141c !important;
   }
 }
+
+.page-break {
+  break-after: page;
+  page-break-after: always;
+}

@@ -16,6 +16,13 @@ function money(n: number) {
   return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 }
 
+function moneyShort(n: number) {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return money(n)
+}
+
 function toNum(v: string) {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
@@ -38,6 +45,20 @@ function compileMatchers(matchers: string[], fallback?: RegExp[]) {
   } catch {
     return null
   }
+}
+
+function compileList(patterns: string[]) {
+  return (patterns ?? [])
+    .map(s => {
+      const trimmed = String(s ?? '').trim()
+      if (!trimmed) return null
+      try {
+        return new RegExp(trimmed, 'i')
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean) as RegExp[]
 }
 
 function OverviewTooltip({ active, payload, label, showScenario }: any) {
@@ -240,6 +261,8 @@ function ConsultCostItem(props: {
 export function Overview() {
   const pl = useAppStore(s => s.pl)
   const gl = useAppStore(s => s.gl)
+  const plLoadedAt = useAppStore(s => s.plLoadedAt)
+  const glLoadedAt = useAppStore(s => s.glLoadedAt)
   const scenario = useAppStore(s => s.scenario)
   const setScenario = useAppStore(s => s.setScenario)
   const defaults = useAppStore(s => s.defaults)
@@ -297,6 +320,38 @@ export function Overview() {
     return applyBundledScenario(baseTotals, pl, scenario)
   }, [pl, baseTotals, scenario])
 
+  const matcherPreview = useMemo(() => {
+    if (!pl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
+    const tmsPatterns = compileList(scenario.legacyTmsAccountMatchers ?? [])
+    const consultPatterns = scenario.includeDoctorConsultsInBundle ? compileList(scenario.legacyConsultAccountMatchers ?? []) : []
+    const excluded = new Set(scenario.excludedConsultAccounts ?? [])
+    const totals = { revenue: 0, cogs: 0, opex: 0 }
+    const accounts: { name: string; total: number; section: string; kind: 'tms' | 'consult' }[] = []
+
+    const shouldRemove = (name: string, kind: 'tms' | 'consult') => {
+      const patterns = kind === 'tms' ? tmsPatterns : consultPatterns
+      return patterns.length ? patterns.some(re => re.test(name)) : false
+    }
+
+    for (const a of pl.accounts) {
+      const matchedTms = shouldRemove(a.name, 'tms')
+      const matchedConsult = shouldRemove(a.name, 'consult')
+      if (!matchedTms && !matchedConsult) continue
+      if (matchedConsult && excluded.has(a.name)) continue
+
+      const kind = matchedTms ? 'tms' : 'consult'
+      accounts.push({ name: a.name, total: a.total, section: a.section, kind })
+      const target =
+        a.section === 'trading_income' || a.section === 'other_income'
+          ? 'revenue'
+          : a.section === 'cost_of_sales'
+            ? 'cogs'
+            : 'opex'
+      totals[target as 'revenue' | 'cogs' | 'opex'] += a.total ?? 0
+    }
+    return { accounts, totals }
+  }, [pl, scenario.includeDoctorConsultsInBundle, scenario.legacyConsultAccountMatchers, scenario.legacyTmsAccountMatchers, scenario.excludedConsultAccounts])
+
   if (!pl || !baseTotals) {
     return (
       <Card className="p-5">
@@ -327,10 +382,49 @@ export function Overview() {
   const effectivePrograms = scenario.machinesEnabled && derivedProgramCount != null ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
   const baseRentAvg = baseRentLatest ?? 0
   const programDisplayCount = scenario.machinesEnabled ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
+  const doctorPayoutPct = Math.max(0, Math.min(100, 100 - (scenario.doctorServiceFeePct ?? 0)))
+  const assumptionChips = [
+    scenario.enabled ? 'Replacement scenario on' : null,
+    scenario.includeDoctorConsultsInBundle ? 'Consult revenue removed from base' : null,
+    scenario.addBundleCostsToScenario ? 'Bundle costs added to scenario COGS' : null,
+    scenario.rentEnabled ? `Rent override (${scenario.rentMode === 'fixed' ? 'fixed' : 'monthly %'})` : null,
+    scenario.machinesEnabled ? 'Programs derived from capacity' : 'Programs set manually',
+    scenario.state ? `Clinic state: ${scenario.state}` : null,
+  ].filter(Boolean) as string[]
 
   return (
     <>
     <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold text-slate-100">Data status</div>
+          <div className="text-xs text-slate-300">
+            P&amp;L: {pl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-rose-200 font-semibold">Missing</span>}
+            {plLoadedAt ? <span className="text-slate-400"> · updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
+          </div>
+          <div className="text-xs text-slate-300">
+            GL: {gl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-amber-200 font-semibold">Optional</span>}
+            {glLoadedAt ? <span className="text-slate-400"> · updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
+          </div>
+          <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult matcher previews &amp; drill-down.</div>
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
+          <div className="text-xs text-slate-300">Replacement rule: remove matched legacy TMS (and consult, if enabled) then add CBA + cgTMS bundle revenue. Costs can be added explicitly.</div>
+          <div className="text-xs text-slate-400">
+            Matchers active: {scenario.legacyTmsAccountMatchers?.length ?? 0} TMS ·{' '}
+            {scenario.includeDoctorConsultsInBundle ? `${scenario.legacyConsultAccountMatchers?.length ?? 0} consult` : 'consult off'}
+          </div>
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold text-slate-100">Results &amp; sensitivity</div>
+          <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} → {scenarioTotal == null ? '—' : money(scenarioTotal)}</div>
+          <div className="text-xs text-slate-300">High-leverage levers: rent override, TMS capacity (programs), consult inclusion, bundle COGS toggle.</div>
+        </Card>
+      </div>
+
       <Card className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -372,6 +466,10 @@ export function Overview() {
         </div>
 
         <div className="mt-4 h-[300px]">
+          <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
+            <span>P&amp;L trend (current vs scenario)</span>
+            <span>Δ shown as scenario - current</span>
+          </div>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={rows} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
               <XAxis dataKey="month" tick={{ fill: 'rgba(226,232,240,0.7)', fontSize: 12 }} />
@@ -694,6 +792,42 @@ export function Overview() {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                <div className="text-xs font-semibold text-slate-100">Matcher preview</div>
+                <div className="text-xs text-slate-300 mt-1">Accounts removed: {matcherPreview.accounts.length}</div>
+                <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
+                  {matcherPreview.accounts.length === 0 ? (
+                    <div className="text-slate-400">No accounts matched the current regex.</div>
+                  ) : (
+                    matcherPreview.accounts.map(acc => (
+                      <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
+                        <span className="font-semibold text-slate-100">{acc.name}</span>
+                        <span className="text-slate-400 uppercase text-[10px]">{acc.kind}</span>
+                        <span className="text-slate-200">{money(acc.total)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400">
+                  Totals removed → Revenue: <span className="text-slate-200">{money(matcherPreview.totals.revenue)}</span> · COGS:{' '}
+                  <span className="text-slate-200">{money(matcherPreview.totals.cogs)}</span> · Opex:{' '}
+                  <span className="text-slate-200">{money(matcherPreview.totals.opex)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
+                <div className="text-xs font-semibold text-slate-100">Capacity &amp; payout model</div>
+                <div className="text-[11px] text-slate-300">
+                  Programs / month: <span className="font-semibold text-slate-100">{programDisplayCount}</span> ({scenario.machinesEnabled ? 'capacity-derived' : 'manual'}).
+                  Capacity inputs: {scenario.tmsMachines} machines · {scenario.patientsPerMachinePerWeek} patients/wk · utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee → doctor payout {doctorPayoutPct}% of patient fee.
+                </div>
+              </div>
             </div>
 
             {/* Bundle streams */}
@@ -1029,6 +1163,9 @@ export function Overview() {
                       <div className="text-slate-200">
                         Δ COGS = {scenario.addBundleCostsToScenario ? `CBA×${money(cbaApplied)} + Program×${money(progApplied)}` : '0 (costs assumed already in P&L)'}
                       </div>
+                      <div className="text-slate-200">
+                        Bundle cost impact: CBA {moneyShort(cbaApplied)} /mo · Program {moneyShort(progApplied)} /mo (applied when toggle is ON).
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1037,6 +1174,18 @@ export function Overview() {
           </div>
             <div className="mt-4 text-xs text-slate-400">
               Next iteration: plug scenario revenue into the Dream lines (so you can drill down into assumptions the same way it drills into GL).
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-slate-400">Assumptions used:</span>
+              {assumptionChips.length === 0 ? (
+                <span className="text-xs text-slate-400">None (scenario off)</span>
+              ) : (
+                assumptionChips.map(chip => (
+                  <span key={chip} className="text-xs font-semibold text-slate-100 rounded-full bg-white/5 border border-white/10 px-3 py-1">
+                    {chip}
+                  </span>
+                ))
+              )}
             </div>
           </div>
       </Card>

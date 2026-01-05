@@ -5,15 +5,20 @@ import { AppMark } from '../AppMark'
 
 const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 })
+const DATETIME_FORMATTER = new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
 
 function money(n: number | null | undefined) {
-  if (n == null) return '—'
+  if (n == null || Number.isNaN(n)) return '—'
   return MONEY_FORMATTER.format(n)
 }
 
 function pct(n: number | null | undefined) {
   if (n == null || Number.isNaN(n)) return '—'
   return `${PCT_FORMATTER.format(n)}%`
+}
+
+function formatValue(value: number | null | undefined, format?: 'currency' | 'percentage') {
+  return format === 'percentage' ? pct(value) : money(value)
 }
 
 function Callout({ title, detail }: { title: string; detail: string }) {
@@ -25,7 +30,114 @@ function Callout({ title, detail }: { title: string; detail: string }) {
   )
 }
 
-export function InvestorReportTemplate({ data }: { data: ReportData }) {
+function Section({
+  title,
+  subtitle,
+  badge,
+  children,
+  pageBreak,
+}: {
+  title: string
+  subtitle?: string
+  badge?: React.ReactNode
+  children: React.ReactNode
+  pageBreak?: boolean
+}) {
+  return (
+    <div className={`${pageBreak ? 'page-break' : ''} rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">{title}</div>
+          {subtitle ? <div className="text-xs text-slate-400">{subtitle}</div> : null}
+        </div>
+        {badge}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function DriverTable({ title, result, movementBadge }: { title: string; result: DriverResult; movementBadge: string }) {
+  if (result.disabledReason) {
+    return <Callout title={`${title} unavailable`} detail={result.disabledReason} />
+  }
+  if (!result.items.length) {
+    return <Callout title={`No ${title.toLowerCase()}`} detail="Not enough movement to surface drivers." />
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="text-xs uppercase tracking-wide text-slate-300">{title}</div>
+          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">Movement: {movementBadge}</Chip>
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-white/10">
+        <table className="w-full text-[11px] text-slate-200">
+          <thead className="bg-white/5 text-slate-400">
+            <tr>
+              <th className="text-left px-3 py-2">Driver</th>
+              <th className="text-right px-3 py-2">Actual</th>
+              <th className="text-right px-3 py-2">Comparison</th>
+              <th className="text-right px-3 py-2">Δ / %</th>
+              <th className="text-right px-3 py-2">Profit impact</th>
+              <th className="text-right px-3 py-2">Contribution</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.items.map(d => {
+              const impactTone = d.profitImpact == null ? 'neutral' : d.profitImpact > 0 ? 'good' : 'bad'
+              return (
+                <tr key={d.label} className="border-t border-white/5">
+                  <td className="px-3 py-2 font-semibold text-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span>{d.label}</span>
+                      <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">{d.sectionType === 'income' ? 'Income' : 'Expense'}</Chip>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right">{money(d.currentValue)}</td>
+                  <td className="px-3 py-2 text-right">{money(d.compareValue)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="font-semibold">{money(d.delta)}</div>
+                    <div className="text-[10px] text-slate-400">{pct(d.pctDelta)}</div>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Chip
+                      tone={impactTone === 'good' ? 'good' : impactTone === 'bad' ? 'bad' : 'neutral'}
+                      className="justify-end px-2 py-[2px] text-[10px]"
+                    >
+                      {impactTone === 'good' ? '▲' : impactTone === 'bad' ? '▼' : '•'} {money(d.profitImpact)}
+                    </Chip>
+                  </td>
+                  <td className="px-3 py-2 text-right">{pct(d.contributionPct)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-[11px] text-slate-400">Profit impact accounts for income vs expense polarity.</div>
+    </div>
+  )
+}
+
+function FooterBar({ dataSourceLabel, snapshotId, generatedAt }: { dataSourceLabel: string; snapshotId?: string | null; generatedAt: Date }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold text-slate-100">Generated by Accounting Atlas</div>
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">Source: {dataSourceLabel}</Chip>
+          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">Snapshot: {snapshotId ?? 'live data'}</Chip>
+          <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">{DATETIME_FORMATTER.format(generatedAt)}</Chip>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?: { snapshotId?: string | null; generatedAt?: Date } }) {
   const {
     dataSourceLabel,
     dataQualityBadge,
@@ -48,6 +160,8 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
   const showTrend = trendRows.length > 0
   const showScenario = !!varianceAttribution && !dataQuality.disabledSections.includes('waterfall')
   const showDrivers = !(drivers.revenue.disabledReason && drivers.cost.disabledReason)
+  const generatedAt = meta?.generatedAt ?? new Date()
+  const snapshotId = meta?.snapshotId ?? null
 
   const missingMapping = dataQuality.missingAccounts.slice(0, 6)
   const mappingHint = missingMapping.length ? ` Map these next: ${missingMapping.join(', ')}.` : ' Map missing accounts to unlock drivers.'
@@ -73,57 +187,68 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
           </div>
           <div className="text-xs text-slate-400">{periodLabel}</div>
         </div>
-      </div>
 
       <div className="grid grid-cols-2 gap-3">
         {kpis.map(k => (
           <div key={k.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-slate-400">{k.label}</div>
             <div className={`text-lg font-semibold ${k.tone === 'good' ? 'text-emerald-300' : k.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>
-              {k.label.toLowerCase().includes('%') ? pct(k.current) : money(k.current)}
+              {formatValue(k.current, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))}
             </div>
             {k.variance != null && (
               <div className="text-xs text-slate-400">
-                Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
+                Scenario: {formatValue(k.scenario ?? null, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} (
+                {formatValue(k.label.toLowerCase().includes('%') ? (k.scenario ?? 0) - (k.current ?? 0) : k.variance, k.format ?? (k.label.toLowerCase().includes('%') ? 'percentage' : 'currency'))} vs current)
               </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-          <div className="text-sm font-semibold">Executive summary</div>
-          <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
-            {executiveSummary.map((i, idx) => (
-              <li key={idx}>{i}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-          <div className="text-sm font-semibold">What changed (last 3 vs prior 3)</div>
-          <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
-            {whatChanged.map((i, idx) => (
-              <li key={idx}>{i}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {warningLines.length > 0 && (
-        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
-          {warningLines.map((w, i) => (
-            <div key={i}>{w}</div>
+              {k.variance != null && (
+                <div className="text-xs text-slate-400">
+                  Scenario: {k.label.toLowerCase().includes('%') ? pct(k.scenario ?? null) : money(k.scenario ?? null)} ({k.label.toLowerCase().includes('%') ? pct(((k.scenario ?? 0) - (k.current ?? 0))) : money(k.variance)} vs current)
+                </div>
+              )}
+            </div>
           ))}
         </div>
-      )}
 
-      {/* Page 2 */}
-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Net profit trend with scenario overlay</div>
-          <div className="text-xs text-slate-400">{comparisonLabel}</div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+            <div className="text-sm font-semibold">Executive summary</div>
+            <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
+              {executiveSummary.map((i, idx) => (
+                <li key={idx}>{i}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+            <div className="text-sm font-semibold">What changed</div>
+            <ul className="text-sm text-slate-200 list-disc pl-5 space-y-1">
+              {whatChanged.map((i, idx) => (
+                <li key={idx}>{i}</li>
+              ))}
+            </ul>
+          </div>
         </div>
+
+        {warningLines.length > 0 && (
+          <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+            {warningLines.map((w, i) => (
+              <div key={i}>{w}</div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-white/10 pt-3">
+          <div>Accounting Atlas • Cover</div>
+          <div>Movement: {movementBadge}</div>
+        </div>
+      </div>
+
+      {/* Trend */}
+      <Section
+        title="Net profit trend with comparison overlay"
+        subtitle="Shows current trajectory plus scenario where enabled."
+        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">{comparisonLabel}</Chip>}
+        pageBreak
+      >
         {showTrend ? (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -140,93 +265,51 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
         ) : (
           <Callout title="Trend unavailable" detail="Upload at least 6 months of data to plot profit trend." />
         )}
-      </div>
+        {trendStats.last3vsPrev3 && <div className="text-xs text-slate-300">{trendStats.last3vsPrev3}</div>}
+      </Section>
 
-      {/* Page 3: Drivers */}
-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Income drivers (Actual + Movement)</div>
-          <div className="text-xs text-slate-400">{movementBadge}</div>
+      {/* Drivers */}
+      <Section
+        title="Drivers tables"
+        subtitle="Actual vs comparison with delta, contribution, and profit impact badges."
+        badge={showDrivers ? <Chip tone="neutral" className="px-3 py-1 text-xs">{movementBadge}</Chip> : undefined}
+        pageBreak
+      >
+        <div className="grid grid-cols-1 gap-4">
+          <DriverTable title="Income drivers" result={drivers.revenue} movementBadge={movementBadge} />
+          <DriverTable title="Cost drivers" result={drivers.cost} movementBadge={movementBadge} />
         </div>
-        {drivers.revenue.disabledReason ? (
-          <Callout
-            title="Drivers unavailable"
-            detail={`${drivers.revenue.disabledReason}${drivers.revenue.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
-          />
-        ) : drivers.revenue.items.length ? (
-          <div className="text-[11px] text-slate-200">
-            <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
-              <div className="w-1/4">Driver</div>
-              <div className="w-1/5 text-right">Actual</div>
-              <div className="w-1/5 text-right">Comparison</div>
-              <div className="w-1/5 text-right">Δ (profit impact)</div>
-              <div className="w-1/5 text-right">Contribution</div>
-            </div>
-            {drivers.revenue.items.map(d => {
-              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
-              return (
-                <div key={d.label} className="flex items-center border-b border-white/5 py-1">
-                  <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
-                  <div className="w-1/5 text-right">{money(d.currentValue)}</div>
-                  <div className="w-1/5 text-right">{money(d.compareValue)}</div>
-                  <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
-                    {money(d.delta)} ({pct(d.pctDelta)})
-                  </div>
-                  <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
-                </div>
-              )
-            })}
-            <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (income up is good, down is bad).</div>
+      </Section>
+
+      {/* Scenario attribution */}
+      <Section
+        title="Scenario variance attribution"
+        subtitle="Explains where the scenario delta comes from."
+        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">Scenario toggle</Chip>}
+        pageBreak
+      >
+        {showScenario && varianceAttribution ? (
+          <div className="grid grid-cols-1 gap-2">
+            {varianceAttribution.map((row, idx) => (
+              <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <div className="text-sm text-slate-200">{row.label}</div>
+                <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
+              </div>
+            ))}
           </div>
         ) : (
-          <Callout title="No revenue drivers" detail="Not enough movement to surface revenue drivers." />
+          <Callout title="Scenario attribution unavailable" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
         )}
-      </div>
+        <div className="text-xs text-slate-300">Assumptions: {scenarioNotes.join(' • ')}</div>
+      </Section>
 
-      {/* Page 4: Cost drivers */}
-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Cost drivers (Actual + Movement)</div>
-          <div className="text-xs text-slate-400">{movementBadge}</div>
-        </div>
-        {drivers.cost.disabledReason ? (
-          <Callout
-            title="Drivers unavailable"
-            detail={`${drivers.cost.disabledReason}${drivers.cost.disabledReason.toLowerCase().includes('mapped') ? mappingHint : ''}`}
-          />
-        ) : drivers.cost.items.length ? (
-          <div className="text-[11px] text-slate-200">
-            <div className="flex text-xs text-slate-400 font-semibold border-b border-white/10 pb-1">
-              <div className="w-1/4">Driver</div>
-              <div className="w-1/5 text-right">Actual</div>
-              <div className="w-1/5 text-right">Comparison</div>
-              <div className="w-1/5 text-right">Δ (profit impact)</div>
-              <div className="w-1/5 text-right">Contribution</div>
-            </div>
-            {drivers.cost.items.map(d => {
-              const impactTone = d.profitImpact == null ? 'text-slate-200' : d.profitImpact > 0 ? 'text-emerald-300' : d.profitImpact < 0 ? 'text-rose-300' : 'text-slate-200'
-              return (
-                <div key={d.label} className="flex items-center border-b border-white/5 py-1">
-                  <div className="w-1/4 font-semibold text-slate-100">{d.label}</div>
-                  <div className="w-1/5 text-right">{money(d.currentValue)}</div>
-                  <div className="w-1/5 text-right">{money(d.compareValue)}</div>
-                  <div className={`w-1/5 text-right font-semibold ${impactTone}`}>
-                    {money(d.delta)} ({pct(d.pctDelta)})
-                  </div>
-                  <div className="w-1/5 text-right">{pct(d.contributionPct)}</div>
-                </div>
-              )
-            })}
-            <div className="text-[11px] text-slate-400 pt-1">▲ improves profit / ▼ reduces profit (cost down is good, up is bad).</div>
-          </div>
-        ) : (
-          <Callout title="No cost drivers" detail="Not enough movement to surface cost drivers." />
-        )}
-      </div>
-
-      {/* Page 5 */}
-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-        <div className="text-sm font-semibold">P&L summary (current vs scenario)</div>
+      {/* P&L summary */}
+      <Section
+        title="P&L summary (current vs scenario)"
+        subtitle="Summarises income statement movement."
+        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">{comparisonLabel}</Chip>}
+        pageBreak
+      >
         {pnlSummary.length ? (
           <table className="w-full text-xs text-slate-200">
             <thead className="text-slate-400">
@@ -241,10 +324,10 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
               {pnlSummary.map(row => (
                 <tr key={row.label} className="border-t border-white/5">
                   <td className="py-1">{row.label}</td>
-                  <td className="py-1 text-right">{money(row.current)}</td>
-                  <td className="py-1 text-right">{row.scenario != null ? money(row.scenario) : '—'}</td>
+                  <td className="py-1 text-right">{formatValue(row.current, row.format)}</td>
+                  <td className="py-1 text-right">{row.scenario != null ? formatValue(row.scenario, row.format) : '—'}</td>
                   <td className={`py-1 text-right ${((row.variance ?? 0) >= 0) ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {row.variance != null ? money(row.variance) : '—'}
+                    {row.variance != null ? formatValue(row.variance, row.format) : '—'}
                   </td>
                 </tr>
               ))}
@@ -253,28 +336,37 @@ export function InvestorReportTemplate({ data }: { data: ReportData }) {
         ) : (
           <Callout title="P&L summary unavailable" detail="Upload a P&L to see investor summary lines." />
         )}
-      </div>
+      </Section>
 
-      {/* Page 6: Scenario attribution */}
-      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Scenario variance attribution</div>
-          <div className="text-xs text-slate-400">Explains where the scenario delta comes from.</div>
-        </div>
-        {showScenario && varianceAttribution ? (
-          <div className="grid grid-cols-1 gap-2">
-            {varianceAttribution.map((row, idx) => (
-              <div key={idx} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                <div className="text-sm text-slate-200">{row.label}</div>
-                <div className={`text-sm font-semibold ${row.tone === 'good' ? 'text-emerald-300' : row.tone === 'bad' ? 'text-rose-300' : 'text-slate-100'}`}>{money(row.amount)}</div>
-              </div>
-            ))}
+      {/* Appendix */}
+      <Section
+        title="Appendix"
+        subtitle="Assumptions, methodology, and data quality."
+        badge={<Chip tone="neutral" className="px-3 py-1 text-xs">Accounting Atlas</Chip>}
+        pageBreak
+      >
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+            <div className="text-sm font-semibold">Assumptions & methodology</div>
+            <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
+              {scenarioNotes.map((a, idx) => (
+                <li key={idx}>{a}</li>
+              ))}
+              <li>Datasource used: {dataSourceLabel}. Report never mixes sources silently.</li>
+            </ul>
           </div>
-        ) : (
-          <Callout title="Scenario attribution unavailable" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
-        )}
-        <div className="text-xs text-slate-300">Assumptions: {scenarioNotes.join(' • ')}</div>
-      </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+            <div className="text-sm font-semibold">Data quality</div>
+            <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
+              <li>Mapping completeness: {(dataQuality.mappingCompleteness * 100).toFixed(0)}%</li>
+              <li>Missing key accounts: {dataQuality.missingKeyAccounts.length}</li>
+              {missingMapping.length > 0 && <li>Examples to map: {missingMapping.join(', ')}</li>}
+              {dataQuality.disabledSections.length > 0 && <li>Sections disabled: {dataQuality.disabledSections.join(', ')}</li>}
+              <li>How to fix: Map the missing accounts in the Mapping page to unlock drivers and attribution.</li>
+            </ul>
+          </div>
+        </div>
+      </Section>
 
       {/* Appendix */}
       <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
