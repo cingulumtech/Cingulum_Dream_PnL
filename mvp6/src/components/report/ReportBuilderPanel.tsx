@@ -24,7 +24,7 @@ export function ReportBuilderPanel(props: BuilderState) {
 
       <div className="grid grid-cols-1 gap-2">
         <div>
-          <Label>Data source (required)</Label>
+          <Label>Data source (Legacy / Management)</Label>
           <div className="mt-2 flex flex-wrap gap-2">
             {(['legacy', 'dream'] as const).map(src => (
               <button
@@ -34,14 +34,14 @@ export function ReportBuilderPanel(props: BuilderState) {
                   dataSource === src ? 'border-indigo-400/40 bg-indigo-400/15 text-white' : 'border-white/10 bg-white/5 text-slate-200'
                 }`}
               >
-                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Dream P&L (mapped model)'}
+                {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Management P&L (mapped model)'}
                 {recommendedSource === src ? ' • default' : ''}
               </button>
             ))}
           </div>
           {recommendedSource === 'legacy' && (
             <div className="mt-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-              Dream mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
+              Management mapping below threshold. Defaulting to Legacy until at least 85% of key accounts are mapped.
             </div>
           )}
         </div>
