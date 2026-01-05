@@ -122,8 +122,17 @@ export function MappingEditor() {
 
   if (!pl) {
     return (
-      <Card className="p-5">
-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export first.</div>
+      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">Mapping</div>
+            <div className="text-sm text-slate-200">Import the Profit &amp; Loss export to start mapping Xero accounts.</div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+            <Button variant="ghost" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
+          </div>
+        </div>
       </Card>
     )
   }
@@ -197,36 +206,15 @@ export function MappingEditor() {
     : 'Autosave ready'
 
   return (
-    <Card className="p-5 overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold">Mapping editor</div>
-          <div className="text-sm text-slate-300">
-            Drag/drop accounts between the panels or tap to toggle. Filters, matcher previews, and quick undo keep you fast.
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Chip>{unmappedAccounts.length} unmapped</Chip>
-          <Chip tone="good">{autosaveLabel}</Chip>
-          <Button variant="ghost" disabled={!canUndo} onClick={() => undoTemplate()}>
-            <Undo2 className="h-4 w-4" /> Undo
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        {sectionStats.map(s => (
-          <div key={s.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center justify-between text-xs text-slate-300">
-              <span>{s.label} coverage</span>
-              <span>{s.mapped}/{s.total}</span>
+      <Card className="p-5 overflow-hidden">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-lg font-semibold">Mapping</div>
+            <div className="text-sm text-slate-300">
+              Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default (so you can mop them up fast).
             </div>
-            <div className="mt-1 h-2 rounded-full bg-black/30 overflow-hidden">
-              <div className="h-full bg-indigo-400/80" style={{ width: `${s.percent}%` }} />
-            </div>
-            <div className="mt-1 text-xs text-slate-400">{s.percent}% mapped</div>
           </div>
-        ))}
+          <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr]">
@@ -234,7 +222,7 @@ export function MappingEditor() {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-slate-300" />
-            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search Dream lines…" />
+            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search layout lines…" />
           </div>
 
           <div className="mt-3 max-h-[520px] overflow-auto pr-1">
@@ -269,21 +257,16 @@ export function MappingEditor() {
           </div>
         </div>
 
-        {/* Right: Accounts + matcher */}
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
-            {!selectedLine ? (
-              <div className="text-sm text-slate-300">Select a Dream line to map accounts.</div>
-            ) : (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-base font-semibold">{selectedLine.label}</div>
-                    <div className="text-xs text-slate-400">Drop accounts here or click to toggle.</div>
-                  </div>
-                  <Button variant="ghost" onClick={autoSuggest}>
-                    <Wand2 className="h-4 w-4" /> Suggest
-                  </Button>
+        {/* Right: Accounts picker */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+          {!selectedLine ? (
+            <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-semibold">{selectedLine.label}</div>
+                  <div className="text-xs text-slate-400">Tap accounts to toggle. Think “photo editing”: fast, reversible, obvious.</div>
                 </div>
 
                 <div className="mt-3">

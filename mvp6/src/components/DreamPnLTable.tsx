@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Settings2, Link2, RefreshCcw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals } from '../lib/dream/compute'
 import { DreamGroup, DreamLine } from '../lib/types'
@@ -229,8 +229,19 @@ export function DreamPnLTable() {
 
   if (!pl) {
     return (
-      <Card className="p-5">
-        <div className="text-sm text-slate-300">Upload a Profit &amp; Loss export to view your Dream P&amp;L.</div>
+      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">P&amp;L (Management)</div>
+            <div className="text-sm text-slate-200">
+              Upload the Profit &amp; Loss export to unlock the management view and drill-down.
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
+          </div>
+        </div>
       </Card>
     )
   }
@@ -241,9 +252,9 @@ export function DreamPnLTable() {
     <Card className="p-5 overflow-hidden">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-lg font-semibold">Dream P&amp;L (management view)</div>
+          <div className="text-lg font-semibold">P&amp;L (Management)</div>
           <div className="text-sm text-slate-300">
-            Same underlying Xero data, re-expressed into your Dream structure. Click a line to drill down.
+            Same underlying Xero data, re-expressed into your management layout. Click a line to drill down.
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 justify-end">
@@ -285,45 +296,9 @@ export function DreamPnLTable() {
         </div>
       )}
 
-      {pl && <DataHealthSummary pl={pl} className="mt-4" />}
-
-      {unmappedTotals && (
-        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-sm font-semibold text-amber-100">Unmapped remainder</div>
-              <div className="text-xs text-amber-50/80">
-                Totals that have not yet been captured by your Dream mapping. Map them to close the reconciliation gap.
-              </div>
-            </div>
-            <Button variant="ghost" onClick={() => setView('mapping')}>
-              <Link2 className="h-4 w-4" /> Go to Mapping
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
-              <div className="text-xs text-amber-50/70">Revenue gap</div>
-              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.revenue.reduce((a, b) => a + b, 0))}</div>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
-              <div className="text-xs text-amber-50/70">COGS gap</div>
-              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.cogs.reduce((a, b) => a + b, 0))}</div>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
-              <div className="text-xs text-amber-50/70">OpEx gap</div>
-              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.opex.reduce((a, b) => a + b, 0))}</div>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
-              <div className="text-xs text-amber-50/70">Net gap</div>
-              <div className="mt-1 font-semibold tabular-nums">{formatCurrency(unmappedTotals.net.reduce((a, b) => a + b, 0))}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="w-full md:w-80">
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search Dream lines…" />
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="w-80">
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search management lines…" />
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <span>Unmapped lines show as “Unmapped” until you map accounts.</span>

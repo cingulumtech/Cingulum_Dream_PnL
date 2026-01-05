@@ -76,6 +76,7 @@ export function UploadPanel() {
           <div className="mt-3 flex">
             <input
               ref={plInput}
+              id="pl-upload-input"
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"
@@ -100,6 +101,7 @@ export function UploadPanel() {
           <div className="mt-3 flex">
             <input
               ref={glInput}
+              id="gl-upload-input"
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"

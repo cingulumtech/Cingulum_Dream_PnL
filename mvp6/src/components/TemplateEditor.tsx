@@ -171,9 +171,9 @@ export function TemplateEditor() {
     <Card className="p-5 overflow-hidden">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-lg font-semibold">Dream P&amp;L layout editor</div>
+          <div className="text-lg font-semibold">Layout</div>
           <div className="text-sm text-slate-300">
-            Edit categories and line items like a tree editor. Reorder, rename, add, and protect mapped lines with guided delete.
+            Edit categories and line items like an iPhone editor: select, rename, move, add, delete. Mapping stays separate.
           </div>
         </div>
         <div className="flex items-center gap-2">
