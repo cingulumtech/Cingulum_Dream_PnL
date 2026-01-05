@@ -2,6 +2,18 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
 import { GL, ScenarioInputs, XeroPL, DreamTemplate } from '../lib/types'
+import { FrameworkDefaults, RECOMMENDED_DEFAULTS } from '../lib/defaults'
+import {
+  buildSnapshotSummary,
+  DatasetFingerprint,
+  ensureExportSettings,
+  ensureReportConfig,
+  fingerprintGl,
+  fingerprintPl,
+  fingerprintTemplate,
+  SnapshotReportConfig,
+  SnapshotSummary,
+} from '../lib/snapshotUtils'
 
 export type View = 'overview' | 'legacy' | 'dream' | 'mapping' | 'scenario' | 'help' | 'settings' | 'exports' | 'reports'
 
@@ -25,14 +37,12 @@ type AppState = {
   scenario: ScenarioInputs
   setScenario: (s: Partial<ScenarioInputs>) => void
 
-  defaults: {
-    suggestedCbaPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
-    suggestedProgramPrice: Record<'NSW/QLD' | 'WA' | 'VIC', number>
-    mriCostByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
-    mriPatientByState: Record<'NSW/QLD' | 'WA' | 'VIC', number>
-    doctorServiceFeePct: number
-  }
+  defaults: FrameworkDefaults
   setDefaults: (d: Partial<AppState['defaults']>) => void
+  resetDefaults: () => void
+
+  reportConfig: SnapshotReportConfig
+  setReportConfig: (cfg: Partial<SnapshotReportConfig>) => void
 
   snapshots: {
     id: string
@@ -42,10 +52,21 @@ type AppState = {
     template: DreamTemplate
     pl: XeroPL | null
     gl: GL | null
+    reportConfig: SnapshotReportConfig
+    exportSettings: FrameworkDefaults['exportSettings']
+    fingerprints: {
+      pl?: DatasetFingerprint
+      gl?: DatasetFingerprint
+      templateVersion: string
+      layoutHash: string
+    }
+    summary: SnapshotSummary
   }[]
   addSnapshot: (name: string) => void
   loadSnapshot: (id: string) => void
   deleteSnapshot: (id: string) => void
+  renameSnapshot: (id: string, name: string) => void
+  duplicateSnapshot: (id: string) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -146,18 +167,19 @@ export const useAppStore = create<AppState>()(
       },
       setScenario: (s) => set({ scenario: { ...get().scenario, ...s } }),
 
-      defaults: {
-        suggestedCbaPrice: { 'NSW/QLD': 1325, WA: 1475, VIC: 925 },
-        suggestedProgramPrice: { 'NSW/QLD': 10960, WA: 11110, VIC: 10560 },
-        mriCostByState: { 'NSW/QLD': 380, WA: 750, VIC: 0 },
-        mriPatientByState: { 'NSW/QLD': 400, WA: 770, VIC: 0 },
-        doctorServiceFeePct: 15,
-      },
-      setDefaults: (d) => set({ defaults: { ...get().defaults, ...d } }),
+      defaults: RECOMMENDED_DEFAULTS,
+      setDefaults: (d) => set({ defaults: { ...get().defaults, ...d, exportSettings: ensureExportSettings({ ...get().defaults.exportSettings, ...d?.exportSettings }) } }),
+      resetDefaults: () => set({ defaults: RECOMMENDED_DEFAULTS }),
+
+      reportConfig: ensureReportConfig(),
+      setReportConfig: (cfg) => set({ reportConfig: { ...get().reportConfig, ...cfg } }),
 
       snapshots: [],
       addSnapshot: (name) => {
         const state = get()
+        const reportConfig = ensureReportConfig(state.reportConfig)
+        const exportSettings = ensureExportSettings(state.defaults.exportSettings)
+        const templateFingerprint = fingerprintTemplate(state.template)
         const snapshot = {
           id: crypto.randomUUID(),
           name,
@@ -166,6 +188,20 @@ export const useAppStore = create<AppState>()(
           template: state.template,
           pl: state.pl,
           gl: state.gl,
+          reportConfig,
+          exportSettings,
+          fingerprints: {
+            pl: fingerprintPl(state.pl),
+            gl: fingerprintGl(state.gl),
+            templateVersion: templateFingerprint.templateVersion,
+            layoutHash: templateFingerprint.layoutHash,
+          },
+          summary: buildSnapshotSummary({
+            pl: state.pl,
+            template: state.template,
+            scenario: state.scenario,
+            reportConfig,
+          }),
         }
         set({ snapshots: [snapshot, ...state.snapshots].slice(0, 20) })
       },
@@ -178,10 +214,22 @@ export const useAppStore = create<AppState>()(
           template: snap.template,
           pl: snap.pl,
           gl: snap.gl,
+          reportConfig: snap.reportConfig,
+          defaults: { ...state.defaults, exportSettings: snap.exportSettings },
         })
       },
       deleteSnapshot: (id) => {
         set({ snapshots: get().snapshots.filter(s => s.id !== id) })
+      },
+      renameSnapshot: (id, name) => {
+        set({ snapshots: get().snapshots.map(s => (s.id === id ? { ...s, name } : s)) })
+      },
+      duplicateSnapshot: (id) => {
+        const state = get()
+        const snap = state.snapshots.find(s => s.id === id)
+        if (!snap) return
+        const copy = { ...snap, id: crypto.randomUUID(), name: `${snap.name} (copy)`, createdAt: new Date().toISOString() }
+        set({ snapshots: [copy, ...state.snapshots].slice(0, 20) })
       },
     }),
     {
@@ -191,6 +239,7 @@ export const useAppStore = create<AppState>()(
         scenario: state.scenario,
         defaults: state.defaults,
         snapshots: state.snapshots,
+        reportConfig: state.reportConfig,
       }),
       // Keep backward compatibility when we add new scenario keys (avoid old persisted state wiping defaults)
       merge: (persisted: any, current) => {
@@ -212,13 +261,41 @@ export const useAppStore = create<AppState>()(
           return result as typeof defaults
         }
 
+        const mergedDefaults = { ...RECOMMENDED_DEFAULTS, ...(persisted?.defaults ?? current.defaults) }
+        mergedDefaults.exportSettings = ensureExportSettings(mergedDefaults.exportSettings)
+
+        const hydrateSnapshots = (snaps: any[] | undefined) =>
+          (snaps ?? []).map((s) => {
+            const reportConfig = ensureReportConfig(s.reportConfig ?? current.reportConfig)
+            const exportSettings = ensureExportSettings(s.exportSettings ?? mergedDefaults.exportSettings)
+            const templateFingerprint = fingerprintTemplate(s.template ?? current.template)
+            return {
+              ...s,
+              reportConfig,
+              exportSettings,
+              fingerprints: s.fingerprints ?? {
+                pl: fingerprintPl(s.pl ?? null),
+                gl: fingerprintGl(s.gl ?? null),
+                templateVersion: templateFingerprint.templateVersion,
+                layoutHash: templateFingerprint.layoutHash,
+              },
+              summary: s.summary ?? buildSnapshotSummary({
+                pl: s.pl ?? null,
+                template: s.template ?? current.template,
+                scenario: s.scenario ?? current.scenario,
+                reportConfig,
+              }),
+            }
+          })
+
         return {
           ...current,
           ...persisted,
           template: persisted?.template ?? current.template,
           scenario: sanitizeScenario(incoming, defaults),
-          defaults: persisted?.defaults ?? current.defaults,
-          snapshots: persisted?.snapshots ?? current.snapshots,
+          defaults: mergedDefaults as FrameworkDefaults,
+          snapshots: hydrateSnapshots(persisted?.snapshots ?? current.snapshots),
+          reportConfig: ensureReportConfig(persisted?.reportConfig ?? current.reportConfig),
         }
       },
     }
