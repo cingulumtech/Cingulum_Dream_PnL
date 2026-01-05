@@ -447,7 +447,7 @@ export function getReportData(opts: {
     ]
 
     const executiveSummary: string[] = []
-    executiveSummary.push(`Datasource: ${source === 'management' ? 'Management P&L (mapped model)' : 'Legacy Xero export'}`)
+    executiveSummary.push(`Datasource: ${source === 'dream' ? 'Accounting Atlas (mapped model)' : 'Legacy Xero export'}`)
     if (netDelta != null) executiveSummary.push(`Scenario impact: ${money(netDelta)} vs current.`)
     const comparison = computeComparison(mode, baseTotals.net, scenarioTotals ? scenarioTotals.net : baseTotals.net, scenarioTotals)
     executiveSummary.push(`Comparison mode: ${comparison.label}`)
@@ -469,7 +469,7 @@ export function getReportData(opts: {
     if (driverDisabled) dataQuality.disabledSections.push('drivers')
     if (scenarioActive && mapping.completeness < completenessThreshold && source === 'management') dataQuality.disabledSections.push('waterfall')
 
-    const dataSourceLabel = source === 'management' ? 'Management P&L (mapped model)' : 'Legacy P&L (Xero export)'
+    const dataSourceLabel = source === 'dream' ? 'Accounting Atlas (mapped model)' : 'Legacy P&L (Xero export)'
     const dataQualityBadge = makeDataQualityBadge(source, mapping.completeness, mapping.missingKeyAccounts.length)
 
     const varianceAttribution = scenarioTotals ? buildVarianceAttribution(baseTotals, scenarioTotals) : undefined

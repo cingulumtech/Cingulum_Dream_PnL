@@ -13,6 +13,7 @@ import { SavedExports } from './components/SavedExports'
 import { Reports } from './components/Reports'
 import { DrilldownDrawer } from './components/DrilldownDrawer'
 import { Card } from './components/ui'
+import { AppMark } from './components/AppMark'
 
 export function App() {
   const view = useAppStore(s => s.view)
@@ -20,8 +21,8 @@ export function App() {
 
   const nav: { id: View; label: string; icon: React.ComponentType<any> }[] = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'pnlLegacy', label: 'P&L (Legacy)', icon: FileSpreadsheet },
-    { id: 'pnlManagement', label: 'P&L (Management)', icon: LayoutGrid },
+    { id: 'legacy', label: 'Legacy P&L', icon: FileSpreadsheet },
+    { id: 'dream', label: 'Atlas P&L', icon: LayoutGrid },
     { id: 'mapping', label: 'Mapping', icon: Wand2 },
     { id: 'layout', label: 'Layout', icon: Settings2 },
     { id: 'reports', label: 'Reports', icon: FileText },
@@ -37,25 +38,17 @@ export function App() {
         className="pointer-events-none fixed inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(1200px 700px at 10% 0%, rgba(99,102,241,0.25), transparent 60%), radial-gradient(900px 600px at 90% 20%, rgba(56,189,248,0.20), transparent 55%), rgb(17,24,39)',
+            'radial-gradient(1200px 700px at 8% 0%, rgba(64,145,106,0.24), transparent 60%), radial-gradient(900px 620px at 92% 12%, rgba(82,183,136,0.16), transparent 55%), rgb(var(--color-canvas))',
         }}
       />
       <div className="mx-auto max-w-[1400px] p-4 md:p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]">
           <div className="space-y-4">
             <Card className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 via-sky-400 to-cyan-300 text-slate-900 font-black shadow-glass ring-1 ring-white/40">
-                  C
-                </div>
-                <div className="space-y-1">
-                  <div className="text-sm font-semibold text-slate-200">Cingulum</div>
-                  <div className="text-lg font-semibold">P&amp;L Control</div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    Upload Xero exports, map once, and drive a board-grade P&amp;L with drill-down.
-                  </div>
-                </div>
-              </div>
+              <AppMark
+                layout="stacked"
+                caption="Accounting Atlas turns your mapped Xero exports into a board-grade story for Cingulum Health."
+              />
             </Card>
 
             <Card className="p-3">
@@ -66,9 +59,9 @@ export function App() {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setView(item.id)}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold border transition ${
-                        active ? 'bg-indigo-500/15 border-indigo-400/30' : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
+                      onClick={() => setView(item.id as any)}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                        active ? 'bg-indigo-500/15 border-indigo-400/30 text-slate-50' : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10 text-slate-200'
                       }`}
                     >
                       <Icon className="h-4 w-4 text-slate-200" />

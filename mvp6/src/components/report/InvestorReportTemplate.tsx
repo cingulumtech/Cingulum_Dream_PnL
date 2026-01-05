@@ -1,7 +1,7 @@
 import React from 'react'
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts'
-import { DriverResult, ReportData } from '../../lib/reportData'
-import { Chip } from '../ui'
+import { ReportData } from '../../lib/reportData'
+import { AppMark } from '../AppMark'
 
 const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 })
@@ -171,23 +171,21 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
   if (drivers.revenue.disabledReason || drivers.cost.disabledReason) warningLines.push('Drivers incomplete. Go to Mapping to unlock movement insights.')
 
   return (
-    <div className="bg-slate-950 text-slate-100 font-sans w-full max-w-none mx-auto p-6 md:p-8 space-y-6 report-root">
-      {/* Cover */}
-      <div className="page-break rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-6 space-y-4 shadow-2xl shadow-black/40">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-100 font-semibold">AA</div>
-            <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-indigo-200">Investor Report</div>
-              <div className="text-2xl font-bold">Cingulum Dream P&L</div>
-              <div className="text-sm text-slate-300">{periodLabel}</div>
-              <div className="mt-1 text-xs text-slate-400">Data source: {dataSourceLabel}</div>
-            </div>
+    <div className="bg-slate-950 text-slate-100 font-sans w-full max-w-none mx-auto p-8 space-y-8">
+      {/* Page 1 */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <AppMark size="sm" />
+          <div className="text-xs uppercase tracking-wide text-indigo-300">Investor report</div>
+          <div className="text-sm text-slate-300">Board-grade performance story with mapped, reconciled data.</div>
+          <div className="mt-1 text-xs text-slate-300">Datasource: {dataSourceLabel}</div>
+          <div className="text-[11px] text-slate-300">{movementBadge}</div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+            {dataQualityBadge}
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <Chip tone="neutral" className="px-3 py-1 text-xs">{dataQualityBadge}</Chip>
-            <Chip tone="neutral" className="px-3 py-1 text-xs">{movementBadge}</Chip>
-          </div>
+          <div className="text-xs text-slate-400">{periodLabel}</div>
         </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -370,7 +368,32 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
         </div>
       </Section>
 
-      <FooterBar dataSourceLabel={dataSourceLabel} snapshotId={snapshotId} generatedAt={generatedAt} />
+      {/* Appendix */}
+      <div className="page-break rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+        <div className="text-sm font-semibold">Assumptions & methodology</div>
+        <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
+          {scenarioNotes.map((a, idx) => (
+            <li key={idx}>{a}</li>
+          ))}
+          <li>Datasource used: {dataSourceLabel}. Report never mixes sources silently.</li>
+        </ul>
+        <div className="text-sm font-semibold pt-3">Data quality</div>
+        <ul className="text-xs text-slate-200 list-disc pl-4 space-y-1">
+          <li>Mapping completeness: {(dataQuality.mappingCompleteness * 100).toFixed(0)}%</li>
+          <li>Missing key accounts: {dataQuality.missingKeyAccounts.length}</li>
+          {missingMapping.length > 0 && <li>Examples to map: {missingMapping.join(', ')}</li>}
+          {dataQuality.disabledSections.length > 0 && <li>Sections disabled: {dataQuality.disabledSections.join(', ')}</li>}
+          <li>How to fix: Map the missing accounts in the Mapping page to unlock drivers and attribution.</li>
+        </ul>
+      </div>
+
+      <div className="pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+        <AppMark size="sm" />
+        <div className="text-right leading-tight">
+          <div>Accounting Atlas — Cingulum Health</div>
+          <div>{periodLabel}</div>
+        </div>
+      </div>
     </div>
   )
 }

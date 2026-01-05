@@ -3,8 +3,32 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      colors: {
+        canvas: 'rgb(var(--color-canvas) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        surfaceStrong: 'rgb(var(--color-surface-strong) / <alpha-value>)',
+        border: 'rgb(var(--color-border) / <alpha-value>)',
+        borderStrong: 'rgb(var(--color-border-strong) / <alpha-value>)',
+        text: 'rgb(var(--color-text) / <alpha-value>)',
+        muted: 'rgb(var(--color-text-muted) / <alpha-value>)',
+        subtle: 'rgb(var(--color-text-subtle) / <alpha-value>)',
+        accent: 'rgb(var(--color-accent) / <alpha-value>)',
+        accentSoft: 'rgb(var(--color-accent-soft) / <alpha-value>)',
+        accentContrast: 'rgb(var(--color-accent-contrast) / <alpha-value>)',
+      },
+      fontFamily: {
+        sans: ['var(--font-sans)'],
+      },
+      borderRadius: {
+        xl: 'var(--radius-xl)',
+        lg: 'var(--radius-lg)',
+        md: 'var(--radius-md)',
+      },
       boxShadow: {
-        glass: '0 10px 30px rgba(0,0,0,0.25)',
+        glass: 'var(--shadow-strong)',
+      },
+      backdropBlur: {
+        brand: 'var(--blur-strong)',
       },
     },
   },
