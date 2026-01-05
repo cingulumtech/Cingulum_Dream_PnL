@@ -11,9 +11,11 @@ type AppState = {
   setView: (v: View) => void
 
   pl: XeroPL | null
+  plLoadedAt: string | null
   setPL: (pl: XeroPL | null) => void
 
   gl: GL | null
+  glLoadedAt: string | null
   setGL: (gl: GL | null) => void
 
   template: DreamTemplate
@@ -72,10 +74,12 @@ export const useAppStore = create<AppState>()(
       setView: (v) => set({ view: v }),
 
       pl: null,
-      setPL: (pl) => set({ pl }),
+      plLoadedAt: null,
+      setPL: (pl) => set({ pl, plLoadedAt: pl ? new Date().toISOString() : null }),
 
       gl: null,
-      setGL: (gl) => set({ gl }),
+      glLoadedAt: null,
+      setGL: (gl) => set({ gl, glLoadedAt: gl ? new Date().toISOString() : null }),
 
       template: DEFAULT_DREAM_TEMPLATE,
       templateHistory: [],
