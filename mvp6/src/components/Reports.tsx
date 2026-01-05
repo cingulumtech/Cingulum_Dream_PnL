@@ -92,7 +92,7 @@ export function Reports() {
           ...reportData.dataQuality.warnings,
           ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
           ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
-            ? ['Dream mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+            ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
             : []),
         ]}
         comparisonMode={builder.comparisonMode}
