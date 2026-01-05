@@ -2,7 +2,7 @@ import React from 'react'
 import clsx from 'clsx'
 
 export function Card(props: React.HTMLAttributes<HTMLDivElement>) {
-  return <div {...props} className={clsx('glass shadow-glass rounded-2xl', props.className)} />
+  return <div {...props} className={clsx('glass shadow-glass rounded-[var(--radius-xl)]', props.className)} />
 }
 
 export function Button(
@@ -10,12 +10,12 @@ export function Button(
 ) {
   const { variant = 'primary', className, ...rest } = props
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-[0.98]'
+    'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
   const variants: Record<string, string> = {
     primary:
-      'bg-indigo-500/90 hover:bg-indigo-500 text-white shadow-glass border border-indigo-400/40',
+      'bg-gradient-to-r from-accent to-accentSoft text-canvas shadow-glass border border-accentSoft/60',
     ghost: 'bg-white/5 hover:bg-white/10 text-slate-100 border border-white/10',
-    danger: 'bg-rose-500/80 hover:bg-rose-500 text-white border border-rose-400/40',
+    danger: 'bg-rose-500/80 hover:bg-rose-500 text-white border border-rose-400/40 shadow-glass',
   }
   return <button {...rest} className={clsx(base, variants[variant], className)} />
 }
@@ -25,7 +25,7 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={clsx(
-        'w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500/50',
+        'w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent/40',
         props.className
       )}
     />
@@ -40,8 +40,8 @@ export function Chip(props: React.HTMLAttributes<HTMLDivElement> & { tone?: 'neu
   const { tone = 'neutral', className, ...rest } = props
   const tones: Record<string, string> = {
     neutral: 'bg-white/5 text-slate-200 border-white/10',
-    good: 'bg-emerald-500/10 text-emerald-200 border-emerald-500/20',
-    bad: 'bg-rose-500/10 text-rose-200 border-rose-500/20',
+    good: 'bg-emerald-500/15 text-emerald-50 border-emerald-400/30',
+    bad: 'bg-rose-500/15 text-rose-50 border-rose-400/30',
   }
   return (
     <div

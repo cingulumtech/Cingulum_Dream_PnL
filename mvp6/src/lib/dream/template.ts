@@ -15,16 +15,16 @@ const group = (id: string, label: string, children: (DreamGroup | DreamLine)[]):
 })
 
 /**
- * Built-in Dream P&L template (editable in-app).
- * This is based on the Dream P&L HTML you supplied, including:
+ * Built-in Accounting Atlas template (editable in-app).
+ * This is based on the financial layout you supplied, including:
  * - Board / Investor View
  * - Revenue / Cost of Sales / Operating Expenses
  * - Sub-groups (Payroll, Premises, Technology, etc.)
  */
 export const DEFAULT_DREAM_TEMPLATE: DreamTemplate = {
   id: 'dream_v1',
-  name: 'Dream P&L (Board / Investor View)',
-  root: group('root', 'Dream P&L', [
+  name: 'Accounting Atlas (Board / Investor View)',
+  root: group('root', 'Accounting Atlas', [
     group('rev', 'Revenue', [
       line('rev_cba', 'CBA - Program Revenue'),
       line('rev_tms', 'cgTMS - Program Revenue'),

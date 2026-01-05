@@ -75,7 +75,7 @@ export function LegacyPnLTable() {
         </div>
       </div>
 
-      {/* Top-level 12-month totals (same as Dream P&L) */}
+      {/* Top-level 12-month totals (same as Atlas P&L) */}
       {totals && (
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">

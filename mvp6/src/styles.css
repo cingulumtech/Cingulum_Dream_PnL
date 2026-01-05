@@ -1,48 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg: 17 24 39;         /* slate-900 */
-  --card: 17 24 39;
-  --muted: 148 163 184;   /* slate-400 */
-  --text: 226 232 240;    /* slate-200 */
-  --accent: 99 102 241;   /* indigo-500 */
+  color-scheme: dark;
+
+  --font-sans: 'Roboto', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-canvas: 11 20 28;
+  --color-surface: 17 31 42;
+  --color-surface-strong: 23 44 58;
+  --color-border: 48 70 84;
+  --color-border-strong: 71 98 115;
+
+  --color-text: 232 243 246;
+  --color-text-subtle: 182 199 210;
+  --color-text-muted: 144 167 182;
+
+  --color-accent: 64 145 106;
+  --color-accent-soft: 82 183 136;
+  --color-accent-contrast: 193 248 222;
+
+  --shadow-soft: 0 12px 40px rgba(5, 16, 24, 0.35);
+  --shadow-strong: 0 22px 80px rgba(5, 16, 24, 0.55);
+
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --blur-strong: 18px;
 }
 
 html, body { height: 100%; }
 body {
-  /* Background is rendered by a single fixed layer in <App/> to avoid seams. */
-  background: rgb(var(--bg));
-  color: rgb(var(--text));
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  background:
+    radial-gradient(1100px 620px at 10% 0%, rgb(var(--color-accent-soft) / 0.14), transparent 60%),
+    radial-gradient(900px 520px at 90% 10%, rgba(35, 119, 93, 0.16), transparent 60%),
+    rgb(var(--color-canvas));
+  color: rgb(var(--color-text));
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  color: rgb(var(--color-canvas));
+  background: rgb(var(--color-accent-contrast));
 }
 
 /* subtle scrollbar */
 *::-webkit-scrollbar { height: 10px; width: 10px; }
-*::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.25); border-radius: 999px; }
-*::-webkit-scrollbar-track { background: rgba(15,23,42,0.2); }
+*::-webkit-scrollbar-thumb { background: rgb(var(--color-border-strong) / 0.35); border-radius: 999px; }
+*::-webkit-scrollbar-track { background: rgba(0,0,0,0.12); }
 
 .glass {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, rgb(var(--color-surface-strong)) 88%, transparent);
+  border: 1px solid rgb(var(--color-border-strong));
+  box-shadow: var(--shadow-strong);
+  backdrop-filter: blur(var(--blur-strong));
 }
 
 .kbd {
-  border: 1px solid rgba(148,163,184,0.25);
-  background: rgba(15,23,42,0.55);
+  border: 1px solid rgb(var(--color-border-strong) / 0.65);
+  background: rgb(var(--color-surface-strong) / 0.7);
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 12px;
-  color: rgba(226,232,240,0.85);
+  color: rgb(var(--color-text) / 0.85);
+}
+
+a {
+  color: rgb(var(--color-accent-soft));
 }
 
 /* Native select dropdown theming (Chromium/Windows) */
 select {
   color-scheme: dark;
+  background-color: color-mix(in srgb, rgb(var(--color-surface-strong)) 80%, transparent);
+  border-color: rgb(var(--color-border) / 0.8);
+  color: rgb(var(--color-text));
 }
 select option {
-  background-color: rgb(15, 23, 42); /* slate-900-ish */
-  color: rgb(226, 232, 240);
+  background-color: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+}
+
+@layer utilities {
+  .bg-white\/5 { background-color: color-mix(in srgb, rgb(var(--color-surface-strong)) 82%, transparent); }
+  .bg-white\/10 { background-color: color-mix(in srgb, rgb(var(--color-surface-strong)) 95%, transparent); }
+  .bg-slate-950 { background-color: rgb(var(--color-surface-strong)); }
+  .bg-slate-900 { background-color: rgb(var(--color-surface)); }
+  .border-white\/10 { border-color: rgb(var(--color-border)); }
+  .border-white\/0 { border-color: transparent; }
+  .text-slate-100 { color: rgb(var(--color-text)); }
+  .text-slate-200 { color: color-mix(in srgb, rgb(var(--color-text)) 85%, rgb(var(--color-text-muted)) 15%); }
+  .text-slate-300 { color: rgb(var(--color-text-subtle)); }
+  .text-slate-400 { color: rgb(var(--color-text-muted)); }
+  .text-indigo-300 { color: rgb(var(--color-accent-contrast)); }
+  .bg-indigo-500\/15 { background-color: rgb(var(--color-accent) / 0.15); }
+  .border-indigo-400\/30 { border-color: rgb(var(--color-accent-soft) / 0.35); }
+  .border-indigo-400\/40 { border-color: rgb(var(--color-accent-soft) / 0.45); }
+  .shadow-glass { box-shadow: var(--shadow-strong); }
+}
+
+@media print {
+  :root { color-scheme: light; }
+  body {
+    background: #fff;
+    color: rgb(var(--color-canvas));
+  }
+  .glass, .bg-white\/5, .bg-white\/10, .bg-slate-950, .bg-slate-900 {
+    background: #fff !important;
+    box-shadow: none !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+  }
+  .text-slate-100, .text-slate-200, .text-slate-300, .text-slate-400 {
+    color: #0b141c !important;
+  }
 }
