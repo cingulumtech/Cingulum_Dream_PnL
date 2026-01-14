@@ -6,6 +6,7 @@ import { XeroPLSection } from '../lib/types'
 import { computeDepAmort, computeXeroTotals } from '../lib/dream/compute'
 import { formatCurrency } from '../lib/format'
 import { DataHealthSummary } from './DataHealthSummary'
+import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 
 const sectionLabels: Record<XeroPLSection, string> = {
   trading_income: 'Trading Income',
@@ -17,6 +18,9 @@ const sectionLabels: Record<XeroPLSection, string> = {
 
 export function LegacyPnLTable() {
   const pl = useAppStore(s => s.pl)
+  const gl = useAppStore(s => s.gl)
+  const txnOverrides = useAppStore(s => s.txnOverrides)
+  const doctorRules = useAppStore(s => s.doctorRules)
   const setView = useAppStore(s => s.setView)
   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
   const [q, setQ] = useState('')
@@ -28,11 +32,24 @@ export function LegacyPnLTable() {
     unknown: true,
   })
 
+  const effectiveLedger = useMemo(
+    () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
+    [gl, txnOverrides, doctorRules]
+  )
+  const effectivePl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
+    [pl, effectiveLedger]
+  )
+  const operatingPl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
+    [pl, effectiveLedger]
+  )
+
   const sections = useMemo(() => {
-    if (!pl) return []
+    if (!effectivePl) return []
     const match = (name: string) => !q || name.toLowerCase().includes(q.toLowerCase())
-    const by: Record<string, typeof pl.accounts> = {}
-    for (const a of pl.accounts) {
+    const by: Record<string, typeof effectivePl.accounts> = {}
+    for (const a of effectivePl.accounts) {
       if (!match(a.name)) continue
       by[a.section] = by[a.section] ?? []
       by[a.section].push(a)
@@ -41,13 +58,14 @@ export function LegacyPnLTable() {
       section: section as XeroPLSection,
       accounts,
     }))
-  }, [pl, q])
+  }, [effectivePl, q])
 
-  const totals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
-  const depAmort = useMemo(() => (pl ? computeDepAmort(pl) : null), [pl])
+  const totals = useMemo(() => (operatingPl ? computeXeroTotals(operatingPl) : null), [operatingPl])
+  const netTotals = useMemo(() => (effectivePl ? computeXeroTotals(effectivePl) : null), [effectivePl])
+  const depAmort = useMemo(() => (operatingPl ? computeDepAmort(operatingPl) : null), [operatingPl])
 
   const footer = useMemo(() => {
-    if (!totals) return null
+    if (!totals || !netTotals) return null
     const n = totals.revenue.length
     const gross = Array(n).fill(0).map((_, i) => totals.revenue[i] - totals.cogs[i])
     const ebit = Array(n).fill(0).map((_, i) => totals.revenue[i] - totals.cogs[i] - totals.opex[i])
@@ -61,10 +79,10 @@ export function LegacyPnLTable() {
         { label: 'Total OpEx', values: totals.opex },
         { label: 'EBITDA', values: ebitda },
         { label: 'EBIT', values: ebit },
-        { label: 'Net Profit', values: totals.net },
+        { label: 'Net Profit', values: netTotals.net },
       ],
     }
-  }, [totals, depAmort])
+  }, [totals, netTotals, depAmort])
 
   const toggleSection = (section: XeroPLSection) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
@@ -81,7 +99,7 @@ export function LegacyPnLTable() {
     }
   }
 
-  if (!pl) {
+  if (!effectivePl) {
     return (
       <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
         <div className="flex items-center justify-between gap-3">
@@ -111,7 +129,7 @@ export function LegacyPnLTable() {
       </div>
 
       {/* Top-level 12-month totals (same as Atlas P&L) */}
-      {totals && (
+      {totals && netTotals && (
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
             <div className="text-xs text-slate-300">12-mo Revenue</div>
@@ -127,19 +145,19 @@ export function LegacyPnLTable() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
             <div className="text-xs text-slate-300">12-mo Net</div>
-            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.net.reduce((a, b) => a + b, 0))}</div>
+            <div className="text-lg font-semibold tabular-nums">{formatCurrency(netTotals.net.reduce((a, b) => a + b, 0))}</div>
           </div>
         </div>
       )}
 
-      {pl && <DataHealthSummary pl={pl} className="mt-4" />}
+      {effectivePl && <DataHealthSummary pl={effectivePl} className="mt-4" />}
 
       <div className="mt-4 overflow-auto rounded-2xl border border-white/10">
         <table className="min-w-full text-sm">
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>
               <th className="text-left px-3 py-2 font-semibold">Account</th>
-              {pl.monthLabels.map(m => (
+              {effectivePl.monthLabels.map(m => (
                 <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{m}</th>
               ))}
             </tr>
@@ -148,7 +166,7 @@ export function LegacyPnLTable() {
             {sections.map(sec => (
               <React.Fragment key={sec.section}>
                 <tr className="bg-white/5 border-t border-white/10">
-                  <td className="px-3 py-2 font-semibold" colSpan={1 + pl.months.length}>
+                  <td className="px-3 py-2 font-semibold" colSpan={1 + effectivePl.months.length}>
                     <button
                       className="flex w-full items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 rounded-lg px-1 py-1"
                       onClick={() => toggleSection(sec.section)}

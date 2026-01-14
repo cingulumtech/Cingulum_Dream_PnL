@@ -316,6 +316,8 @@ export function getReportData(opts: {
   includeScenario: boolean
   completenessThreshold?: number
   comparisonMode?: ComparisonMode
+  effectivePl?: XeroPL | null
+  operatingPl?: XeroPL | null
 }): ReportData {
   const { dataSource, pl, template, scenario, includeScenario, completenessThreshold = 0.85, comparisonMode } = opts
   const mapping = calcMappingStats(pl, template)
@@ -362,23 +364,35 @@ export function getReportData(opts: {
       }
     }
 
-    const months = pl.monthLabels
+    const effectivePl = opts.effectivePl ?? pl
+    const operatingPl = opts.operatingPl ?? effectivePl ?? pl
+    const months = operatingPl.monthLabels
     let baseTotals: DreamTotals
     let computedDream: ReturnType<typeof computeDream> | null = null
+    let computedDreamEffective: ReturnType<typeof computeDream> | null = null
     let completenessWarnings: string[] = []
     if (source === 'management') {
-      computedDream = computeDream(pl, template)
-      baseTotals = computeDreamTotals(pl, template, computedDream)
+      computedDream = computeDream(operatingPl, template)
+      baseTotals = computeDreamTotals(operatingPl, template, computedDream)
+      computedDreamEffective = effectivePl ? computeDream(effectivePl, template) : null
       if (mapping.completeness < completenessThreshold) {
         completenessWarnings.push('Management mapping below 85%. Some sections disabled.')
       }
     } else {
-      baseTotals = computeXeroTotals(pl)
+      baseTotals = computeXeroTotals(operatingPl)
     }
+    const netTotals =
+      source === 'management' && effectivePl && computedDreamEffective
+        ? computeDreamTotals(effectivePl, template, computedDreamEffective)
+        : computeXeroTotals(effectivePl)
+    const nonOperatingNet = baseTotals.net.map((v, i) => (netTotals.net[i] ?? 0) - (v ?? 0))
+    const scenarioTotalsRaw = scenarioActive ? applyBundledScenario(baseTotals, operatingPl, scenario) : null
+    const scenarioTotals = scenarioTotalsRaw
+      ? { ...scenarioTotalsRaw, net: scenarioTotalsRaw.net.map((v, i) => v + (nonOperatingNet[i] ?? 0)) }
+      : null
+    baseTotals = { ...baseTotals, net: netTotals.net }
 
-    const scenarioTotals = scenarioActive ? applyBundledScenario(baseTotals, pl, scenario) : null
-
-    const depAmort = computeDepAmort(pl)
+    const depAmort = computeDepAmort(operatingPl)
     const ebitdaCurrent = baseTotals.net.map((v, i) => v + (depAmort?.[i] ?? 0))
     const ebitdaScenario = scenarioTotals ? scenarioTotals.net.map((v, i) => v + (depAmort?.[i] ?? 0)) : null
 
@@ -422,14 +436,14 @@ export function getReportData(opts: {
     const revenueEntries = source === 'management'
       ? flattenLinesWithSection(template.root)
           .filter(l => l.section === 'rev')
-          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'income' as const }))
-      : pl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values, sectionType: 'income' as const }))
+          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(operatingPl.months.length).fill(0), sectionType: 'income' as const }))
+      : operatingPl.accounts.filter(a => a.section === 'trading_income' || a.section === 'other_income').map(a => ({ label: a.name, values: a.values, sectionType: 'income' as const }))
 
     const costEntries = source === 'management'
       ? flattenLinesWithSection(template.root)
           .filter(l => l.section === 'cogs' || l.section === 'opex')
-          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(pl.months.length).fill(0), sectionType: 'expense' as const }))
-      : pl.accounts
+          .map(l => ({ label: l.line.label, values: computedDream?.byLineId[l.line.id] ?? Array(operatingPl.months.length).fill(0), sectionType: 'expense' as const }))
+      : operatingPl.accounts
           .filter(a => a.section === 'cost_of_sales' || a.section === 'operating_expenses')
           .map(a => ({ label: a.name, values: a.values, sectionType: 'expense' as const }))
 
@@ -443,6 +457,7 @@ export function getReportData(opts: {
       { label: 'Gross margin %', current: grossMarginCurrent, scenario: grossMarginScenario, variance: grossMarginScenario != null ? grossMarginScenario - grossMarginCurrent : null, format: 'percentage' as const },
       { label: 'Opex', current: sum(baseTotals.opex), scenario: scenarioTotals ? sum(scenarioTotals.opex) : null, variance: scenarioTotals ? sum(scenarioTotals.opex) - sum(baseTotals.opex) : null, tone: scenarioTotals ? (sum(scenarioTotals.opex) - sum(baseTotals.opex) <= 0 ? 'good' : 'bad') : undefined },
       { label: 'EBITDA (est.)', current: sum(ebitdaCurrent), scenario: ebitdaScenario ? sum(ebitdaScenario) : null, variance: ebitdaScenario ? sum(ebitdaScenario) - sum(ebitdaCurrent) : null },
+      { label: 'Non-operating impact', current: sum(nonOperatingNet), scenario: scenarioTotals ? sum(nonOperatingNet) : null, variance: null },
       { label: 'Net profit', current: sum(baseTotals.net), scenario: scenarioTotals ? sum(scenarioTotals.net) : null, variance: netDelta },
     ]
 

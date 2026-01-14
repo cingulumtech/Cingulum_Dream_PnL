@@ -136,3 +136,76 @@ class StateResponse(BaseModel):
     settings: Optional[ConfigOut] = None
     imports: List[ImportOut] = []
     snapshots: List[SnapshotOut] = []
+
+
+class TxnOverridePayload(BaseModel):
+    source: str
+    document_id: str
+    line_item_id: Optional[str] = None
+    hash: Optional[str] = None
+    treatment: str
+    deferral_start_month: Optional[str] = None
+    deferral_months: Optional[int] = None
+    deferral_include_in_operating_kpis: Optional[bool] = None
+
+
+class TxnOverrideOut(BaseModel):
+    id: str
+    tenant_id: str
+    user_id: str
+    source: str
+    document_id: str
+    line_item_id: Optional[str] = None
+    hash: Optional[str] = None
+    treatment: str
+    deferral_start_month: Optional[str] = None
+    deferral_months: Optional[int] = None
+    deferral_include_in_operating_kpis: Optional[bool] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DoctorRulePayload(BaseModel):
+    contact_id: str
+    default_treatment: str
+    deferral_start_month: Optional[str] = None
+    deferral_months: Optional[int] = None
+    deferral_include_in_operating_kpis: Optional[bool] = None
+    enabled: bool = True
+
+
+class DoctorRuleOut(BaseModel):
+    id: str
+    tenant_id: str
+    user_id: str
+    contact_id: str
+    default_treatment: str
+    deferral_start_month: Optional[str] = None
+    deferral_months: Optional[int] = None
+    deferral_include_in_operating_kpis: Optional[bool] = None
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserPreferencePayload(BaseModel):
+    value_json: Dict[str, Any]
+
+
+class UserPreferenceOut(BaseModel):
+    id: str
+    tenant_id: str
+    user_id: str
+    key: str
+    value_json: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -10,11 +10,44 @@ import { SaveStatusPill } from './SaveStatus'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
 import { useAuthStore } from '../store/authStore'
+import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
+
+const COLOR_FALLBACKS: Record<string, string> = {
+  color: '#0f172a',
+  'background-color': '#ffffff',
+  'border-color': '#cbd5e1',
+  'border-top-color': '#cbd5e1',
+  'border-right-color': '#cbd5e1',
+  'border-bottom-color': '#cbd5e1',
+  'border-left-color': '#cbd5e1',
+  'outline-color': '#94a3b8',
+  'text-decoration-color': '#0f172a',
+  fill: '#0f172a',
+  stroke: '#0f172a',
+}
+
+const COLOR_PROPERTIES = Object.keys(COLOR_FALLBACKS)
+
+function sanitizeColorStyles(doc: Document) {
+  const view = doc.defaultView
+  if (!view) return
+  const nodes = doc.querySelectorAll<HTMLElement>('*')
+  nodes.forEach(node => {
+    const computed = view.getComputedStyle(node)
+    COLOR_PROPERTIES.forEach(prop => {
+      const value = computed.getPropertyValue(prop)
+      if (value && value.trim().startsWith('color(')) {
+        node.style.setProperty(prop, COLOR_FALLBACKS[prop])
+      }
+    })
+  })
+}
 
 export function Reports() {
   const user = useAuthStore(s => s.user)
   const readOnly = user?.role === 'viewer'
   const pl = useAppStore(s => s.pl)
+  const gl = useAppStore(s => s.gl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
   const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
@@ -22,6 +55,8 @@ export function Reports() {
   const reportConfig = useAppStore(s => s.reportConfig)
   const setReportConfig = useAppStore(s => s.setReportConfig)
   const reportSaveStatus = useAppStore(s => s.reportSaveStatus)
+  const txnOverrides = useAppStore(s => s.txnOverrides)
+  const doctorRules = useAppStore(s => s.doctorRules)
 
   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
     reportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
@@ -35,17 +70,32 @@ export function Reports() {
     setBuilder(reportConfig)
   }, [reportConfig])
 
+  const effectiveLedger = useMemo(
+    () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
+    [gl, txnOverrides, doctorRules]
+  )
+  const effectivePl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
+    [pl, effectiveLedger]
+  )
+  const operatingPl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
+    [pl, effectiveLedger]
+  )
+
   const reportData = useMemo(
     () =>
       getReportData({
         dataSource: builder.dataSource,
-        pl,
+        pl: effectivePl,
+        effectivePl,
+        operatingPl,
         template: dreamTemplate,
         scenario,
         includeScenario: builder.includeScenario,
         comparisonMode: builder.comparisonMode,
       }),
-    [builder.dataSource, builder.includeScenario, builder.comparisonMode, pl, dreamTemplate, scenario]
+    [builder.dataSource, builder.includeScenario, builder.comparisonMode, effectivePl, operatingPl, dreamTemplate, scenario]
   )
 
   useEffect(() => {
@@ -93,9 +143,10 @@ export function Reports() {
     setGeneratedAt(stamp)
     const canvas = await html2canvas(element, {
       scale: 2,
-      backgroundColor: '#0b1222',
+      backgroundColor: '#ffffff',
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
+      onclone: sanitizeColorStyles,
     })
     const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)

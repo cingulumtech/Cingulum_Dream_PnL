@@ -28,6 +28,30 @@ export type SnapshotPayload = {
   data: Record<string, any>
 }
 
+export type TxnOverridePayload = {
+  source: string
+  document_id: string
+  line_item_id?: string | null
+  hash?: string | null
+  treatment: string
+  deferral_start_month?: string | null
+  deferral_months?: number | null
+  deferral_include_in_operating_kpis?: boolean | null
+}
+
+export type DoctorRulePayload = {
+  contact_id: string
+  default_treatment: string
+  deferral_start_month?: string | null
+  deferral_months?: number | null
+  deferral_include_in_operating_kpis?: boolean | null
+  enabled: boolean
+}
+
+export type UserPreferencePayload = {
+  value_json: Record<string, any>
+}
+
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 function getCookie(name: string) {
@@ -92,4 +116,17 @@ export const api = {
   listUsers: () => request<{ id: string; email: string; role: string; created_at: string }[]>('/api/users'),
   updateUserRole: (userId: string, payload: { role: string }) =>
     request<{ id: string; email: string; role: string; created_at: string }>(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  listTxnOverrides: () => request<any[]>('/api/ledger/overrides'),
+  upsertTxnOverride: (payload: TxnOverridePayload) =>
+    request<any>('/api/ledger/overrides', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteTxnOverride: (overrideId: string) =>
+    request<{ ok: boolean }>(`/api/ledger/overrides/${overrideId}`, { method: 'DELETE' }),
+  listDoctorRules: () => request<any[]>('/api/ledger/doctor-rules'),
+  upsertDoctorRule: (payload: DoctorRulePayload) =>
+    request<any>('/api/ledger/doctor-rules', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteDoctorRule: (contactId: string) =>
+    request<{ ok: boolean }>(`/api/ledger/doctor-rules/${contactId}`, { method: 'DELETE' }),
+  getPreference: (key: string) => request<any | null>(`/api/ledger/preferences/${key}`),
+  upsertPreference: (key: string, payload: UserPreferencePayload) =>
+    request<any>(`/api/ledger/preferences/${key}`, { method: 'PUT', body: JSON.stringify(payload) }),
 }

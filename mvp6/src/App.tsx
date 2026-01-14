@@ -31,6 +31,9 @@ export function App() {
   const setTemplateSaveStatus = useAppStore(s => s.setTemplateSaveStatus)
   const setReportSaveStatus = useAppStore(s => s.setReportSaveStatus)
   const setSettingsSaveStatus = useAppStore(s => s.setSettingsSaveStatus)
+  const setTxnOverrides = useAppStore(s => s.setTxnOverrides)
+  const setDoctorRules = useAppStore(s => s.setDoctorRules)
+  const setDoctorPatterns = useAppStore(s => s.setDoctorPatterns)
 
   const { user, status, setUser, setStatus } = useAuthStore()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -76,11 +79,34 @@ export function App() {
         }))
       )
     }
+    const [overrides, doctorRules, pref] = await Promise.all([
+      api.listTxnOverrides().catch(() => []),
+      api.listDoctorRules().catch(() => []),
+      api.getPreference('doctor_patterns_v1').catch(() => null),
+    ])
+    if (Array.isArray(overrides)) setTxnOverrides(overrides)
+    if (Array.isArray(doctorRules)) setDoctorRules(doctorRules)
+    if (pref?.value_json?.patterns) {
+      setDoctorPatterns(pref.value_json.patterns)
+    }
     setHydrated(true)
     setTemplateSaveStatus('saved')
     setReportSaveStatus('saved')
     setSettingsSaveStatus('saved')
-  }, [setTemplate, setReportConfig, setDefaults, setSnapshots, setImports, setHydrated, setTemplateSaveStatus, setReportSaveStatus, setSettingsSaveStatus])
+  }, [
+    setTemplate,
+    setReportConfig,
+    setDefaults,
+    setSnapshots,
+    setImports,
+    setHydrated,
+    setTemplateSaveStatus,
+    setReportSaveStatus,
+    setSettingsSaveStatus,
+    setTxnOverrides,
+    setDoctorRules,
+    setDoctorPatterns,
+  ])
 
   useEffect(() => {
     const boot = async () => {
