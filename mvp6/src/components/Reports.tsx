@@ -14,9 +14,12 @@ export function Reports() {
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
   const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
+  const defaults = useAppStore(s => s.defaults)
+  const reportConfig = useAppStore(s => s.reportConfig)
+  const setReportConfig = useAppStore(s => s.setReportConfig)
 
   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
-    storeReportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
+    reportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
   )
   const [userChoseSource, setUserChoseSource] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -24,8 +27,8 @@ export function Reports() {
   const [generatedAt, setGeneratedAt] = useState<Date>(() => new Date())
 
   useEffect(() => {
-    setBuilder(storeReportConfig)
-  }, [storeReportConfig])
+    setBuilder(reportConfig)
+  }, [reportConfig])
 
   const reportData = useMemo(
     () =>
@@ -130,7 +133,7 @@ export function Reports() {
             {reportData.fallbackReason}
           </Card>
         )}
-        <ReportPreview previewRef={previewRef}>
+        <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
           <InvestorReportTemplate
             data={reportData}
             meta={{

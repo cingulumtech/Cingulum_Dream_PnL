@@ -21,6 +21,11 @@ function formatValue(value: number | null | undefined, format?: 'currency' | 'pe
   return format === 'percentage' ? pct(value) : money(value)
 }
 
+export function profitImpactClass(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value) || value === 0) return 'text-slate-300'
+  return value > 0 ? 'text-emerald-300' : 'text-rose-300'
+}
+
 function Callout({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-100">
@@ -88,6 +93,7 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
           <tbody>
             {result.items.map(d => {
               const impactTone = d.profitImpact == null ? 'neutral' : d.profitImpact > 0 ? 'good' : 'bad'
+              const impactClass = profitImpactClass(d.profitImpact)
               return (
                 <tr key={d.label} className="border-t border-white/5">
                   <td className="px-3 py-2 font-semibold text-slate-100">
@@ -105,7 +111,7 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
                   <td className="px-3 py-2 text-right">
                     <Chip
                       tone={impactTone === 'good' ? 'good' : impactTone === 'bad' ? 'bad' : 'neutral'}
-                      className="justify-end px-2 py-[2px] text-[10px]"
+                      className={`justify-end px-2 py-[2px] text-[10px] ${impactClass}`}
                     >
                       {impactTone === 'good' ? '▲' : impactTone === 'bad' ? '▼' : '•'} {money(d.profitImpact)}
                     </Chip>
