@@ -6,6 +6,7 @@ import { DreamLine, XeroPLSection } from '../lib/types'
 import { setLineMappings } from '../lib/dream/edit'
 import { flattenLines } from '../lib/dream/schema'
 import { Button, Card, Chip, Input, Label } from './ui'
+import { SaveStatusPill } from './SaveStatus'
 
 type AccountRow = { name: string; section: XeroPLSection }
 
@@ -30,7 +31,7 @@ export function MappingEditor() {
   const setTemplate = useAppStore(s => s.setTemplate)
   const undoTemplate = useAppStore(s => s.undoTemplate)
   const canUndo = useAppStore(s => s.canUndo())
-  const lastTemplateSavedAt = useAppStore(s => s.lastTemplateSavedAt)
+  const templateSaveStatus = useAppStore(s => s.templateSaveStatus)
 
   const [selectedLineId, setSelectedLineIdLocal] = useState<string | null>(null)
   const [qLine, setQLine] = useState('')
@@ -201,20 +202,19 @@ export function MappingEditor() {
     removeAccountFromLine(selectedLine, acc)
   }
 
-  const autosaveLabel = lastTemplateSavedAt
-    ? `Autosaved ${new Date(lastTemplateSavedAt).toLocaleTimeString()}`
-    : 'Autosave ready'
-
   return (
-      <Card className="p-5 overflow-hidden">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-lg font-semibold">Mapping</div>
-            <div className="text-sm text-slate-300">
-              Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default (so you can mop them up fast).
-            </div>
+    <Card className="p-5 overflow-hidden">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-lg font-semibold">Mapping</div>
+          <div className="text-sm text-slate-300">
+            Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default (so you can mop them up fast).
           </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
           <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
+          <SaveStatusPill status={templateSaveStatus} />
+        </div>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr]">

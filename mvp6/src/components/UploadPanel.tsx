@@ -3,17 +3,19 @@ import { Upload, FileText, Trash2 } from 'lucide-react'
 import { parseXeroProfitAndLoss } from '../lib/xero/plParser'
 import { parseXeroGeneralLedgerDetail } from '../lib/xero/glParser'
 import { useAppStore } from '../store/appStore'
-import { Button, Card, Chip, Input, Label } from './ui'
+import { Button, Card, Chip } from './ui'
+import { api } from '../lib/api'
 
 async function readFileAsArrayBuffer(file: File) {
   return await file.arrayBuffer()
 }
 
-export function UploadPanel() {
+export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
   const pl = useAppStore(s => s.pl)
   const gl = useAppStore(s => s.gl)
   const setPL = useAppStore(s => s.setPL)
   const setGL = useAppStore(s => s.setGL)
+  const addImport = useAppStore(s => s.addImport)
 
   const [status, setStatus] = useState<string>('')
   const [err, setErr] = useState<string>('')
@@ -29,6 +31,25 @@ export function UploadPanel() {
       const buf = await readFileAsArrayBuffer(file)
       const parsed = parseXeroProfitAndLoss(buf)
       setPL(parsed)
+      api
+        .createImport({
+          name: file.name,
+          kind: 'pl',
+          status: 'processed',
+          metadata: { accounts: parsed.accounts.length, months: parsed.months.length, source: 'xero' },
+        })
+        .then((record) =>
+          addImport({
+            id: record.id,
+            name: record.name,
+            kind: record.kind,
+            status: record.status,
+            metadata: record.metadata,
+            createdAt: record.created_at,
+            updatedAt: record.updated_at,
+          })
+        )
+        .catch(() => null)
       setStatus(`Loaded P&L: ${parsed.accounts.length} accounts × ${parsed.months.length} months`)
     } catch (e: any) {
       setErr(e?.message ?? String(e))
@@ -44,6 +65,25 @@ export function UploadPanel() {
       const buf = await readFileAsArrayBuffer(file)
       const parsed = parseXeroGeneralLedgerDetail(buf)
       setGL(parsed)
+      api
+        .createImport({
+          name: file.name,
+          kind: 'gl',
+          status: 'processed',
+          metadata: { transactions: parsed.txns.length, source: 'xero' },
+        })
+        .then((record) =>
+          addImport({
+            id: record.id,
+            name: record.name,
+            kind: record.kind,
+            status: record.status,
+            metadata: record.metadata,
+            createdAt: record.created_at,
+            updatedAt: record.updated_at,
+          })
+        )
+        .catch(() => null)
       setStatus(`Loaded GL: ${parsed.txns.length.toLocaleString()} transactions`)
     } catch (e: any) {
       setErr(e?.message ?? String(e))
@@ -61,12 +101,11 @@ export function UploadPanel() {
             <span className="font-semibold">General Ledger Detail</span> export for drill-down.
           </div>
         </div>
-        <Button variant="ghost" onClick={() => { setPL(null); setGL(null); setStatus(''); setErr('') }}>
+        <Button variant="ghost" onClick={() => { setPL(null); setGL(null); setStatus(''); setErr('') }} disabled={disabled}>
           <Trash2 className="h-4 w-4" /> Clear
         </Button>
       </div>
 
-      {/* Sidebar is narrow even on large screens; keep this 1-column to avoid squishing */}
       <div className="mt-5 grid grid-cols-1 gap-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-center justify-between">
@@ -80,9 +119,10 @@ export function UploadPanel() {
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"
+              disabled={disabled}
               onChange={e => onPickPL(e.target.files?.[0] ?? null)}
             />
-            <Button className="w-full" onClick={() => plInput.current?.click()}>
+            <Button className="w-full" onClick={() => plInput.current?.click()} disabled={disabled}>
               <Upload className="h-4 w-4" /> Choose file
             </Button>
           </div>
@@ -105,9 +145,10 @@ export function UploadPanel() {
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"
+              disabled={disabled}
               onChange={e => onPickGL(e.target.files?.[0] ?? null)}
             />
-            <Button className="w-full" variant="ghost" onClick={() => glInput.current?.click()}>
+            <Button className="w-full" variant="ghost" onClick={() => glInput.current?.click()} disabled={disabled}>
               <FileText className="h-4 w-4" /> Choose file
             </Button>
           </div>

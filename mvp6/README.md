@@ -11,6 +11,39 @@ This is a working MVP that:
 
 ## Run locally
 
+### Backend (API + Postgres)
+
+1) Start Postgres
+```bash
+docker compose up -d
+```
+
+2) Set environment variables
+```bash
+cp .env.example .env
+```
+
+3) Create a virtualenv + install backend deps
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+If your system is missing venv tooling, install it first: `sudo apt install python3-venv` (or `python3-full` on Ubuntu 24.04).
+
+4) Run migrations
+```bash
+alembic upgrade head
+```
+
+5) Start the API
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+
 1) Install dependencies
 ```bash
 npm install
@@ -22,6 +55,14 @@ npm run dev
 ```
 
 Open: `http://localhost:5173`
+
+### Tests
+
+Backend tests (auth + snapshot RBAC):
+```bash
+cd backend
+pytest
+```
 
 ## How the “built-in upload” atlas works
 
