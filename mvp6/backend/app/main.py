@@ -1,7 +1,20 @@
 import os
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 from .db import Base, engine
+
+ENV_PATHS = [
+    Path(__file__).resolve().parents[2] / ".env",
+    Path(__file__).resolve().parents[1] / ".env",
+]
+
+for env_path in ENV_PATHS:
+    if env_path.exists():
+        load_dotenv(env_path)
+        break
+
 from .routers import auth, state, snapshots, users
 
 APP_NAME = os.environ.get("APP_NAME", "Accounting Atlas API")
