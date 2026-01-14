@@ -4,6 +4,7 @@ import { useAppStore } from '../store/appStore'
 import { DreamGroup, DreamLine } from '../lib/types'
 import { addGroup, addLine, findNode, findParent, moveChild, removeNode, setLineMappings, updateNodeLabel } from '../lib/dream/edit'
 import { Button, Card, Chip, Input, Label } from './ui'
+import { SaveStatusPill } from './SaveStatus'
 import { DREAM_TEMPLATE_SCHEMA, flattenLines, generateNodeId, validateTemplate } from '../lib/dream/schema'
 import { computeDream, computeDreamTotals } from '../lib/dream/compute'
 
@@ -14,7 +15,7 @@ export function TemplateEditor() {
   const pl = useAppStore(s => s.pl)
   const undoTemplate = useAppStore(s => s.undoTemplate)
   const canUndo = useAppStore(s => s.canUndo())
-  const lastTemplateSavedAt = useAppStore(s => s.lastTemplateSavedAt)
+  const templateSaveStatus = useAppStore(s => s.templateSaveStatus)
 
   const [selectedId, setSelectedId] = useState(template.root.id)
   const [rename, setRename] = useState('')
@@ -180,7 +181,7 @@ export function TemplateEditor() {
           <Chip tone={metadataChipTone}>
             Schema {template.schemaVersion || 'unknown'} • v{template.version ?? 1}
           </Chip>
-          <Chip tone="good">Autosaved {lastTemplateSavedAt ? new Date(lastTemplateSavedAt).toLocaleTimeString() : 'now'}</Chip>
+          <SaveStatusPill status={templateSaveStatus} />
           <Button variant="ghost" onClick={() => undoTemplate()} disabled={!canUndo}>
             <RotateCcw className="h-4 w-4" /> Undo
           </Button>
