@@ -3,7 +3,7 @@ import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
 import { ensureTemplateMetadata } from '../lib/dream/schema'
 import { RECOMMENDED_DEFAULTS, type FrameworkDefaults } from '../lib/defaults'
 import { ensureExportSettings, ensureReportConfig, type SnapshotReportConfig, type SnapshotSummary } from '../lib/snapshotUtils'
-import { DoctorRule, DreamTemplate, GL, ScenarioInputs, TxnOverride, XeroPL } from '../lib/types'
+import { DreamTemplate, GL, ScenarioInputs, XeroPL } from '../lib/types'
 
 export type View =
   | 'overview'
@@ -86,19 +86,6 @@ type AppState = {
   imports: ImportItem[]
   setImports: (imports: ImportItem[]) => void
   addImport: (item: ImportItem) => void
-
-  txnOverrides: TxnOverride[]
-  setTxnOverrides: (items: TxnOverride[]) => void
-  upsertTxnOverride: (item: TxnOverride) => void
-  removeTxnOverride: (id: string) => void
-
-  doctorRules: DoctorRule[]
-  setDoctorRules: (items: DoctorRule[]) => void
-  upsertDoctorRule: (item: DoctorRule) => void
-  removeDoctorRule: (contactId: string) => void
-
-  doctorPatterns: string[]
-  setDoctorPatterns: (patterns: string[]) => void
 
   hydrated: boolean
   setHydrated: (hydrated: boolean) => void
@@ -279,29 +266,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
   imports: [],
   setImports: (imports) => set({ imports }),
   addImport: (item) => set(state => ({ imports: [item, ...state.imports] })),
-
-  txnOverrides: [],
-  setTxnOverrides: (items) => set({ txnOverrides: items }),
-  upsertTxnOverride: (item) =>
-    set(state => {
-      const rest = state.txnOverrides.filter(o => o.id !== item.id)
-      return { txnOverrides: [item, ...rest] }
-    }),
-  removeTxnOverride: (id) =>
-    set(state => ({ txnOverrides: state.txnOverrides.filter(o => o.id !== id) })),
-
-  doctorRules: [],
-  setDoctorRules: (items) => set({ doctorRules: items }),
-  upsertDoctorRule: (item) =>
-    set(state => {
-      const rest = state.doctorRules.filter(r => r.contact_id !== item.contact_id)
-      return { doctorRules: [item, ...rest] }
-    }),
-  removeDoctorRule: (contactId) =>
-    set(state => ({ doctorRules: state.doctorRules.filter(r => r.contact_id !== contactId) })),
-
-  doctorPatterns: [],
-  setDoctorPatterns: (patterns) => set({ doctorPatterns: patterns }),
 
   hydrated: false,
   setHydrated: (hydrated) => set({ hydrated }),

@@ -10,69 +10,6 @@ import { SaveStatusPill } from './SaveStatus'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
 import { useAuthStore } from '../store/authStore'
-import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
-
-const COLOR_FALLBACKS: Record<string, string> = {
-  color: '#0f172a',
-  'background-color': '#ffffff',
-  'border-color': '#cbd5e1',
-  'border-top-color': '#cbd5e1',
-  'border-right-color': '#cbd5e1',
-  'border-bottom-color': '#cbd5e1',
-  'border-left-color': '#cbd5e1',
-  'outline-color': '#94a3b8',
-  'text-decoration-color': '#0f172a',
-  fill: '#0f172a',
-  stroke: '#0f172a',
-}
-
-const COLOR_PROPERTIES = Object.keys(COLOR_FALLBACKS)
-
-function sanitizeColorStyles(doc: Document) {
-  const view = doc.defaultView
-  if (!view) return
-  const nodes = doc.querySelectorAll<HTMLElement>('*')
-  nodes.forEach(node => {
-    const computed = view.getComputedStyle(node)
-    COLOR_PROPERTIES.forEach(prop => {
-      const value = computed.getPropertyValue(prop)
-      if (value && value.trim().startsWith('color(')) {
-        node.style.setProperty(prop, COLOR_FALLBACKS[prop])
-      }
-    })
-  })
-}
-
-const COLOR_FALLBACKS: Record<string, string> = {
-  color: '#0f172a',
-  'background-color': '#ffffff',
-  'border-color': '#cbd5e1',
-  'border-top-color': '#cbd5e1',
-  'border-right-color': '#cbd5e1',
-  'border-bottom-color': '#cbd5e1',
-  'border-left-color': '#cbd5e1',
-  'outline-color': '#94a3b8',
-  'text-decoration-color': '#0f172a',
-  fill: '#0f172a',
-  stroke: '#0f172a',
-}
-
-const COLOR_PROPERTIES = Object.keys(COLOR_FALLBACKS)
-
-function sanitizeColorStyles(doc: Document) {
-  const view = doc.defaultView
-  if (!view) return
-  const nodes = doc.querySelectorAll<HTMLElement>('*')
-  nodes.forEach(node => {
-    const computed = view.getComputedStyle(node)
-    COLOR_PROPERTIES.forEach(prop => {
-      const value = computed.getPropertyValue(prop)
-      if (value && value.trim().startsWith('color(')) {
-        node.style.setProperty(prop, COLOR_FALLBACKS[prop])
-      }
-    })
-  })
-}
 
 export function Reports() {
   const user = useAuthStore(s => s.user)
@@ -86,8 +23,6 @@ export function Reports() {
   const reportConfig = useAppStore(s => s.reportConfig)
   const setReportConfig = useAppStore(s => s.setReportConfig)
   const reportSaveStatus = useAppStore(s => s.reportSaveStatus)
-  const txnOverrides = useAppStore(s => s.txnOverrides)
-  const doctorRules = useAppStore(s => s.doctorRules)
 
   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
     reportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
@@ -133,13 +68,13 @@ export function Reports() {
     if (!pl) return
     if (userChoseSource) return
     if (builder.dataSource !== reportData.recommendedSource) {
-        setBuilder(prev => {
-          const next = { ...prev, dataSource: reportData.recommendedSource }
-          setReportConfig(next)
-          return next
-        })
+      setBuilder(prev => {
+        const next = { ...prev, dataSource: reportData.recommendedSource }
+        setReportConfig(next)
+        return next
+      })
     }
-  }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource])
+  }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource, setReportConfig])
 
   useEffect(() => {
     setGeneratedAt(new Date())
@@ -149,7 +84,6 @@ export function Reports() {
     if ('dataSource' in s) setUserChoseSource(true)
     setBuilder(prev => {
       const next = { ...prev, ...s }
-      // Auto-align comparison mode when toggling scenario
       if ('includeScenario' in s && s.includeScenario !== undefined) {
         if (s.includeScenario && next.comparisonMode === 'last3_vs_prev3') next.comparisonMode = 'scenario_vs_current'
         if (!s.includeScenario && next.comparisonMode === 'scenario_vs_current') next.comparisonMode = 'last3_vs_prev3'
@@ -212,50 +146,51 @@ export function Reports() {
       )}
       <div className={`grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
         <ReportBuilderPanel
-        dataSource={builder.dataSource}
-        includeScenario={builder.includeScenario}
-        recommendedSource={reportData.recommendedSource}
-        mappingCompleteness={reportData.dataQuality.mappingCompleteness}
-        mappingWarnings={[
-          ...reportData.dataQuality.warnings,
-          ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
-          ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
-            ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
-            : []),
-        ]}
-        comparisonMode={builder.comparisonMode}
-        onChange={handleChange}
-      />
+          dataSource={builder.dataSource}
+          includeScenario={builder.includeScenario}
+          recommendedSource={reportData.recommendedSource}
+          mappingCompleteness={reportData.dataQuality.mappingCompleteness}
+          mappingWarnings={[
+            ...reportData.dataQuality.warnings,
+            ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
+            ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
+              ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+              : []),
+          ]}
+          comparisonMode={builder.comparisonMode}
+          onChange={handleChange}
+        />
 
         <div className="space-y-3">
-        {reportData.fallbackReason && (
-          <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
-            {reportData.fallbackReason}
-          </Card>
-        )}
-        <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
-          <InvestorReportTemplate
-            data={reportData}
-            meta={{
-              snapshotId: activeSnapshotId,
-              generatedAt,
-            }}
-          />
-        </ReportPreview>
-        <div className="text-[11px] text-slate-400">
-          {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={generate}
-            className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
-            disabled={!pl || !reportData.baseTotals}
-          >
-            Generate investor PDF
-          </button>
-          {status ? <div className="text-xs text-slate-300">{status}</div> : null}
-          {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
+          {reportData.fallbackReason && (
+            <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
+              {reportData.fallbackReason}
+            </Card>
+          )}
+          <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
+            <InvestorReportTemplate
+              data={reportData}
+              meta={{
+                snapshotId: activeSnapshotId,
+                generatedAt,
+              }}
+            />
+          </ReportPreview>
+          <div className="text-[11px] text-slate-400">
+            {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={generate}
+              className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
+              disabled={!pl || !reportData.baseTotals}
+            >
+              Generate investor PDF
+            </button>
+            {status ? <div className="text-xs text-slate-300">{status}</div> : null}
+            {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
+          </div>
         </div>
         </div>
       </div>

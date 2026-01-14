@@ -16,7 +16,7 @@ for env_path in ENV_PATHS:
         load_dotenv(env_path)
         break
 
-from .routers import auth, state, snapshots, users, ledger
+from .routers import auth, state, snapshots, users
 
 APP_NAME = os.environ.get("APP_NAME", "Accounting Atlas API")
 
@@ -42,7 +42,6 @@ app.include_router(auth.router)
 app.include_router(state.router)
 app.include_router(snapshots.router)
 app.include_router(users.router)
-app.include_router(ledger.router)
 
 
 @app.exception_handler(SQLAlchemyError)
