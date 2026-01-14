@@ -165,3 +165,46 @@ export type ScenarioInputs = {
   excludedConsultAccounts?: string[]
   excludedConsultTxnKeys?: string[]
 }
+
+export type TxnTreatment = 'OPERATING' | 'NON_OPERATING' | 'DEFERRED' | 'EXCLUDE'
+
+export type DeferralConfig = {
+  method: 'STRAIGHT_LINE'
+  startMonth: MonthKey
+  months: number
+  includeInOperatingKPIs: boolean
+}
+
+export type TxnOverride = {
+  id: string
+  tenant_id: string
+  user_id: string
+  source: string
+  document_id: string
+  line_item_id?: string | null
+  hash?: string | null
+  treatment: TxnTreatment
+  deferral_start_month?: MonthKey | null
+  deferral_months?: number | null
+  deferral_include_in_operating_kpis?: boolean | null
+}
+
+export type DoctorRule = {
+  id: string
+  tenant_id: string
+  user_id: string
+  contact_id: string
+  default_treatment: TxnTreatment
+  deferral_start_month?: MonthKey | null
+  deferral_months?: number | null
+  deferral_include_in_operating_kpis?: boolean | null
+  enabled: boolean
+}
+
+export type UserPreference = {
+  id: string
+  tenant_id: string
+  user_id: string
+  key: string
+  value_json: Record<string, any>
+}

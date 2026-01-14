@@ -1,8 +1,21 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../store/appStore'
 import { applyBundledScenario, computeXeroTotals } from '../lib/dream/compute'
 import { Card, Chip, Input, Label } from './ui'
+import { api } from '../lib/api'
+import {
+  buildEffectiveLedger,
+  buildEffectivePl,
+  buildTxnHash,
+  DEFAULT_DOCTOR_PATTERNS,
+  inferDoctorLabel,
+  isApBillTxn,
+  isPaymentTxn,
+  normalizeContactId,
+  resolveTreatment,
+} from '../lib/ledger'
+import { TxnTreatment } from '../lib/types'
 
 function sum(arr: number[]) {
   return arr.reduce((a, b) => a + (b ?? 0), 0)
@@ -266,9 +279,53 @@ export function Overview() {
   const scenario = useAppStore(s => s.scenario)
   const setScenario = useAppStore(s => s.setScenario)
   const defaults = useAppStore(s => s.defaults)
+  const txnOverrides = useAppStore(s => s.txnOverrides)
+  const doctorRules = useAppStore(s => s.doctorRules)
+  const doctorPatterns = useAppStore(s => s.doctorPatterns)
+  const setDoctorPatterns = useAppStore(s => s.setDoctorPatterns)
+  const upsertDoctorRule = useAppStore(s => s.upsertDoctorRule)
+  const removeDoctorRule = useAppStore(s => s.removeDoctorRule)
+  const upsertTxnOverride = useAppStore(s => s.upsertTxnOverride)
+  const removeTxnOverride = useAppStore(s => s.removeTxnOverride)
   const [consultModalOpen, setConsultModalOpen] = useState(false)
+  const [consultMode, setConsultMode] = useState<'ap_bills' | 'mapped_accounts' | 'all_txns'>('ap_bills')
+  const [doctorPatternDraft, setDoctorPatternDraft] = useState('')
+  const [doctorPatternErrors, setDoctorPatternErrors] = useState<string[]>([])
+  const [doctorFilterEnabled, setDoctorFilterEnabled] = useState(true)
+  const [consultSearch, setConsultSearch] = useState('')
+  const [consultStatusFilter, setConsultStatusFilter] = useState<'all' | 'paid' | 'part-paid' | 'unpaid'>('all')
+  const [consultStart, setConsultStart] = useState('')
+  const [consultEnd, setConsultEnd] = useState('')
+  const [consultMin, setConsultMin] = useState('')
+  const [consultMax, setConsultMax] = useState('')
+  const activeDoctorPatterns = doctorPatterns.length ? doctorPatterns : DEFAULT_DOCTOR_PATTERNS
 
-  const baseTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
+  useEffect(() => {
+    if (!consultModalOpen) return
+    setDoctorPatternDraft(activeDoctorPatterns.join('\n'))
+    setDoctorPatternErrors([])
+  }, [consultModalOpen, activeDoctorPatterns])
+
+  const effectiveLedger = useMemo(
+    () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
+    [gl, txnOverrides, doctorRules]
+  )
+  const effectivePl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
+    [pl, effectiveLedger]
+  )
+  const operatingPl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
+    [pl, effectiveLedger]
+  )
+
+  const operatingTotals = useMemo(() => (operatingPl ? computeXeroTotals(operatingPl) : null), [operatingPl])
+  const netTotals = useMemo(() => (effectivePl ? computeXeroTotals(effectivePl) : null), [effectivePl])
+  const baseTotals = useMemo(() => {
+    if (!operatingTotals) return null
+    if (!netTotals) return operatingTotals
+    return { ...operatingTotals, net: netTotals.net }
+  }, [operatingTotals, netTotals])
 
   const derivedProgramCount = useMemo(() => {
     if (!scenario.machinesEnabled) return null
@@ -280,14 +337,14 @@ export function Overview() {
   }, [scenario.machinesEnabled, scenario.tmsMachines, scenario.patientsPerMachinePerWeek, scenario.utilisation, scenario.weeksPerYear])
 
   const baseRentLatest = useMemo(() => {
-    if (!pl) return null
+    if (!operatingPl) return null
     const rx = compileMatchers(scenario.rentAccountMatchers ?? [], [/rent/i, /lease/i])
     if (!rx) return null
     let latest: number | null = null
-    for (const a of pl.accounts) {
+    for (const a of operatingPl.accounts) {
       if (a.section !== 'operating_expenses') continue
       if (!rx.test(a.name)) continue
-      for (let i = pl.monthLabels.length - 1; i >= 0; i--) {
+      for (let i = operatingPl.monthLabels.length - 1; i >= 0; i--) {
         const v = a.values[i] ?? 0
         if (v !== 0) {
           latest = v
@@ -297,31 +354,19 @@ export function Overview() {
       if (latest != null) break
     }
     return latest
-  }, [pl, scenario.rentAccountMatchers])
-
-  const consultGroups = useMemo(() => {
-    if (!gl) return []
-    const rx = compileMatchers(scenario.legacyConsultAccountMatchers ?? [], [])
-    if (!rx) return []
-    const groups: Record<string, any> = {}
-    for (const [idx, txn] of (gl.txns ?? []).entries()) {
-      const label = `${txn.account ?? 'Unmapped'}`
-      if (!rx.test(label) && !(txn.description && rx.test(txn.description))) continue
-      if (!groups[label]) groups[label] = { account: label, txns: [] as any[] }
-      const key = `${label}-${txn.date}-${txn.amount}-${txn.description ?? ''}-${idx}`
-      groups[label].txns.push({ key, ...txn })
-    }
-    return Object.values(groups)
-  }, [gl, scenario.legacyConsultAccountMatchers])
+  }, [operatingPl, scenario.rentAccountMatchers])
 
   const scenarioTotals = useMemo(() => {
-    if (!pl || !baseTotals) return null
+    if (!operatingPl || !baseTotals || !netTotals) return null
     if (!scenario.enabled) return null
-    return applyBundledScenario(baseTotals, pl, scenario)
-  }, [pl, baseTotals, scenario])
+    const raw = applyBundledScenario(baseTotals, operatingPl, scenario)
+    if (!raw) return null
+    const nonOperatingNet = baseTotals.net.map((v, i) => (netTotals.net[i] ?? 0) - (v ?? 0))
+    return { ...raw, net: raw.net.map((v, i) => v + (nonOperatingNet[i] ?? 0)) }
+  }, [operatingPl, baseTotals, netTotals, scenario])
 
   const matcherPreview = useMemo(() => {
-    if (!pl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
+    if (!operatingPl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
     const tmsPatterns = compileList(scenario.legacyTmsAccountMatchers ?? [])
     const consultPatterns = scenario.includeDoctorConsultsInBundle ? compileList(scenario.legacyConsultAccountMatchers ?? []) : []
     const excluded = new Set(scenario.excludedConsultAccounts ?? [])
@@ -333,7 +378,7 @@ export function Overview() {
       return patterns.length ? patterns.some(re => re.test(name)) : false
     }
 
-    for (const a of pl.accounts) {
+    for (const a of operatingPl.accounts) {
       const matchedTms = shouldRemove(a.name, 'tms')
       const matchedConsult = shouldRemove(a.name, 'consult')
       if (!matchedTms && !matchedConsult) continue
@@ -350,9 +395,132 @@ export function Overview() {
       totals[target as 'revenue' | 'cogs' | 'opex'] += a.total ?? 0
     }
     return { accounts, totals }
-  }, [pl, scenario.includeDoctorConsultsInBundle, scenario.legacyConsultAccountMatchers, scenario.legacyTmsAccountMatchers, scenario.excludedConsultAccounts])
+  }, [operatingPl, scenario.includeDoctorConsultsInBundle, scenario.legacyConsultAccountMatchers, scenario.legacyTmsAccountMatchers, scenario.excludedConsultAccounts])
 
-  if (!pl || !baseTotals) {
+  const doctorRuleMap = useMemo(() => {
+    const map = new Map<string, any>()
+    doctorRules.forEach(rule => {
+      if (rule.enabled) map.set(rule.contact_id, rule)
+    })
+    return map
+  }, [doctorRules])
+
+  const overrideMap = useMemo(() => {
+    const map = new Map<string, any>()
+    txnOverrides.forEach(o => {
+      if (o.hash) map.set(o.hash, o)
+    })
+    return map
+  }, [txnOverrides])
+
+  const compiledDoctorPatterns = useMemo(() => compileList(activeDoctorPatterns), [activeDoctorPatterns])
+
+  const doctorBillGroups = useMemo(() => {
+    if (!gl) return []
+    const bills = gl.txns.filter(txn => isApBillTxn(txn) && !isPaymentTxn(txn))
+    const payments = gl.txns.filter(txn => isApBillTxn(txn) && isPaymentTxn(txn))
+    const byDoctor: Record<string, any> = {}
+
+    bills.forEach(bill => {
+      const doctorLabel = inferDoctorLabel(bill) ?? 'Unknown doctor'
+      const doctorContactId = normalizeContactId(doctorLabel)
+      const billId = bill.reference ?? bill.description ?? `${bill.account}-${bill.date}-${bill.amount}`
+      const billHash = buildTxnHash(bill)
+      const override = overrideMap.get(billHash)
+      const rule = doctorRuleMap.get(doctorContactId)
+      const resolved = resolveTreatment({ txn: bill, override, rule })
+      const relatedPayments = payments.filter(p => {
+        const paymentId = p.reference ?? p.description ?? ''
+        return paymentId && paymentId === billId
+      })
+      const paidAmount = relatedPayments.reduce((sum, p) => sum + Math.abs(p.amount ?? 0), 0)
+      const billAmount = Math.abs(bill.amount ?? 0)
+      const status = paidAmount === 0 ? 'unpaid' : paidAmount + 0.01 < billAmount ? 'part-paid' : 'paid'
+
+      if (!byDoctor[doctorContactId]) {
+        byDoctor[doctorContactId] = {
+          doctorLabel,
+          doctorContactId,
+          rule,
+          bills: [],
+        }
+      }
+      byDoctor[doctorContactId].bills.push({
+        bill,
+        billId,
+        billHash,
+        override,
+        resolved,
+        payments: relatedPayments,
+        paidAmount,
+        billAmount,
+        status,
+      })
+    })
+
+    let groups = Object.values(byDoctor)
+    if (doctorFilterEnabled && compiledDoctorPatterns.length) {
+      groups = groups.filter(group => compiledDoctorPatterns.some(rx => rx.test(group.doctorLabel)))
+    }
+
+    const query = consultSearch.toLowerCase()
+    const minAmount = Number(consultMin) || null
+    const maxAmount = Number(consultMax) || null
+    const startDate = consultStart ? new Date(consultStart) : null
+    const endDate = consultEnd ? new Date(consultEnd) : null
+
+    return groups
+      .map(group => {
+        const filteredBills = group.bills.filter((item: any) => {
+        if (consultStatusFilter !== 'all' && item.status !== consultStatusFilter) return false
+        if (minAmount != null && item.billAmount < minAmount) return false
+        if (maxAmount != null && item.billAmount > maxAmount) return false
+        if (startDate && new Date(item.bill.date) < startDate) return false
+        if (endDate && new Date(item.bill.date) > endDate) return false
+        if (query) {
+          const haystack = `${item.bill.reference ?? ''} ${item.bill.description ?? ''}`.toLowerCase()
+          if (!haystack.includes(query)) return false
+        }
+        return true
+        })
+        return { ...group, bills: filteredBills }
+      })
+      .filter(group => group.bills.length > 0)
+  }, [
+    gl,
+    doctorRuleMap,
+    overrideMap,
+    doctorFilterEnabled,
+    compiledDoctorPatterns,
+    consultSearch,
+    consultStatusFilter,
+    consultMin,
+    consultMax,
+    consultStart,
+    consultEnd,
+  ])
+
+  const legacyConsultGroups = useMemo(() => {
+    if (!gl) return []
+    const rx = compileMatchers(scenario.legacyConsultAccountMatchers ?? [], [])
+    if (!rx) return []
+    const needle = consultSearch.toLowerCase()
+    const groups: Record<string, any> = {}
+    for (const [idx, txn] of (gl.txns ?? []).entries()) {
+      const label = `${txn.account ?? 'Unmapped'}`
+      if (!rx.test(label) && !(txn.description && rx.test(txn.description))) continue
+      if (needle) {
+        const haystack = `${txn.description ?? ''} ${txn.reference ?? ''}`.toLowerCase()
+        if (!haystack.includes(needle)) continue
+      }
+      if (!groups[label]) groups[label] = { account: label, txns: [] as any[] }
+      const key = `${label}-${txn.date}-${txn.amount}-${txn.description ?? ''}-${idx}`
+      groups[label].txns.push({ key, ...txn })
+    }
+    return Object.values(groups)
+  }, [gl, scenario.legacyConsultAccountMatchers, consultSearch])
+
+  if (!operatingPl || !baseTotals) {
     return (
       <Card className="p-5">
         <div className="text-sm text-slate-300">
@@ -362,7 +530,7 @@ export function Overview() {
     )
   }
 
-  const rows = pl.monthLabels.map((label, i) => {
+  const rows = operatingPl.monthLabels.map((label, i) => {
     const row: any = {
       month: label,
       current: baseTotals.net[i] ?? 0,
@@ -383,6 +551,8 @@ export function Overview() {
   const baseRentAvg = baseRentLatest ?? 0
   const programDisplayCount = scenario.machinesEnabled ? derivedProgramsRounded : (scenario.programMonthlyCount ?? 0)
   const doctorPayoutPct = Math.max(0, Math.min(100, 100 - (scenario.doctorServiceFeePct ?? 0)))
+  const doctorRuleCount = doctorRules.length
+  const billOverrideCount = txnOverrides.length
   const assumptionChips = [
     scenario.enabled ? 'Replacement scenario on' : null,
     scenario.includeDoctorConsultsInBundle ? 'Consult revenue removed from base' : null,
@@ -391,6 +561,71 @@ export function Overview() {
     scenario.machinesEnabled ? 'Programs derived from capacity' : 'Programs set manually',
     scenario.state ? `Clinic state: ${scenario.state}` : null,
   ].filter(Boolean) as string[]
+
+  const saveDoctorRule = async (contactId: string, treatment: TxnTreatment, deferral?: { startMonth?: string; months?: number; includeInOperatingKPIs?: boolean }) => {
+    const payload = {
+      contact_id: contactId,
+      default_treatment: treatment,
+      deferral_start_month: deferral?.startMonth ?? null,
+      deferral_months: deferral?.months ?? null,
+      deferral_include_in_operating_kpis: deferral?.includeInOperatingKPIs ?? null,
+      enabled: true,
+    }
+    const saved = await api.upsertDoctorRule(payload)
+    upsertDoctorRule(saved)
+  }
+
+  const clearDoctorRule = async (contactId: string) => {
+    await api.deleteDoctorRule(contactId)
+    removeDoctorRule(contactId)
+  }
+
+  const saveBillOverride = async (bill: any, treatment: TxnTreatment, deferral?: { startMonth?: string; months?: number; includeInOperatingKPIs?: boolean }) => {
+    const hash = buildTxnHash(bill)
+    const payload = {
+      source: 'XERO_GL',
+      document_id: bill.reference ?? hash,
+      line_item_id: null,
+      hash,
+      treatment,
+      deferral_start_month: deferral?.startMonth ?? null,
+      deferral_months: deferral?.months ?? null,
+      deferral_include_in_operating_kpis: deferral?.includeInOperatingKPIs ?? null,
+    }
+    const saved = await api.upsertTxnOverride(payload)
+    upsertTxnOverride(saved)
+  }
+
+  const clearBillOverride = async (overrideId: string) => {
+    await api.deleteTxnOverride(overrideId)
+    removeTxnOverride(overrideId)
+  }
+
+  const saveDoctorPatterns = async () => {
+    const lines = doctorPatternDraft
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+    const errors: string[] = []
+    lines.forEach((line, idx) => {
+      try {
+        new RegExp(line, 'i')
+      } catch {
+        errors.push(`Line ${idx + 1}: invalid regex`)
+      }
+    })
+    setDoctorPatternErrors(errors)
+    if (errors.length) return
+    await api.upsertPreference('doctor_patterns_v1', { value_json: { patterns: lines } })
+    setDoctorPatterns(lines)
+  }
+
+  const resetDoctorPatterns = async () => {
+    await api.upsertPreference('doctor_patterns_v1', { value_json: { patterns: DEFAULT_DOCTOR_PATTERNS } })
+    setDoctorPatterns(DEFAULT_DOCTOR_PATTERNS)
+    setDoctorPatternDraft(DEFAULT_DOCTOR_PATTERNS.join('\n'))
+    setDoctorPatternErrors([])
+  }
 
   return (
     <>
@@ -786,8 +1021,7 @@ export function Overview() {
                       Review &amp; exclude consult transactions
                     </button>
                     <span>
-                      Excluded accounts: {(scenario.excludedConsultAccounts ?? []).length} · Excluded txns:{' '}
-                      {(scenario.excludedConsultTxnKeys ?? []).length}
+                      Doctor rules: {doctorRuleCount} · Bill overrides: {billOverrideCount}
                     </span>
                   </div>
                 </div>
@@ -1192,11 +1426,11 @@ export function Overview() {
     </div>
     {consultModalOpen ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur">
-        <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
+        <div className="w-full max-w-6xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold text-slate-100">Consult transaction review</div>
-              <div className="text-xs text-slate-400">Group by Xero account. Exclude whole accounts or individual txns.</div>
+              <div className="text-sm font-semibold text-slate-100">Consult review (Bundle Finder)</div>
+              <div className="text-xs text-slate-400">Bills-first view for clean exclusions. Payments nest under each bill.</div>
             </div>
             <button
               type="button"
@@ -1207,71 +1441,342 @@ export function Overview() {
             </button>
           </div>
 
-          <div className="mt-4 max-h-[60vh] overflow-auto space-y-3">
-            {consultGroups.length === 0 ? (
-              <div className="text-xs text-slate-300">No consult transactions matched the current regex.</div>
-            ) : (
-              consultGroups.map(group => {
-                const excludedAcc = (scenario.excludedConsultAccounts ?? []).includes(group.account)
-                return (
-                  <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-100">{group.account}</div>
-                        <div className="text-xs text-slate-400">{group.txns.length} transactions</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const set = new Set(scenario.excludedConsultAccounts ?? [])
-                          excludedAcc ? set.delete(group.account) : set.add(group.account)
-                          setScenario({ excludedConsultAccounts: Array.from(set) })
-                        }}
-                        className={`rounded-xl px-3 py-1 text-xs font-semibold border ${
-                          excludedAcc
-                            ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
-                            : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
-                        }`}
-                      >
-                        {excludedAcc ? 'Include account' : 'Exclude account'}
-                      </button>
-                    </div>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+              <Label>View mode</Label>
+              <select
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100"
+                value={consultMode}
+                onChange={(e) => setConsultMode(e.target.value as any)}
+              >
+                <option value="ap_bills">Doctor Bills (Accounts Payable)</option>
+                <option value="mapped_accounts">Mapped Consult Accounts</option>
+                <option value="all_txns">All Transactions (debug)</option>
+              </select>
+              <span className="text-slate-400">Bills create expense; payments are informational only.</span>
+            </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {group.txns.map((txn: any) => {
-                        const excludedKeySet = new Set(scenario.excludedConsultTxnKeys ?? [])
-                        const isExcluded = excludedKeySet.has(txn.key)
-                        return (
-                          <div key={txn.key} className="rounded-lg border border-white/10 bg-white/5 p-2 text-xs text-slate-200">
-                            <div className="flex items-start justify-between gap-2">
+            <div className="grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 lg:grid-cols-5">
+              <div>
+                <Label>Search</Label>
+                <Input value={consultSearch} onChange={(e) => setConsultSearch(e.target.value)} placeholder="Reference / description" />
+              </div>
+              <div>
+                <Label>Status</Label>
+                <select
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-xs text-slate-100"
+                  value={consultStatusFilter}
+                  onChange={(e) => setConsultStatusFilter(e.target.value as any)}
+                >
+                  <option value="all">All</option>
+                  <option value="paid">Paid</option>
+                  <option value="part-paid">Part-paid</option>
+                  <option value="unpaid">Unpaid</option>
+                </select>
+              </div>
+              <div>
+                <Label>Date from</Label>
+                <Input type="date" value={consultStart} onChange={(e) => setConsultStart(e.target.value)} />
+              </div>
+              <div>
+                <Label>Date to</Label>
+                <Input type="date" value={consultEnd} onChange={(e) => setConsultEnd(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Min</Label>
+                  <Input type="number" value={consultMin} onChange={(e) => setConsultMin(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Max</Label>
+                  <Input type="number" value={consultMax} onChange={(e) => setConsultMax(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-100">Doctor regex patterns</div>
+                  <div className="text-[11px] text-slate-400">One regex per line. Matches contact name (case-insensitive).</div>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" checked={doctorFilterEnabled} onChange={() => setDoctorFilterEnabled(v => !v)} />
+                  Enable doctor filter
+                </label>
+              </div>
+              <textarea
+                className="mt-2 w-full min-h-[90px] rounded-xl bg-slate-900/60 border border-white/10 px-3 py-2 text-xs text-slate-100"
+                value={doctorPatternDraft}
+                onChange={(e) => setDoctorPatternDraft(e.target.value)}
+                placeholder={DEFAULT_DOCTOR_PATTERNS.join('\n')}
+              />
+              {doctorPatternErrors.length > 0 && (
+                <div className="mt-2 text-xs text-rose-200 space-y-1">
+                  {doctorPatternErrors.map(err => (
+                    <div key={err}>{err}</div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => saveDoctorPatterns()}
+                  className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
+                >
+                  Save patterns
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resetDoctorPatterns()}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100"
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 max-h-[60vh] overflow-auto space-y-4">
+            {consultMode === 'ap_bills' && (
+              <>
+                {doctorBillGroups.length === 0 ? (
+                  <div className="text-xs text-slate-300">No AP bills matched the current filters.</div>
+                ) : (
+                  doctorBillGroups.map(group => (
+                    <div key={group.doctorContactId} className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-100">{group.doctorLabel}</div>
+                          <div className="text-xs text-slate-400">{group.bills.length} bills</div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
+                            value={group.rule?.default_treatment ?? 'OPERATING'}
+                            onChange={(e) => {
+                              const next = e.target.value as TxnTreatment
+                              if (next === 'DEFERRED') {
+                                saveDoctorRule(group.doctorContactId, next, {
+                                  startMonth: group.rule?.deferral_start_month ?? '',
+                                  months: group.rule?.deferral_months ?? 12,
+                                  includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
+                                })
+                              } else {
+                                saveDoctorRule(group.doctorContactId, next)
+                              }
+                            }}
+                          >
+                            <option value="OPERATING">Operating</option>
+                            <option value="NON_OPERATING">Non-operating</option>
+                            <option value="DEFERRED">Deferred</option>
+                            <option value="EXCLUDE">Exclude</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => saveDoctorRule(group.doctorContactId, 'EXCLUDE')}
+                            className="rounded-xl border border-rose-400/40 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-100"
+                          >
+                            Exclude all
+                          </button>
+                          {group.rule && (
+                            <button
+                              type="button"
+                              onClick={() => clearDoctorRule(group.doctorContactId)}
+                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
+                            >
+                              Clear rule
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {group.rule?.default_treatment === 'DEFERRED' && (
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                          <label className="flex items-center gap-2">
+                            Start month
+                            <input
+                              type="month"
+                              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                              value={group.rule?.deferral_start_month ?? ''}
+                              onChange={(e) =>
+                                saveDoctorRule(group.doctorContactId, 'DEFERRED', {
+                                  startMonth: e.target.value,
+                                  months: group.rule?.deferral_months ?? 12,
+                                  includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="flex items-center gap-2">
+                            Months
+                            <input
+                              type="number"
+                              min={1}
+                              className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                              value={group.rule?.deferral_months ?? 12}
+                              onChange={(e) =>
+                                saveDoctorRule(group.doctorContactId, 'DEFERRED', {
+                                  startMonth: group.rule?.deferral_start_month ?? '',
+                                  months: Number(e.target.value),
+                                  includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={group.rule?.deferral_include_in_operating_kpis ?? true}
+                              onChange={(e) =>
+                                saveDoctorRule(group.doctorContactId, 'DEFERRED', {
+                                  startMonth: group.rule?.deferral_start_month ?? '',
+                                  months: group.rule?.deferral_months ?? 12,
+                                  includeInOperatingKPIs: e.target.checked,
+                                })
+                              }
+                            />
+                            Include in operating KPIs
+                          </label>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        {group.bills.map((item: any) => (
+                          <div key={item.billHash} className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <div className="font-semibold">{txn.description || '(no description)'}</div>
-                                <div className="text-slate-400">{txn.date}</div>
-                                <div className="text-slate-300">Amount: {money(txn.amount)}</div>
+                                <div className="text-sm font-semibold text-slate-100">{item.bill.reference ?? item.bill.description ?? 'Bill'}</div>
+                                <div className="text-xs text-slate-400">{item.bill.date}</div>
+                                <div className="text-xs text-slate-300">Amount: {money(item.bill.amount)}</div>
+                                <div className="text-[11px] text-slate-400">Status: {item.status}</div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const next = new Set(scenario.excludedConsultTxnKeys ?? [])
-                                  isExcluded ? next.delete(txn.key) : next.add(txn.key)
-                                  setScenario({ excludedConsultTxnKeys: Array.from(next) })
-                                }}
-                                className={`rounded-lg px-2 py-1 border text-[11px] font-semibold ${
-                                  isExcluded
-                                    ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
-                                    : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
-                                }`}
-                              >
-                                {isExcluded ? 'Include' : 'Exclude'}
-                              </button>
+                              <div className="flex flex-col items-end gap-2">
+                                <select
+                                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
+                                  value={item.resolved.treatment}
+                                  onChange={(e) => {
+                                    const next = e.target.value as TxnTreatment
+                                    if (next === 'DEFERRED') {
+                                      saveBillOverride(item.bill, next, {
+                                        startMonth: item.resolved.deferral?.startMonth ?? '',
+                                        months: item.resolved.deferral?.months ?? 12,
+                                        includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
+                                      })
+                                    } else {
+                                      saveBillOverride(item.bill, next)
+                                    }
+                                  }}
+                                >
+                                  <option value="OPERATING">Operating</option>
+                                  <option value="NON_OPERATING">Non-operating</option>
+                                  <option value="DEFERRED">Deferred</option>
+                                  <option value="EXCLUDE">Exclude</option>
+                                </select>
+                                {item.override && (
+                                  <button
+                                    type="button"
+                                    onClick={() => clearBillOverride(item.override.id)}
+                                    className="text-[10px] text-slate-400 hover:text-slate-200"
+                                  >
+                                    Revert to doctor default
+                                  </button>
+                                )}
+                              </div>
                             </div>
+
+                            {item.resolved.treatment === 'DEFERRED' && (
+                              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                                <label className="flex items-center gap-2">
+                                  Start month
+                                  <input
+                                    type="month"
+                                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                                    value={item.resolved.deferral?.startMonth ?? ''}
+                                    onChange={(e) =>
+                                      saveBillOverride(item.bill, 'DEFERRED', {
+                                        startMonth: e.target.value,
+                                        months: item.resolved.deferral?.months ?? 12,
+                                        includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  Months
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                                    value={item.resolved.deferral?.months ?? 12}
+                                    onChange={(e) =>
+                                      saveBillOverride(item.bill, 'DEFERRED', {
+                                        startMonth: item.resolved.deferral?.startMonth ?? '',
+                                        months: Number(e.target.value),
+                                        includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.resolved.deferral?.includeInOperatingKPIs ?? true}
+                                    onChange={(e) =>
+                                      saveBillOverride(item.bill, 'DEFERRED', {
+                                        startMonth: item.resolved.deferral?.startMonth ?? '',
+                                        months: item.resolved.deferral?.months ?? 12,
+                                        includeInOperatingKPIs: e.target.checked,
+                                      })
+                                    }
+                                  />
+                                  Include in operating KPIs
+                                </label>
+                              </div>
+                            )}
+
+                            {item.payments.length > 0 && (
+                              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2">
+                                <div className="text-[11px] font-semibold text-slate-300 mb-1">Payments</div>
+                                <div className="space-y-1 text-[11px] text-slate-300">
+                                  {item.payments.map((pay: any, idx: number) => (
+                                    <div key={idx} className="flex items-center justify-between">
+                                      <span>{pay.date} · {pay.description ?? pay.reference ?? 'Payment'}</span>
+                                      <span>{money(pay.amount)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )
-              })
+                  ))
+                )}
+              </>
+            )}
+
+            {consultMode === 'mapped_accounts' && (
+              <div className="space-y-2">
+                <div className="text-xs text-slate-300">
+                  Legacy consult account review (fallback). AP Bills mode is recommended for clean exclusions.
+                </div>
+                {legacyConsultGroups.length === 0 ? (
+                  <div className="text-xs text-slate-400">No consult transactions matched the current regex.</div>
+                ) : (
+                  legacyConsultGroups.map(group => (
+                    <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <div className="text-sm font-semibold text-slate-100">{group.account}</div>
+                      <div className="text-xs text-slate-400">{group.txns.length} transactions</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {consultMode === 'all_txns' && (
+              <div className="text-xs text-slate-300">All transactions view is not yet optimized.</div>
             )}
           </div>
         </div>
