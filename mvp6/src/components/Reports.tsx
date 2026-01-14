@@ -15,6 +15,7 @@ export function Reports() {
   const user = useAuthStore(s => s.user)
   const readOnly = user?.role === 'viewer'
   const pl = useAppStore(s => s.pl)
+  const gl = useAppStore(s => s.gl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
   const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
@@ -44,17 +45,32 @@ export function Reports() {
     setBuilder(reportConfig)
   }, [reportConfig])
 
+  const effectiveLedger = useMemo(
+    () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
+    [gl, txnOverrides, doctorRules]
+  )
+  const effectivePl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
+    [pl, effectiveLedger]
+  )
+  const operatingPl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
+    [pl, effectiveLedger]
+  )
+
   const reportData = useMemo(
     () =>
       getReportData({
         dataSource: builder.dataSource,
-        pl,
+        pl: effectivePl,
+        effectivePl,
+        operatingPl,
         template: dreamTemplate,
         scenario,
         includeScenario: builder.includeScenario,
         comparisonMode: builder.comparisonMode,
       }),
-    [builder.dataSource, builder.includeScenario, builder.comparisonMode, pl, dreamTemplate, scenario]
+    [builder.dataSource, builder.includeScenario, builder.comparisonMode, effectivePl, operatingPl, dreamTemplate, scenario]
   )
 
   useEffect(() => {
@@ -101,9 +117,10 @@ export function Reports() {
     setGeneratedAt(stamp)
     const canvas = await html2canvas(element, {
       scale: 2,
-      backgroundColor: '#0b1222',
+      backgroundColor: '#ffffff',
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
+      onclone: sanitizeColorStyles,
     })
     const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)
