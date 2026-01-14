@@ -6,6 +6,7 @@ import { DreamGroup, DreamLine } from '../lib/types'
 import { Button, Card, Chip, Input } from './ui'
 import { formatCurrency, formatPercent } from '../lib/format'
 import { DataHealthSummary } from './DataHealthSummary'
+import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 
 function Row({
   node,
@@ -91,17 +92,34 @@ function Row({
 export function DreamPnLTable() {
   const pl = useAppStore(s => s.pl)
   const template = useAppStore(s => s.template)
+  const gl = useAppStore(s => s.gl)
+  const txnOverrides = useAppStore(s => s.txnOverrides)
+  const doctorRules = useAppStore(s => s.doctorRules)
   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
   const setView = useAppStore(s => s.setView)
   const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['rev', 'cogs', 'opex']))
   const [showReconciliation, setShowReconciliation] = useState(false)
 
-  const computed = useMemo(() => (pl ? computeDream(pl, template) : null), [pl, template])
-  const totals = useMemo(() => (pl && computed ? computeDreamTotals(pl, template, computed) : null), [pl, template, computed])
-  const legacyTotals = useMemo(() => (pl ? computeXeroTotals(pl) : null), [pl])
+  const effectiveLedger = useMemo(
+    () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
+    [gl, txnOverrides, doctorRules]
+  )
+  const effectivePl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
+    [pl, effectiveLedger]
+  )
+  const operatingPl = useMemo(
+    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
+    [pl, effectiveLedger]
+  )
 
-  const depAmort = useMemo(() => (pl ? computeDepAmort(pl) : []), [pl])
+  const computed = useMemo(() => (operatingPl ? computeDream(operatingPl, template) : null), [operatingPl, template])
+  const totals = useMemo(() => (operatingPl && computed ? computeDreamTotals(operatingPl, template, computed) : null), [operatingPl, template, computed])
+  const legacyTotals = useMemo(() => (operatingPl ? computeXeroTotals(operatingPl) : null), [operatingPl])
+  const netTotals = useMemo(() => (effectivePl ? computeXeroTotals(effectivePl) : null), [effectivePl])
+
+  const depAmort = useMemo(() => (operatingPl ? computeDepAmort(operatingPl) : []), [operatingPl])
 
   const hasAnyMapping = useMemo(() => {
     const walk = (n: any): boolean => {
@@ -125,16 +143,16 @@ export function DreamPnLTable() {
   }, [template])
 
   const unmappedAccountNames = useMemo(() => {
-    if (!pl) return []
-    return pl.accounts.map(a => a.name).filter(name => !mappedAccountSet.has(name))
-  }, [pl, mappedAccountSet])
+    if (!operatingPl) return []
+    return operatingPl.accounts.map(a => a.name).filter(name => !mappedAccountSet.has(name))
+  }, [operatingPl, mappedAccountSet])
 
   const mappedTotals = useMemo(() => {
-    if (!pl) return null
-    const blank = () => Array(pl.months.length).fill(0)
+    if (!operatingPl) return null
+    const blank = () => Array(operatingPl.months.length).fill(0)
     const mapped = { revenue: blank(), cogs: blank(), opex: blank() }
 
-    for (const acc of pl.accounts) {
+    for (const acc of operatingPl.accounts) {
       if (!mappedAccountSet.has(acc.name)) continue
       const target =
         acc.section === 'trading_income' || acc.section === 'other_income'
@@ -152,7 +170,7 @@ export function DreamPnLTable() {
 
     const net = mapped.revenue.map((v, i) => v - mapped.cogs[i] - mapped.opex[i])
     return { ...mapped, net }
-  }, [pl, mappedAccountSet])
+  }, [operatingPl, mappedAccountSet])
 
   const unmappedTotals = useMemo(() => {
     if (!legacyTotals || !mappedTotals) return null
@@ -166,9 +184,9 @@ export function DreamPnLTable() {
   }, [legacyTotals, mappedTotals])
 
   const totalActivity = useMemo(() => {
-    if (!pl) return 0
-    return pl.accounts.reduce((sum, acc) => sum + acc.values.reduce((s, v) => s + Math.abs(v ?? 0), 0), 0)
-  }, [pl])
+    if (!operatingPl) return 0
+    return operatingPl.accounts.reduce((sum, acc) => sum + acc.values.reduce((s, v) => s + Math.abs(v ?? 0), 0), 0)
+  }, [operatingPl])
 
   const coveragePct = (lineId: string) => {
     if (!computed || !totalActivity) return 0
@@ -178,7 +196,7 @@ export function DreamPnLTable() {
   }
 
   const monthlyFooter = useMemo(() => {
-    if (!pl || !totals) return [] as { label: string; values: number[] }[]
+    if (!operatingPl || !totals || !netTotals) return [] as { label: string; values: number[] }[]
     const grossProfit = totals.revenue.map((r, i) => r - totals.cogs[i])
     const ebit = totals.revenue.map((r, i) => r - totals.cogs[i] - totals.opex[i])
     const ebitda = ebit.map((e, i) => e + (hasAnyMapping ? (depAmort[i] ?? 0) : 0))
@@ -189,18 +207,18 @@ export function DreamPnLTable() {
       { label: 'Total OpEx', values: totals.opex },
       { label: 'EBITDA', values: ebitda },
       { label: 'EBIT', values: ebit },
-      { label: 'Net profit', values: totals.net },
+      { label: 'Net profit', values: netTotals.net },
     ]
-  }, [pl, totals, depAmort, hasAnyMapping])
+  }, [operatingPl, totals, netTotals, depAmort, hasAnyMapping])
 
   const reconciliationRows = useMemo(() => {
-    if (!totals || !legacyTotals) return [] as { label: string; legacy: number; management: number; delta: number }[]
+    if (!totals || !legacyTotals || !netTotals) return [] as { label: string; legacy: number; management: number; delta: number }[]
     const sum = (arr: number[]) => arr.reduce((a, b) => a + (b ?? 0), 0)
     const rows = [
       { label: 'Revenue', legacy: sum(legacyTotals.revenue), management: sum(totals.revenue) },
       { label: 'COGS', legacy: sum(legacyTotals.cogs), management: sum(totals.cogs) },
       { label: 'OpEx', legacy: sum(legacyTotals.opex), management: sum(totals.opex) },
-      { label: 'Net', legacy: sum(legacyTotals.net), management: sum(totals.net) },
+      { label: 'Net', legacy: sum(legacyTotals.net), management: sum(netTotals.net) },
     ]
     return rows.map(r => ({ ...r, delta: r.management - r.legacy }))
   }, [totals, legacyTotals])
@@ -227,7 +245,7 @@ export function DreamPnLTable() {
     })
   }
 
-  if (!pl) {
+  if (!effectivePl) {
     return (
       <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
         <div className="flex items-center justify-between gap-3">
@@ -246,7 +264,7 @@ export function DreamPnLTable() {
     )
   }
 
-  const getVals = (id: string) => computed?.byLineId[id] ?? Array(pl.months.length).fill(0)
+  const getVals = (id: string) => computed?.byLineId[id] ?? Array(operatingPl?.months.length ?? 0).fill(0)
 
   return (
     <Card className="p-5 overflow-hidden">
@@ -345,7 +363,7 @@ export function DreamPnLTable() {
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>
               <th className="text-left px-3 py-2 font-semibold">Dream category</th>
-              {pl.monthLabels.map(m => (
+              {operatingPl?.monthLabels.map(m => (
                 <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{m}</th>
               ))}
             </tr>
@@ -356,7 +374,7 @@ export function DreamPnLTable() {
                 key={child.id}
                 node={child}
                 depth={0}
-                months={pl.months.length}
+            months={operatingPl?.months.length ?? 0}
                 getVals={getVals}
                 onSelect={id => setSelectedLineId(id)}
                 expanded={expanded}

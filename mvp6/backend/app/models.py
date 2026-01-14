@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import JSON
 from .db import Base
@@ -121,3 +121,64 @@ class SnapshotShare(Base):
 
     snapshot = relationship('Snapshot', back_populates='shares')
     user = relationship('User')
+
+
+class TxnOverride(Base):
+    __tablename__ = 'txn_overrides'
+    __table_args__ = (
+        UniqueConstraint(
+            'tenant_id',
+            'user_id',
+            'source',
+            'document_id',
+            'line_item_id',
+            'hash',
+            name='uniq_txn_override',
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    source = Column(String(40), nullable=False)
+    document_id = Column(String(255), nullable=False)
+    line_item_id = Column(String(255), nullable=True)
+    hash = Column(String(64), nullable=True)
+    treatment = Column(String(20), nullable=False, default='OPERATING')
+    deferral_start_month = Column(String(7), nullable=True)
+    deferral_months = Column(Integer, nullable=True)
+    deferral_include_in_operating_kpis = Column(Boolean, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class DoctorRule(Base):
+    __tablename__ = 'doctor_rules'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'user_id', 'contact_id', name='uniq_doctor_rule'),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    contact_id = Column(String(255), nullable=False)
+    default_treatment = Column(String(20), nullable=False, default='OPERATING')
+    deferral_start_month = Column(String(7), nullable=True)
+    deferral_months = Column(Integer, nullable=True)
+    deferral_include_in_operating_kpis = Column(Boolean, nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class UserPreference(Base):
+    __tablename__ = 'user_preferences'
+    __table_args__ = (UniqueConstraint('tenant_id', 'user_id', 'key', name='uniq_user_pref'),)
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    key = Column(String(100), nullable=False)
+    value_json = Column(json_type(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
