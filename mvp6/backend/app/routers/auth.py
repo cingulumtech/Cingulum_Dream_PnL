@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from ..db import get_db
@@ -15,10 +16,15 @@ from ..auth import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+ALLOWED_SIGNUP_CODES = [c.strip() for c in os.environ.get("ALLOWED_SIGNUP_CODES", "").split(",") if c.strip()]
 
 
 @router.post("/register", response_model=schemas.AuthResponse)
 def register(payload: schemas.RegisterRequest, response: Response, db: Session = Depends(get_db)):
+    if not ALLOWED_SIGNUP_CODES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Signups are disabled")
+    if not payload.invite_code or payload.invite_code not in ALLOWED_SIGNUP_CODES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid invite code")
     existing = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")

@@ -57,7 +57,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  register: (payload: { email: string; password: string; remember: boolean }) =>
+  register: (payload: { email: string; password: string; remember: boolean; invite_code?: string }) =>
     request<{ user: ApiUser }>('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload: { email: string; password: string; remember: boolean }) =>
     request<{ user: ApiUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),

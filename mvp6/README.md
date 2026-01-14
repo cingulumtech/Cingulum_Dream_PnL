@@ -22,6 +22,7 @@ docker compose up -d
 ```bash
 cp .env.example .env
 ```
+Update `ALLOWED_SIGNUP_CODES` in `.env` to control who can register.
 
 3) Create a virtualenv + install backend deps
 ```bash

@@ -10,6 +10,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => Promise<v
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -23,7 +24,9 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => Promise<v
     setBusy(true)
     try {
       const payload = { email: email.trim(), password: password.trim(), remember }
-      const res = mode === 'signin' ? await api.login(payload) : await api.register(payload)
+      const res = mode === 'signin'
+        ? await api.login(payload)
+        : await api.register({ ...payload, invite_code: inviteCode.trim() || undefined })
       setUser(res.user)
       setStatus('authenticated')
       await onAuthenticated()
@@ -70,6 +73,12 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => Promise<v
           <Label>Password</Label>
           <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
         </div>
+        {mode === 'signup' && (
+          <div>
+            <Label>Invite code</Label>
+            <Input value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="Enter invite code" />
+          </div>
+        )}
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <input
             type="checkbox"
