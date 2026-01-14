@@ -22,7 +22,7 @@ docker compose up -d
 ```bash
 cp .env.example .env
 ```
-Update `ALLOWED_SIGNUP_CODES` in `.env` to control who can register.
+Update `ALLOWED_SIGNUP_CODES` in `.env` to control who can register (single code or comma-separated list).
 The first registered user is assigned `super_admin`; all later users default to `viewer` until upgraded in Settings.
 
 3) Create a virtualenv + install backend deps
@@ -39,9 +39,9 @@ If your system is missing venv tooling, install it first: `sudo apt install pyth
 alembic upgrade head
 ```
 
-5) Start the API
+5) Start the API (loads `.env` from the repo root automatically)
 ```bash
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### Frontend

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, RefreshCcw, Settings2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals } from '../lib/dream/compute'
 import { DreamGroup, DreamLine } from '../lib/types'
