@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
-from .db import Base, engine
 
 ENV_PATHS = [
     Path(__file__).resolve().parents[2] / ".env",
