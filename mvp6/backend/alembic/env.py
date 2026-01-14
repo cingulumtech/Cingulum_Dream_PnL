@@ -1,9 +1,15 @@
 from logging.config import fileConfig
 import os
+import sys
+from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from app.db import Base
-from app import models
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+sys.path.append(str(BASE_DIR))
+
+from app.db import Base  # noqa: E402
+from app import models  # noqa: F401,E402
 
 config = context.config
 

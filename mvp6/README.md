@@ -15,7 +15,7 @@ This is a working MVP that:
 
 1) Start Postgres
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 2) Set environment variables
@@ -26,10 +26,11 @@ cp .env.example .env
 3) Create a virtualenv + install backend deps
 ```bash
 cd backend
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+If your system is missing venv tooling, install it first: `sudo apt install python3-venv` (or `python3-full` on Ubuntu 24.04).
 
 4) Run migrations
 ```bash
