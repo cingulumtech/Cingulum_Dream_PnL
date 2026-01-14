@@ -56,6 +56,8 @@ npm run dev
 
 Open: `http://localhost:5173`
 
+Note: do not install the Ubuntu `vite` package. Use the project-local Vite that ships in `node_modules` via `npm run dev` (or `npx vite` if needed).
+
 ### Tests
 
 Backend tests (auth + snapshot RBAC):
