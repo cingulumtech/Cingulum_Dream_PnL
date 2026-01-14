@@ -257,19 +257,6 @@ export function SavedExports() {
           </div>
         )}
 
-        {showNew && (
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Input
-              className="w-56"
-              placeholder="Name this snapshot"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <Button onClick={createSnapshot}>Save snapshot</Button>
-            <Button variant="ghost" onClick={() => { setShowNew(false); setName('') }}>Cancel</Button>
-          </div>
-        )}
-
         <div className="mt-4 space-y-2">
           {snapshots.length === 0 ? (
             <Card className="p-3 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">

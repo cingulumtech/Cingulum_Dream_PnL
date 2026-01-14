@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from . import models
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 
 SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "atlas_session")
 CSRF_COOKIE_NAME = os.environ.get("CSRF_COOKIE_NAME", "atlas_csrf")
