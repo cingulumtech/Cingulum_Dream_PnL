@@ -319,8 +319,12 @@ export const useAppStore = create<AppState>()(
           return result as typeof defaults
         }
 
-        const mergedDefaults = { ...RECOMMENDED_DEFAULTS, ...(persisted?.defaults ?? current.defaults) }
-        mergedDefaults.exportSettings = ensureExportSettings(mergedDefaults.exportSettings)
+        const persistedDefaults = persisted?.defaults ?? current.defaults
+        const mergedDefaults = {
+          ...RECOMMENDED_DEFAULTS,
+          ...persistedDefaults,
+          exportSettings: ensureExportSettings({ ...persistedDefaults?.exportSettings }),
+        }
 
         const hydrateSnapshots = (snaps: any[] | undefined) =>
           (snaps ?? []).map((s) => {
@@ -354,7 +358,7 @@ export const useAppStore = create<AppState>()(
           templateFuture: (persisted?.templateFuture ?? []).slice(0, 20),
           lastTemplateSavedAt: persisted?.lastTemplateSavedAt ?? current.lastTemplateSavedAt,
           scenario: sanitizeScenario(incoming, defaults),
-          defaults: persisted?.defaults ?? current.defaults,
+          defaults: mergedDefaults,
           snapshots: persisted?.snapshots ?? current.snapshots,
           activeSnapshotId: persisted?.activeSnapshotId ?? current.activeSnapshotId,
         }
