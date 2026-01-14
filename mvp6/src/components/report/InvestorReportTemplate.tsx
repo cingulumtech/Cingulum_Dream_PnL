@@ -2,6 +2,7 @@ import React from 'react'
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts'
 import { ReportData } from '../../lib/reportData'
 import { AppMark } from '../AppMark'
+import { Chip } from '../ui'
 
 const MONEY_FORMATTER = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 })
