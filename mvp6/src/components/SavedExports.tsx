@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { useAppStore } from '../store/appStore'
-import { Card, Input, Label, Button } from './ui'
+import { Card, Input, Label, Button, Chip } from './ui'
 
 export function SavedExports() {
   const snapshots = useAppStore(s => s.snapshots)
