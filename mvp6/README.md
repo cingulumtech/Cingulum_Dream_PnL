@@ -11,6 +11,41 @@ This is a working MVP that:
 
 ## Run locally
 
+### Backend (API + Postgres)
+
+1) Start Postgres
+```bash
+docker compose up -d
+```
+
+2) Set environment variables
+```bash
+cp .env.example .env
+```
+Update `ALLOWED_SIGNUP_CODES` in `.env` to control who can register (single code or comma-separated list). Defaults to `invite-code-2657` if not set.
+The first registered user is assigned `super_admin`; all later users default to `viewer` until upgraded in Settings.
+
+3) Create a virtualenv + install backend deps
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+If your system is missing venv tooling, install it first: `sudo apt install python3-venv` (or `python3-full` on Ubuntu 24.04).
+
+4) Run migrations
+```bash
+alembic upgrade head
+```
+
+5) Start the API (loads `.env` from the repo root automatically)
+```bash
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+
 1) Install dependencies
 ```bash
 npm install
@@ -22,6 +57,16 @@ npm run dev
 ```
 
 Open: `http://localhost:5173`
+
+Note: do not install the Ubuntu `vite` package. Use the project-local Vite that ships in `node_modules` via `npm run dev` (or `npx vite` if needed).
+
+### Tests
+
+Backend tests (auth + snapshot RBAC):
+```bash
+cd backend
+pytest
+```
 
 ## How the “built-in upload” atlas works
 
