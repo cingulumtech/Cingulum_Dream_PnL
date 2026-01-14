@@ -11,6 +11,37 @@ import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
 import { useAuthStore } from '../store/authStore'
 
+const COLOR_FALLBACKS: Record<string, string> = {
+  color: '#0f172a',
+  'background-color': '#ffffff',
+  'border-color': '#cbd5e1',
+  'border-top-color': '#cbd5e1',
+  'border-right-color': '#cbd5e1',
+  'border-bottom-color': '#cbd5e1',
+  'border-left-color': '#cbd5e1',
+  'outline-color': '#94a3b8',
+  'text-decoration-color': '#0f172a',
+  fill: '#0f172a',
+  stroke: '#0f172a',
+}
+
+const COLOR_PROPERTIES = Object.keys(COLOR_FALLBACKS)
+
+function sanitizeColorStyles(doc: Document) {
+  const view = doc.defaultView
+  if (!view) return
+  const nodes = doc.querySelectorAll<HTMLElement>('*')
+  nodes.forEach(node => {
+    const computed = view.getComputedStyle(node)
+    COLOR_PROPERTIES.forEach(prop => {
+      const value = computed.getPropertyValue(prop)
+      if (value && value.trim().startsWith('color(')) {
+        node.style.setProperty(prop, COLOR_FALLBACKS[prop])
+      }
+    })
+  })
+}
+
 export function Reports() {
   const user = useAuthStore(s => s.user)
   const readOnly = user?.role === 'viewer'
@@ -93,9 +124,10 @@ export function Reports() {
     setGeneratedAt(stamp)
     const canvas = await html2canvas(element, {
       scale: 2,
-      backgroundColor: '#0b1222',
+      backgroundColor: '#ffffff',
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
+      onclone: sanitizeColorStyles,
     })
     const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)
