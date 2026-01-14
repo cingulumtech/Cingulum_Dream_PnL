@@ -31,6 +31,15 @@ export function Reports() {
   const [status, setStatus] = useState<string | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const [generatedAt, setGeneratedAt] = useState<Date>(() => new Date())
+  const panelClassName = [
+    'grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]',
+    readOnly ? 'pointer-events-none opacity-70' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const snapshotLabel = activeSnapshotId
+    ? 'Snapshot in use: ' + activeSnapshotId
+    : 'Live data (no snapshot pinned).'
 
   useEffect(() => {
     setBuilder(reportConfig)
@@ -144,7 +153,7 @@ export function Reports() {
           View-only access enabled. Report configuration changes are disabled.
         </div>
       )}
-      <div className={`grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
+      <div className={panelClassName}>
         <ReportBuilderPanel
           dataSource={builder.dataSource}
           includeScenario={builder.includeScenario}
@@ -176,9 +185,7 @@ export function Reports() {
               }}
             />
           </ReportPreview>
-          <div className="text-[11px] text-slate-400">
-            {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
-          </div>
+          <div className="text-[11px] text-slate-400">{snapshotLabel}</div>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -191,7 +198,6 @@ export function Reports() {
             {status ? <div className="text-xs text-slate-300">{status}</div> : null}
             {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
           </div>
-        </div>
         </div>
       </div>
     </div>
