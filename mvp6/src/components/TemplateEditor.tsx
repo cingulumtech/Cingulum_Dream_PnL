@@ -1,20 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowDown, ArrowUp, Download, FolderPlus, Plus, RotateCcw, ShieldCheck, Type, Upload } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
+import { useAuthStore } from '../store/authStore'
 import { DreamGroup, DreamLine } from '../lib/types'
 import { addGroup, addLine, findNode, findParent, moveChild, removeNode, setLineMappings, updateNodeLabel } from '../lib/dream/edit'
 import { Button, Card, Chip, Input, Label } from './ui'
+import { SaveStatusPill } from './SaveStatus'
 import { DREAM_TEMPLATE_SCHEMA, flattenLines, generateNodeId, validateTemplate } from '../lib/dream/schema'
 import { computeDream, computeDreamTotals } from '../lib/dream/compute'
 
 export function TemplateEditor() {
+  const user = useAuthStore(s => s.user)
+  const readOnly = user?.role === 'viewer'
   const template = useAppStore(s => s.template)
   const setTemplate = useAppStore(s => s.setTemplate)
   const resetTemplate = useAppStore(s => s.resetTemplate)
   const pl = useAppStore(s => s.pl)
   const undoTemplate = useAppStore(s => s.undoTemplate)
   const canUndo = useAppStore(s => s.canUndo())
-  const lastTemplateSavedAt = useAppStore(s => s.lastTemplateSavedAt)
+  const templateSaveStatus = useAppStore(s => s.templateSaveStatus)
 
   const [selectedId, setSelectedId] = useState(template.root.id)
   const [rename, setRename] = useState('')
@@ -180,12 +184,17 @@ export function TemplateEditor() {
           <Chip tone={metadataChipTone}>
             Schema {template.schemaVersion || 'unknown'} • v{template.version ?? 1}
           </Chip>
-          <Chip tone="good">Autosaved {lastTemplateSavedAt ? new Date(lastTemplateSavedAt).toLocaleTimeString() : 'now'}</Chip>
+          <SaveStatusPill status={templateSaveStatus} />
           <Button variant="ghost" onClick={() => undoTemplate()} disabled={!canUndo}>
             <RotateCcw className="h-4 w-4" /> Undo
           </Button>
         </div>
       </div>
+      {readOnly && (
+        <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          View-only access enabled. Contact an admin to unlock editing.
+        </div>
+      )}
 
       {validationIssues.length > 0 && (
         <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100 flex items-start gap-2">
@@ -204,7 +213,7 @@ export function TemplateEditor() {
         </div>
       )}
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr]">
+      <div className={`mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
         {/* Left: Tree */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           <div className="flex items-center justify-between">
