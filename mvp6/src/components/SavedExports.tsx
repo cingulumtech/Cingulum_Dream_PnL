@@ -3,10 +3,13 @@ import { useAppStore } from '../store/appStore'
 import { Card, Input, Label, Button, Chip } from './ui'
 import { api } from '../lib/api'
 import { buildSnapshotSummary, ensureExportSettings, ensureReportConfig, fingerprintGl, fingerprintPl, fingerprintTemplate } from '../lib/snapshotUtils'
+import { useAuthStore } from '../store/authStore'
 
 const roles = ['viewer', 'editor', 'admin'] as const
 
 export function SavedExports() {
+  const user = useAuthStore(s => s.user)
+  const readOnly = user?.role === 'viewer'
   const snapshots = useAppStore(s => s.snapshots)
   const setSnapshots = useAppStore(s => s.setSnapshots)
   const upsertSnapshot = useAppStore(s => s.upsertSnapshot)
@@ -72,6 +75,7 @@ export function SavedExports() {
 
   const createSnapshot = async () => {
     if (!name.trim()) return
+    if (readOnly) return
     const reportCfg = ensureReportConfig(reportConfig)
     const exportSettings = ensureExportSettings(defaults.exportSettings)
     const templateFingerprint = fingerprintTemplate(template)
@@ -129,6 +133,7 @@ export function SavedExports() {
 
   const updateSnapshotName = async (id: string) => {
     if (!renameValue.trim()) return
+    if (readOnly) return
     const updated = await api.updateSnapshot(id, { name: renameValue.trim() })
     upsertSnapshot({
       id: updated.id,
@@ -144,6 +149,7 @@ export function SavedExports() {
   }
 
   const duplicateSnapshot = async (id: string) => {
+    if (readOnly) return
     const dup = await api.duplicateSnapshot(id)
     upsertSnapshot({
       id: dup.id,
@@ -158,11 +164,13 @@ export function SavedExports() {
   }
 
   const deleteSnapshot = async (id: string) => {
+    if (readOnly) return
     await api.deleteSnapshot(id)
     removeSnapshot(id)
   }
 
   const openShare = async (id: string) => {
+    if (readOnly) return
     setShareSnapshot(id)
     setShareError(null)
     const list = await api.listShares(id)
@@ -171,6 +179,7 @@ export function SavedExports() {
 
   const invite = async () => {
     if (!shareSnapshot || !inviteEmail.trim()) return
+    if (readOnly) return
     try {
       const share = await api.createShare(shareSnapshot, { email: inviteEmail.trim(), role: inviteRole })
       setShares(prev => {
@@ -186,12 +195,14 @@ export function SavedExports() {
 
   const updateShare = async (shareId: string, role: string) => {
     if (!shareSnapshot) return
+    if (readOnly) return
     const updated = await api.updateShare(shareSnapshot, shareId, { role })
     setShares(prev => prev.map(s => (s.id === shareId ? updated : s)))
   }
 
   const removeShare = async (shareId: string) => {
     if (!shareSnapshot) return
+    if (readOnly) return
     await api.deleteShare(shareSnapshot, shareId)
     setShares(prev => prev.filter(s => s.id !== shareId))
   }
@@ -219,12 +230,32 @@ export function SavedExports() {
             <button
               type="button"
               onClick={() => setShowNew(prev => !prev)}
+              disabled={readOnly}
+              title={readOnly ? 'View-only access' : ''}
               className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
             >
               New Snapshot
             </button>
           </div>
         </div>
+        {readOnly && (
+          <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            View-only access enabled. You can open shared snapshots but cannot create or modify them.
+          </div>
+        )}
+
+        {showNew && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Input
+              className="w-56"
+              placeholder="Name this snapshot"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Button onClick={createSnapshot} disabled={readOnly}>Save snapshot</Button>
+            <Button variant="ghost" onClick={() => { setShowNew(false); setName('') }}>Cancel</Button>
+          </div>
+        )}
 
         {showNew && (
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -253,9 +284,9 @@ export function SavedExports() {
           ) : (
             snapshots.map(snap => {
               const isActive = activeSnapshotId === snap.id
-              const canEditSnap = canEdit(snap.role)
-              const canShareSnap = canShare(snap.role)
-              const canDeleteSnap = canDelete(snap.role)
+              const canEditSnap = !readOnly && canEdit(snap.role)
+              const canShareSnap = !readOnly && canShare(snap.role)
+              const canDeleteSnap = !readOnly && canDelete(snap.role)
               return (
                 <div
                   key={snap.id}
@@ -291,6 +322,8 @@ export function SavedExports() {
                       <button
                         type="button"
                         onClick={() => duplicateSnapshot(snap.id)}
+                        disabled={readOnly}
+                        title={readOnly ? 'View-only access' : ''}
                         className="rounded-xl border border-indigo-400/30 bg-indigo-500/15 px-3 py-1 text-xs font-semibold text-indigo-100"
                       >
                         Duplicate
@@ -433,7 +466,7 @@ export function SavedExports() {
                 </select>
               </div>
               <div className="flex items-end">
-                <Button onClick={invite}>Invite</Button>
+                <Button onClick={invite} disabled={readOnly}>Invite</Button>
               </div>
             </div>
 
@@ -451,12 +484,13 @@ export function SavedExports() {
                       className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
                       value={share.role}
                       onChange={(e) => updateShare(share.id, e.target.value)}
+                      disabled={readOnly}
                     >
                       {roles.map(role => (
                         <option key={role} value={role}>{role}</option>
                       ))}
                     </select>
-                    <Button variant="ghost" onClick={() => removeShare(share.id)}>Remove</Button>
+                    <Button variant="ghost" onClick={() => removeShare(share.id)} disabled={readOnly}>Remove</Button>
                   </div>
                 </div>
               ))}

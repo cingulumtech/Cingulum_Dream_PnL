@@ -9,8 +9,11 @@ import { Card } from './ui'
 import { SaveStatusPill } from './SaveStatus'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
+import { useAuthStore } from '../store/authStore'
 
 export function Reports() {
+  const user = useAuthStore(s => s.user)
+  const readOnly = user?.role === 'viewer'
   const pl = useAppStore(s => s.pl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
@@ -120,7 +123,12 @@ export function Reports() {
         </div>
         <SaveStatusPill status={reportSaveStatus} />
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]">
+      {readOnly && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          View-only access enabled. Report configuration changes are disabled.
+        </div>
+      )}
+      <div className={`grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
         <ReportBuilderPanel
         dataSource={builder.dataSource}
         includeScenario={builder.includeScenario}

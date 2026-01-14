@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .db import Base, engine
-from .routers import auth, state, snapshots
+from .routers import auth, state, snapshots, users
 
 APP_NAME = os.environ.get("APP_NAME", "Accounting Atlas API")
 
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(state.router)
 app.include_router(snapshots.router)
+app.include_router(users.router)
 
 
 @app.get("/api/health")

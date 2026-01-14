@@ -19,6 +19,7 @@ class User(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(Text, nullable=False)
+    role = Column(String(40), nullable=False, default='viewer')
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     sessions = relationship('Session', back_populates='user', cascade='all, delete-orphan')

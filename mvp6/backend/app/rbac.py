@@ -20,6 +20,8 @@ ROLE_PRIORITY = {
 
 
 def resolve_role(db: Session, snapshot: models.Snapshot, user: models.User) -> SnapshotRole | None:
+    if getattr(user, "role", "viewer") == "super_admin":
+        return SnapshotRole.owner
     if snapshot.owner_user_id == user.id:
         return SnapshotRole.owner
     share = (

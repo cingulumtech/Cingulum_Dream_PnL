@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { AlertTriangle, Check, ChevronRight, Filter, MousePointer2, Search, Undo2, Wand2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
+import { useAuthStore } from '../store/authStore'
 import { computeDream } from '../lib/dream/compute'
 import { DreamLine, XeroPLSection } from '../lib/types'
 import { setLineMappings } from '../lib/dream/edit'
@@ -26,6 +27,8 @@ const sectionFilterDefs = [
 ] as const
 
 export function MappingEditor() {
+  const user = useAuthStore(s => s.user)
+  const readOnly = user?.role === 'viewer'
   const pl = useAppStore(s => s.pl)
   const template = useAppStore(s => s.template)
   const setTemplate = useAppStore(s => s.setTemplate)
@@ -216,8 +219,13 @@ export function MappingEditor() {
           <SaveStatusPill status={templateSaveStatus} />
         </div>
       </div>
+      {readOnly && (
+        <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          View-only access enabled. Contact an admin to unlock editing.
+        </div>
+      )}
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr]">
+      <div className={`mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
         {/* Left: Dream lines */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           <div className="flex items-center gap-2">

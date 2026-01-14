@@ -1,6 +1,7 @@
 export type ApiUser = {
   id: string
   email: string
+  role: string
 }
 
 export type SnapshotSummary = {
@@ -88,4 +89,7 @@ export const api = {
     request<any>(`/api/snapshots/${snapshotId}/shares/${shareId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteShare: (snapshotId: string, shareId: string) =>
     request<{ ok: boolean }>(`/api/snapshots/${snapshotId}/shares/${shareId}`, { method: 'DELETE' }),
+  listUsers: () => request<{ id: string; email: string; role: string; created_at: string }[]>('/api/users'),
+  updateUserRole: (userId: string, payload: { role: string }) =>
+    request<{ id: string; email: string; role: string; created_at: string }>(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 }

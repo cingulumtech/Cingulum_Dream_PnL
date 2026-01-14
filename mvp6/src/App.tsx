@@ -36,6 +36,7 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const isAuthed = status === 'authenticated'
+  const isReadOnly = !!user && user.role === 'viewer'
 
   const loadState = useCallback(async () => {
     const data = await api.getState()
@@ -190,7 +191,7 @@ export function App() {
               </div>
             </Card>
 
-            <UploadPanel disabled={!isAuthed} />
+            <UploadPanel disabled={!isAuthed || isReadOnly} />
           </div>
 
           <div className="space-y-4">

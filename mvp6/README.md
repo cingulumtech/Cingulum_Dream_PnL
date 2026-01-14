@@ -23,6 +23,7 @@ docker compose up -d
 cp .env.example .env
 ```
 Update `ALLOWED_SIGNUP_CODES` in `.env` to control who can register.
+The first registered user is assigned `super_admin`; all later users default to `viewer` until upgraded in Settings.
 
 3) Create a virtualenv + install backend deps
 ```bash

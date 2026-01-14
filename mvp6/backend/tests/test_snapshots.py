@@ -2,7 +2,7 @@ from app.auth import CSRF_COOKIE_NAME
 
 
 def register(client, email):
-    resp = client.post("/api/auth/register", json={"email": email, "password": "pass1234", "remember": False})
+    resp = client.post("/api/auth/register", json={"email": email, "password": "pass1234", "remember": False, "invite_code": "test-code"})
     assert resp.status_code == 200
     csrf = client.cookies.get(CSRF_COOKIE_NAME)
     return csrf
