@@ -1,18 +1,33 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { Card, Input, Label, Chip } from './ui'
 import { RECOMMENDED_DEFAULTS } from '../lib/defaults'
+import { useAuthStore } from '../store/authStore'
+import { api } from '../lib/api'
 
 export function SettingsPage() {
+  const user = useAuthStore(s => s.user)
+  const isReadOnly = user?.role === 'viewer'
+  const isSuperAdmin = user?.role === 'super_admin'
   const defaults = useAppStore(s => s.defaults)
   const setDefaults = useAppStore(s => s.setDefaults)
   const resetDefaults = useAppStore(s => s.resetDefaults)
   const [localDefaults, setLocalDefaults] = useState(defaults)
   const [savedState, setSavedState] = useState<'idle' | 'saved'>('idle')
+  const [users, setUsers] = useState<{ id: string; email: string; role: string; created_at: string }[]>([])
+  const [usersError, setUsersError] = useState<string | null>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     setLocalDefaults(defaults)
   }, [defaults])
+
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    api
+      .listUsers()
+      .then(setUsers)
+      .catch((err: any) => setUsersError(err?.message ?? 'Unable to load users'))
+  }, [isSuperAdmin])
 
   const updateState = (state: 'NSW/QLD' | 'WA' | 'VIC', field: 'suggestedCbaPrice' | 'suggestedProgramPrice' | 'mriCostByState' | 'mriPatientByState', val: number) => {
     setLocalDefaults(prev => ({
@@ -46,6 +61,7 @@ export function SettingsPage() {
             <button
               type="button"
               onClick={reset}
+              disabled={isReadOnly}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-white/10"
             >
               Reset to recommended
@@ -53,14 +69,20 @@ export function SettingsPage() {
             <button
               type="button"
               onClick={save}
+              disabled={isReadOnly}
               className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
             >
               Save
             </button>
           </div>
         </div>
+        {isReadOnly && (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            View-only access enabled. Settings changes are disabled.
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-3 lg:grid-cols-3 ${isReadOnly ? 'pointer-events-none opacity-70' : ''}`}>
           {(['NSW/QLD', 'WA', 'VIC'] as const).map(state => (
             <div key={state} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
               <div className="text-xs font-semibold text-slate-200 flex items-center justify-between">
@@ -107,7 +129,7 @@ export function SettingsPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-3 md:grid-cols-3 ${isReadOnly ? 'pointer-events-none opacity-70' : ''}`}>
           <div className="rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="text-sm font-semibold text-slate-100">Global defaults</div>
             <div className="text-xs text-slate-400">Used everywhere for doctor payouts.</div>
@@ -178,6 +200,40 @@ export function SettingsPage() {
           <div className="text-xs text-emerald-200">Saved. Future scenarios, exports, and reports will use these defaults.</div>
         ) : null}
       </Card>
+
+      {isSuperAdmin && (
+        <Card className="p-4 space-y-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-100">User access</div>
+            <div className="text-xs text-slate-400">Control who can edit vs view. New users default to viewer.</div>
+          </div>
+          {usersError && <div className="text-xs text-rose-200">{usersError}</div>}
+          <div className="space-y-2">
+            {users.map(u => (
+              <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                <div>
+                  <div className="font-semibold text-slate-100">{u.email}</div>
+                  <div className="text-[11px] text-slate-400">Created {new Date(u.created_at).toLocaleDateString()}</div>
+                </div>
+                <select
+                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                  value={u.role}
+                  onChange={async (e) => {
+                    const nextRole = e.target.value
+                    const updated = await api.updateUserRole(u.id, { role: nextRole })
+                    setUsers(prev => prev.map(item => (item.id === u.id ? updated : item)))
+                  }}
+                >
+                  {['viewer', 'editor', 'admin', 'super_admin'].map(role => (
+                    <option key={role} value={role}>{role.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+            {users.length === 0 && !usersError && <div className="text-xs text-slate-400">No users found yet.</div>}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

@@ -6,10 +6,14 @@ import { ReportBuilderPanel } from './report/ReportBuilderPanel'
 import { ReportPreview } from './report/ReportPreview'
 import { InvestorReportTemplate } from './report/InvestorReportTemplate'
 import { Card } from './ui'
+import { SaveStatusPill } from './SaveStatus'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
+import { useAuthStore } from '../store/authStore'
 
 export function Reports() {
+  const user = useAuthStore(s => s.user)
+  const readOnly = user?.role === 'viewer'
   const pl = useAppStore(s => s.pl)
   const scenario = useAppStore(s => s.scenario)
   const dreamTemplate = useAppStore(s => s.template)
@@ -17,6 +21,7 @@ export function Reports() {
   const defaults = useAppStore(s => s.defaults)
   const reportConfig = useAppStore(s => s.reportConfig)
   const setReportConfig = useAppStore(s => s.setReportConfig)
+  const reportSaveStatus = useAppStore(s => s.reportSaveStatus)
 
   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
     reportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }
@@ -47,13 +52,13 @@ export function Reports() {
     if (!pl) return
     if (userChoseSource) return
     if (builder.dataSource !== reportData.recommendedSource) {
-        setBuilder(prev => {
-          const next = { ...prev, dataSource: reportData.recommendedSource }
-          setReportConfig(next)
-          return next
-        })
+      setBuilder(prev => {
+        const next = { ...prev, dataSource: reportData.recommendedSource }
+        setReportConfig(next)
+        return next
+      })
     }
-  }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource])
+  }, [pl, reportData.recommendedSource, builder.dataSource, userChoseSource, setReportConfig])
 
   useEffect(() => {
     setGeneratedAt(new Date())
@@ -63,7 +68,6 @@ export function Reports() {
     if ('dataSource' in s) setUserChoseSource(true)
     setBuilder(prev => {
       const next = { ...prev, ...s }
-      // Auto-align comparison mode when toggling scenario
       if ('includeScenario' in s && s.includeScenario !== undefined) {
         if (s.includeScenario && next.comparisonMode === 'last3_vs_prev3') next.comparisonMode = 'scenario_vs_current'
         if (!s.includeScenario && next.comparisonMode === 'scenario_vs_current') next.comparisonMode = 'last3_vs_prev3'
@@ -110,52 +114,66 @@ export function Reports() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr]">
-      <ReportBuilderPanel
-        dataSource={builder.dataSource}
-        includeScenario={builder.includeScenario}
-        recommendedSource={reportData.recommendedSource}
-        mappingCompleteness={reportData.dataQuality.mappingCompleteness}
-        mappingWarnings={[
-          ...reportData.dataQuality.warnings,
-          ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
-          ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
-            ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
-            : []),
-        ]}
-        comparisonMode={builder.comparisonMode}
-        onChange={handleChange}
-      />
-
-      <div className="space-y-3">
-        {reportData.fallbackReason && (
-          <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
-            {reportData.fallbackReason}
-          </Card>
-        )}
-        <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
-          <InvestorReportTemplate
-            data={reportData}
-            meta={{
-              snapshotId: activeSnapshotId,
-              generatedAt,
-            }}
-          />
-        </ReportPreview>
-        <div className="text-[11px] text-slate-400">
-          {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-lg font-semibold text-slate-100">Reports</div>
+          <div className="text-xs text-slate-400">Generate investor-ready exports with your saved configuration.</div>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={generate}
-            className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
-            disabled={!pl || !reportData.baseTotals}
-          >
-            Generate investor PDF
-          </button>
-          {status ? <div className="text-xs text-slate-300">{status}</div> : null}
-          {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
+        <SaveStatusPill status={reportSaveStatus} />
+      </div>
+      {readOnly && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          View-only access enabled. Report configuration changes are disabled.
+        </div>
+      )}
+      <div className={`grid grid-cols-1 gap-4 lg:grid-cols-[360px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
+        <ReportBuilderPanel
+          dataSource={builder.dataSource}
+          includeScenario={builder.includeScenario}
+          recommendedSource={reportData.recommendedSource}
+          mappingCompleteness={reportData.dataQuality.mappingCompleteness}
+          mappingWarnings={[
+            ...reportData.dataQuality.warnings,
+            ...(reportData.fallbackReason ? [reportData.fallbackReason] : []),
+            ...(reportData.recommendedSource === 'legacy' && reportData.dataQuality.mappingCompleteness < 0.85
+              ? ['Management mapping below 85%. Defaulting to Legacy until more accounts are mapped.']
+              : []),
+          ]}
+          comparisonMode={builder.comparisonMode}
+          onChange={handleChange}
+        />
+
+        <div className="space-y-3">
+          {reportData.fallbackReason && (
+            <Card className="p-3 text-xs text-amber-100 border border-amber-400/30 bg-amber-500/10">
+              {reportData.fallbackReason}
+            </Card>
+          )}
+          <ReportPreview previewRef={previewRef} exportSettings={defaults.exportSettings}>
+            <InvestorReportTemplate
+              data={reportData}
+              meta={{
+                snapshotId: activeSnapshotId,
+                generatedAt,
+              }}
+            />
+          </ReportPreview>
+          <div className="text-[11px] text-slate-400">
+            {activeSnapshotId ? `Snapshot in use: ${activeSnapshotId}` : 'Live data (no snapshot pinned).'}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={generate}
+              className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
+              disabled={!pl || !reportData.baseTotals}
+            >
+              Generate investor PDF
+            </button>
+            {status ? <div className="text-xs text-slate-300">{status}</div> : null}
+            {!pl ? <div className="text-xs text-amber-200">Upload a P&L to enable reporting.</div> : null}
+          </div>
         </div>
       </div>
     </div>
