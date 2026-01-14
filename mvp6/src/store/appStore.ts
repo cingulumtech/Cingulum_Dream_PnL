@@ -3,7 +3,7 @@ import { DEFAULT_DREAM_TEMPLATE } from '../lib/dream/template'
 import { ensureTemplateMetadata } from '../lib/dream/schema'
 import { RECOMMENDED_DEFAULTS, type FrameworkDefaults } from '../lib/defaults'
 import { ensureExportSettings, ensureReportConfig, type SnapshotReportConfig, type SnapshotSummary } from '../lib/snapshotUtils'
-import { DreamTemplate, GL, ScenarioInputs, XeroPL } from '../lib/types'
+import { DoctorRule, DreamTemplate, GL, ScenarioInputs, TxnOverride, XeroPL } from '../lib/types'
 
 export type View =
   | 'overview'
@@ -86,6 +86,17 @@ type AppState = {
   imports: ImportItem[]
   setImports: (imports: ImportItem[]) => void
   addImport: (item: ImportItem) => void
+
+  txnOverrides: TxnOverride[]
+  upsertTxnOverride: (override: TxnOverride) => void
+  removeTxnOverride: (overrideId: string) => void
+
+  doctorRules: DoctorRule[]
+  upsertDoctorRule: (rule: DoctorRule) => void
+  removeDoctorRule: (contactId: string) => void
+
+  doctorPatterns: string[]
+  setDoctorPatterns: (patterns: string[]) => void
 
   hydrated: boolean
   setHydrated: (hydrated: boolean) => void
@@ -266,6 +277,27 @@ export const useAppStore = create<AppState>()((set, get) => ({
   imports: [],
   setImports: (imports) => set({ imports }),
   addImport: (item) => set(state => ({ imports: [item, ...state.imports] })),
+
+  txnOverrides: [],
+  upsertTxnOverride: (override) =>
+    set(state => {
+      const rest = state.txnOverrides.filter(o => o.id !== override.id)
+      return { txnOverrides: [override, ...rest] }
+    }),
+  removeTxnOverride: (overrideId) =>
+    set(state => ({ txnOverrides: state.txnOverrides.filter(o => o.id !== overrideId) })),
+
+  doctorRules: [],
+  upsertDoctorRule: (rule) =>
+    set(state => {
+      const rest = state.doctorRules.filter(r => r.contact_id !== rule.contact_id)
+      return { doctorRules: [rule, ...rest] }
+    }),
+  removeDoctorRule: (contactId) =>
+    set(state => ({ doctorRules: state.doctorRules.filter(r => r.contact_id !== contactId) })),
+
+  doctorPatterns: [],
+  setDoctorPatterns: (patterns) => set({ doctorPatterns: patterns }),
 
   hydrated: false,
   setHydrated: (hydrated) => set({ hydrated }),
