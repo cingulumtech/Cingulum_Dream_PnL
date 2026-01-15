@@ -77,19 +77,43 @@ npm run build:prod
 ```
 - Use `scripts/deploy.sh` for repeatable installs + migrations + restarts (overridable via `WEB_SERVICE` / `API_SERVICE` env vars).
 
-### Copy/paste: update production on the fly
+### Copy/paste: update production on the fly (keeps external build/runtime)
 
-From the server that hosts the repo + systemd services:
+If your live deployment builds/runs **outside of git** (e.g., a separate working directory):
 ```bash
-cd /path/to/Cingulum_Dream_PnL/mvp6
+SRC_DIR=/path/to/Cingulum_Dream_PnL/mvp6
+LIVE_DIR=/path/to/live/deployment
+
+cd "$SRC_DIR"
 git pull
+
+rsync -av --delete \
+  --exclude node_modules \
+  --exclude backend/.venv \
+  --exclude backend/__pycache__ \
+  --exclude dist \
+  "$SRC_DIR/" "$LIVE_DIR/"
+
+cd "$LIVE_DIR"
 ./scripts/deploy.sh
 ```
 
 If you need to override service names:
 ```bash
-cd /path/to/Cingulum_Dream_PnL/mvp6
+SRC_DIR=/path/to/Cingulum_Dream_PnL/mvp6
+LIVE_DIR=/path/to/live/deployment
+
+cd "$SRC_DIR"
 git pull
+
+rsync -av --delete \
+  --exclude node_modules \
+  --exclude backend/.venv \
+  --exclude backend/__pycache__ \
+  --exclude dist \
+  "$SRC_DIR/" "$LIVE_DIR/"
+
+cd "$LIVE_DIR"
 WEB_SERVICE=atlas2-web.service API_SERVICE=atlas2-api.service ./scripts/deploy.sh
 ```
 
