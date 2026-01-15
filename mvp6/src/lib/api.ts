@@ -30,15 +30,31 @@ export type SnapshotPayload = {
   data: Record<string, any>
 }
 
-const API_URL = import.meta.env.VITE_API_URL ?? ''
+const DEFAULT_API_BASE = '/api'
+const RAW_API_BASE = import.meta.env.VITE_API_URL
+
+function normalizeApiBase(rawBase?: string): string {
+  if (!rawBase) return DEFAULT_API_BASE
+  const trimmed = rawBase.replace(/\/+$/, '')
+  if (!trimmed) return DEFAULT_API_BASE
+  if (trimmed.endsWith('/api')) return trimmed
+  return `${trimmed}/api`
+}
+
+const API_BASE = normalizeApiBase(RAW_API_BASE)
 
 function getCookie(name: string) {
   const match = document.cookie.match(new RegExp(`(^| )${name}=([^;]+)`))
   return match ? decodeURIComponent(match[2]) : null
 }
 
+function normalizePath(path: string): string {
+  if (!path.startsWith('/')) return `/${path}`
+  return path
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_URL}${path}`
+  const url = `${API_BASE}${normalizePath(path)}`
   const headers = new Headers(options.headers)
   headers.set('Content-Type', 'application/json')
   if (options.method && options.method !== 'GET') {
@@ -61,40 +77,45 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   register: (payload: { email: string; password: string; remember: boolean; invite_code?: string }) =>
-    request<{ user: ApiUser }>('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+    request<{ user: ApiUser }>('auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload: { email: string; password: string; remember: boolean }) =>
-    request<{ user: ApiUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
-  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
-  me: () => request<{ user: ApiUser }>('/api/auth/me'),
-  getState: () => request<any>('/api/state'),
+    request<{ user: ApiUser }>('auth/login', { method: 'POST', body: JSON.stringify(payload) }),
+  logout: () => request<{ ok: boolean }>('auth/logout', { method: 'POST' }),
+  me: () => request<{ user: ApiUser }>('auth/me'),
+  health: () => request<{ status: string }>('health'),
+  quickAuthCheck: async () => {
+    await api.health()
+    return api.me()
+  },
+  getState: () => request<any>('state'),
   saveTemplate: (payload: { name: string; data: Record<string, any> }) =>
-    request('/api/state/template', { method: 'PUT', body: JSON.stringify(payload) }),
+    request('state/template', { method: 'PUT', body: JSON.stringify(payload) }),
   saveReport: (payload: { name: string; data: Record<string, any> }) =>
-    request('/api/state/report', { method: 'PUT', body: JSON.stringify(payload) }),
+    request('state/report', { method: 'PUT', body: JSON.stringify(payload) }),
   saveSettings: (payload: { name: string; data: Record<string, any> }) =>
-    request('/api/state/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+    request('state/settings', { method: 'PUT', body: JSON.stringify(payload) }),
   createImport: (payload: { name: string; kind: string; status: string; metadata: Record<string, any> }) =>
-    request('/api/state/imports', { method: 'POST', body: JSON.stringify(payload) }),
-  listSnapshots: () => request<SnapshotListItem[]>('/api/snapshots'),
+    request('state/imports', { method: 'POST', body: JSON.stringify(payload) }),
+  listSnapshots: () => request<SnapshotListItem[]>('snapshots'),
   createSnapshot: (payload: { name: string; payload: SnapshotPayload }) =>
-    request<any>('/api/snapshots', { method: 'POST', body: JSON.stringify(payload) }),
-  getSnapshot: (snapshotId: string) => request<any>(`/api/snapshots/${snapshotId}`),
+    request<any>('snapshots', { method: 'POST', body: JSON.stringify(payload) }),
+  getSnapshot: (snapshotId: string) => request<any>(`snapshots/${snapshotId}`),
   updateSnapshot: (snapshotId: string, payload: any) =>
-    request<any>(`/api/snapshots/${snapshotId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    request<any>(`snapshots/${snapshotId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   duplicateSnapshot: (snapshotId: string) =>
-    request<any>(`/api/snapshots/${snapshotId}/duplicate`, { method: 'POST' }),
-  deleteSnapshot: (snapshotId: string) => request<{ ok: boolean }>(`/api/snapshots/${snapshotId}`, { method: 'DELETE' }),
-  listShares: (snapshotId: string) => request<any[]>(`/api/snapshots/${snapshotId}/shares`),
+    request<any>(`snapshots/${snapshotId}/duplicate`, { method: 'POST' }),
+  deleteSnapshot: (snapshotId: string) => request<{ ok: boolean }>(`snapshots/${snapshotId}`, { method: 'DELETE' }),
+  listShares: (snapshotId: string) => request<any[]>(`snapshots/${snapshotId}/shares`),
   createShare: (snapshotId: string, payload: { email: string; role: string }) =>
-    request<any>(`/api/snapshots/${snapshotId}/shares`, { method: 'POST', body: JSON.stringify(payload) }),
+    request<any>(`snapshots/${snapshotId}/shares`, { method: 'POST', body: JSON.stringify(payload) }),
   updateShare: (snapshotId: string, shareId: string, payload: { role: string }) =>
-    request<any>(`/api/snapshots/${snapshotId}/shares/${shareId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    request<any>(`snapshots/${snapshotId}/shares/${shareId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteShare: (snapshotId: string, shareId: string) =>
-    request<{ ok: boolean }>(`/api/snapshots/${snapshotId}/shares/${shareId}`, { method: 'DELETE' }),
-  listUsers: () => request<{ id: string; email: string; role: string; created_at: string }[]>('/api/users'),
+    request<{ ok: boolean }>(`snapshots/${snapshotId}/shares/${shareId}`, { method: 'DELETE' }),
+  listUsers: () => request<{ id: string; email: string; role: string; created_at: string }[]>('users'),
   updateUserRole: (userId: string, payload: { role: string }) =>
-    request<{ id: string; email: string; role: string; created_at: string }>(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  listTxnOverrides: () => request<TxnOverride[]>('/api/ledger/overrides'),
+    request<{ id: string; email: string; role: string; created_at: string }>(`users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  listTxnOverrides: () => request<TxnOverride[]>('ledger/overrides'),
   upsertTxnOverride: (payload: {
     source: string
     document_id: string
@@ -104,9 +125,9 @@ export const api = {
     deferral_start_month?: string | null
     deferral_months?: number | null
     deferral_include_in_operating_kpis?: boolean | null
-  }) => request<TxnOverride>('/api/ledger/overrides', { method: 'PUT', body: JSON.stringify(payload) }),
-  deleteTxnOverride: (overrideId: string) => request<{ ok: boolean }>(`/api/ledger/overrides/${overrideId}`, { method: 'DELETE' }),
-  listDoctorRules: () => request<DoctorRule[]>('/api/ledger/doctor-rules'),
+  }) => request<TxnOverride>('ledger/overrides', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteTxnOverride: (overrideId: string) => request<{ ok: boolean }>(`ledger/overrides/${overrideId}`, { method: 'DELETE' }),
+  listDoctorRules: () => request<DoctorRule[]>('ledger/doctor-rules'),
   upsertDoctorRule: (payload: {
     contact_id: string
     default_treatment: string
@@ -114,9 +135,9 @@ export const api = {
     deferral_months?: number | null
     deferral_include_in_operating_kpis?: boolean | null
     enabled: boolean
-  }) => request<DoctorRule>('/api/ledger/doctor-rules', { method: 'PUT', body: JSON.stringify(payload) }),
-  deleteDoctorRule: (contactId: string) => request<{ ok: boolean }>(`/api/ledger/doctor-rules/${contactId}`, { method: 'DELETE' }),
-  getPreference: (key: string) => request<UserPreference | null>(`/api/ledger/preferences/${key}`),
+  }) => request<DoctorRule>('ledger/doctor-rules', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteDoctorRule: (contactId: string) => request<{ ok: boolean }>(`ledger/doctor-rules/${contactId}`, { method: 'DELETE' }),
+  getPreference: (key: string) => request<UserPreference | null>(`ledger/preferences/${key}`),
   upsertPreference: (key: string, payload: { value_json: Record<string, any> }) =>
-    request<UserPreference>(`/api/ledger/preferences/${key}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    request<UserPreference>(`ledger/preferences/${key}`, { method: 'PUT', body: JSON.stringify(payload) }),
 }
