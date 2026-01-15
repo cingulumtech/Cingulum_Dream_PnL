@@ -68,6 +68,15 @@ cd backend
 pytest
 ```
 
+## Production deploy notes
+
+- **Frontend must call same-origin `/api`** in production. Do **not** set `VITE_API_URL` to `http://localhost:8000` for builds.
+- Use the guardrail build script to verify no localhost references are baked into `dist`:
+```bash
+npm run build:prod
+```
+- Use `scripts/deploy.sh` for repeatable installs + migrations + restarts (overridable via `WEB_SERVICE` / `API_SERVICE` env vars).
+
 ## How the “built-in upload” atlas works
 
 The app does not depend on a fixed Cingulum sheet structure.

@@ -28,16 +28,17 @@ export function analyzeDataHealth(pl: XeroPL): DataHealthSummary {
   const monthsDetected = pl.months.length
   const parsed = pl.months.map(parseMonth)
   const validMonths = parsed.filter(Boolean) as { year: number; month: number }[]
+  const sortedMonths = validMonths.slice().sort((a, b) => (a.year - b.year) || (a.month - b.month))
 
   const rangeLabel =
-    validMonths.length > 1
-      ? `${labelMonth(validMonths[0])} → ${labelMonth(validMonths[validMonths.length - 1])}`
+    sortedMonths.length > 1
+      ? `${labelMonth(sortedMonths[0])} → ${labelMonth(sortedMonths[sortedMonths.length - 1])}`
       : pl.monthLabels[0] ?? '—'
 
   const gaps: string[] = []
-  for (let i = 0; i < validMonths.length - 1; i++) {
-    const cur = validMonths[i]
-    const next = validMonths[i + 1]
+  for (let i = 0; i < sortedMonths.length - 1; i++) {
+    const cur = sortedMonths[i]
+    const next = sortedMonths[i + 1]
     const diff = (next.year - cur.year) * 12 + (next.month - cur.month)
     if (diff > 1) {
       const missing: string[] = []

@@ -117,7 +117,7 @@ export function parseXeroProfitAndLoss(file: ArrayBuffer): XeroPL {
   const wb = XLSX.read(file, { type: 'array' })
   const sheetName = wb.SheetNames[0]
   const ws = wb.Sheets[sheetName]
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null })
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null })
 
   // 1) find header row containing "Account"
   let headerIdx = -1
