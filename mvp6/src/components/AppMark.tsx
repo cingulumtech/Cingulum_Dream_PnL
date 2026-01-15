@@ -8,7 +8,7 @@ type AppMarkProps = {
 }
 
 const LOGO_URL =
-  'https://static1.squarespace.com/static/66d0380c1865d34e93592771/t/66d03d4ce652d560007da412/1729641142078/Cingulum_Logo_W.png'
+  'https://lh3.googleusercontent.com/pw/AP1GczMJ5bIz-U5H0D5BIeE1fqBzofwbDb4mmyJcwwlRHt-JW6EF9k9X8UzzFqSyHr1vTQ5p1MF2KoNf0y1fZWa770vF5vGAnR6sl78alDyz1sb-vYRuOJaCZp6z_QG0e1XI9oqiavdRu0BuqClYjr7yP34l=w180-h180-s-no-gm'
 
 export function AppMark({ layout = 'row', size = 'md', caption }: AppMarkProps) {
   const logoSize = size === 'sm' ? 'h-8' : 'h-10'

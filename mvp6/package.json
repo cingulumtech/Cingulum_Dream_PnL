@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:prod": "vite build && ! rg -n \"localhost:8000\" dist",
     "preview": "vite preview",
     "test": "vitest run"
   },

@@ -68,6 +68,31 @@ cd backend
 pytest
 ```
 
+## Production deploy notes
+
+- **Frontend must call same-origin `/api`** in production. Do **not** set `VITE_API_URL` to `http://localhost:8000` for builds.
+- Use the guardrail build script to verify no localhost references are baked into `dist`:
+```bash
+npm run build:prod
+```
+- Use `scripts/deploy.sh` for repeatable installs + migrations + restarts (overridable via `WEB_SERVICE` / `API_SERVICE` env vars).
+
+### Copy/paste: update production on the fly
+
+From the server that hosts the repo + systemd services:
+```bash
+cd /path/to/Cingulum_Dream_PnL/mvp6
+git pull
+./scripts/deploy.sh
+```
+
+If you need to override service names:
+```bash
+cd /path/to/Cingulum_Dream_PnL/mvp6
+git pull
+WEB_SERVICE=atlas2-web.service API_SERVICE=atlas2-api.service ./scripts/deploy.sh
+```
+
 ## How the “built-in upload” atlas works
 
 The app does not depend on a fixed Cingulum sheet structure.
