@@ -16,7 +16,7 @@ for env_path in ENV_PATHS:
         load_dotenv(env_path)
         break
 
-from .routers import auth, state, snapshots, users
+from .routers import auth, ledger, snapshots, state, users
 
 APP_NAME = os.environ.get("APP_NAME", "Accounting Atlas API")
 
@@ -39,6 +39,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(ledger.router)
 app.include_router(state.router)
 app.include_router(snapshots.router)
 app.include_router(users.router)

@@ -68,6 +68,55 @@ cd backend
 pytest
 ```
 
+## Production deploy notes
+
+- **Frontend must call same-origin `/api`** in production. Do **not** set `VITE_API_URL` to `http://localhost:8000` for builds.
+- Use the guardrail build script to verify no localhost references are baked into `dist`:
+```bash
+npm run build:prod
+```
+- Use `scripts/deploy.sh` for repeatable installs + migrations + restarts (overridable via `WEB_SERVICE` / `API_SERVICE` env vars).
+
+### Copy/paste: update production on the fly (keeps external build/runtime)
+
+If your live deployment builds/runs **outside of git** (e.g., a separate working directory):
+```bash
+SRC_DIR=/path/to/Cingulum_Dream_PnL/mvp6
+LIVE_DIR=/path/to/live/deployment
+
+cd "$SRC_DIR"
+git pull
+
+rsync -av --delete \
+  --exclude node_modules \
+  --exclude backend/.venv \
+  --exclude backend/__pycache__ \
+  --exclude dist \
+  "$SRC_DIR/" "$LIVE_DIR/"
+
+cd "$LIVE_DIR"
+./scripts/deploy.sh
+```
+
+If you need to override service names:
+```bash
+SRC_DIR=/path/to/Cingulum_Dream_PnL/mvp6
+LIVE_DIR=/path/to/live/deployment
+
+cd "$SRC_DIR"
+git pull
+
+rsync -av --delete \
+  --exclude node_modules \
+  --exclude backend/.venv \
+  --exclude backend/__pycache__ \
+  --exclude dist \
+  "$SRC_DIR/" "$LIVE_DIR/"
+
+cd "$LIVE_DIR"
+WEB_SERVICE=atlas2-web.service API_SERVICE=atlas2-api.service ./scripts/deploy.sh
+```
+
 ## How the “built-in upload” atlas works
 
 The app does not depend on a fixed Cingulum sheet structure.
