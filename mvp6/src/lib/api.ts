@@ -1,3 +1,5 @@
+import { DoctorRule, TxnOverride, UserPreference } from './types'
+
 export type ApiUser = {
   id: string
   email: string
@@ -92,4 +94,29 @@ export const api = {
   listUsers: () => request<{ id: string; email: string; role: string; created_at: string }[]>('/api/users'),
   updateUserRole: (userId: string, payload: { role: string }) =>
     request<{ id: string; email: string; role: string; created_at: string }>(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  listTxnOverrides: () => request<TxnOverride[]>('/api/ledger/overrides'),
+  upsertTxnOverride: (payload: {
+    source: string
+    document_id: string
+    line_item_id?: string | null
+    hash?: string | null
+    treatment: string
+    deferral_start_month?: string | null
+    deferral_months?: number | null
+    deferral_include_in_operating_kpis?: boolean | null
+  }) => request<TxnOverride>('/api/ledger/overrides', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteTxnOverride: (overrideId: string) => request<{ ok: boolean }>(`/api/ledger/overrides/${overrideId}`, { method: 'DELETE' }),
+  listDoctorRules: () => request<DoctorRule[]>('/api/ledger/doctor-rules'),
+  upsertDoctorRule: (payload: {
+    contact_id: string
+    default_treatment: string
+    deferral_start_month?: string | null
+    deferral_months?: number | null
+    deferral_include_in_operating_kpis?: boolean | null
+    enabled: boolean
+  }) => request<DoctorRule>('/api/ledger/doctor-rules', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteDoctorRule: (contactId: string) => request<{ ok: boolean }>(`/api/ledger/doctor-rules/${contactId}`, { method: 'DELETE' }),
+  getPreference: (key: string) => request<UserPreference | null>(`/api/ledger/preferences/${key}`),
+  upsertPreference: (key: string, payload: { value_json: Record<string, any> }) =>
+    request<UserPreference>(`/api/ledger/preferences/${key}`, { method: 'PUT', body: JSON.stringify(payload) }),
 }
