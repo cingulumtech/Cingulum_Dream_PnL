@@ -137,13 +137,23 @@ export function Reports() {
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-    const ratio = Math.min(
-      (pageWidth - metrics.marginPt * 2) / canvas.width,
-      (pageHeight - metrics.marginPt * 2) / canvas.height
-    )
-    const imgWidth = canvas.width * ratio
-    const imgHeight = canvas.height * ratio
-    pdf.addImage(imgData, 'PNG', metrics.marginPt, metrics.marginPt, imgWidth, imgHeight)
+    const printableWidth = pageWidth - metrics.marginPt * 2
+    const printableHeight = pageHeight - metrics.marginPt * 2
+    const scale = printableWidth / canvas.width
+    const imgWidth = printableWidth
+    const imgHeight = canvas.height * scale
+    let remainingHeight = imgHeight
+    let pageOffset = 0
+
+    while (remainingHeight > 0) {
+      if (pageOffset > 0) {
+        pdf.addPage()
+      }
+      const offsetY = metrics.marginPt - pageOffset
+      pdf.addImage(imgData, 'PNG', metrics.marginPt, offsetY, imgWidth, imgHeight)
+      remainingHeight -= printableHeight
+      pageOffset += printableHeight
+    }
     pdf.save('Investor_Report.pdf')
     setStatus('Report generated.')
     setTimeout(() => setStatus(null), 2000)
