@@ -127,7 +127,7 @@ export function Reports() {
     setGeneratedAt(stamp)
     const pageBreakTargets = Array.from(element.querySelectorAll<HTMLElement>('.page-break'))
     const metrics = getPageMetrics(defaults.exportSettings)
-    const elementWidth = metrics.contentWidthPx
+    const elementWidth = Math.max(metrics.contentWidthPx, element.scrollWidth)
     const canvas = await html2canvas(element, {
       scale: 2,
       backgroundColor: '#ffffff',
@@ -139,7 +139,9 @@ export function Reports() {
         if (clonedRoot) {
           clonedRoot.style.transform = 'none'
           clonedRoot.style.transformOrigin = 'top left'
-          clonedRoot.style.width = `${metrics.contentWidthPx}px`
+          clonedRoot.style.width = `${elementWidth}px`
+          clonedRoot.style.maxWidth = 'none'
+          clonedRoot.style.overflow = 'visible'
         }
       },
       useCORS: true,
