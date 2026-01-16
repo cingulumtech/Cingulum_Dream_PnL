@@ -69,19 +69,37 @@ export function Label(props: React.HTMLAttributes<HTMLDivElement>) {
   return <div {...props} className={clsx('text-xs text-slate-300', props.className)} />
 }
 
-export function Chip(props: React.HTMLAttributes<HTMLDivElement> & { tone?: 'neutral' | 'good' | 'bad' | 'warn' }) {
-  const { tone = 'neutral', className, ...rest } = props
+export function Chip(
+  props: React.HTMLAttributes<HTMLDivElement> & {
+    tone?: 'neutral' | 'good' | 'bad' | 'warn'
+    mode?: 'truncate' | 'wrap'
+  }
+) {
+  const { tone = 'neutral', mode = 'truncate', className, children, ...rest } = props
   const tones: Record<string, string> = {
     neutral: 'bg-white/5 text-slate-200 border-white/10',
     good: 'bg-emerald-500/15 text-emerald-50 border-emerald-400/30',
     bad: 'bg-rose-500/15 text-rose-50 border-rose-400/30',
     warn: 'bg-amber-500/20 text-amber-100 border-amber-400/30',
   }
+  const modeStyles =
+    mode === 'wrap'
+      ? 'whitespace-normal break-words'
+      : 'justify-start text-left overflow-hidden'
+  const textStyles =
+    mode === 'wrap' ? 'min-w-0 whitespace-normal break-words' : 'min-w-0 truncate block'
   return (
     <div
       {...rest}
-      className={clsx('inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs', tones[tone], className)}
-    />
+      className={clsx(
+        'inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-xs leading-snug',
+        tones[tone],
+        modeStyles,
+        className
+      )}
+    >
+      <span className={textStyles}>{children}</span>
+    </div>
   )
 }
 
