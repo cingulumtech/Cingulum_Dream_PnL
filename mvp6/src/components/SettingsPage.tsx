@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store/appStore'
-import { Card, Input, Label, Chip } from './ui'
+import { Card, Input, Label, Chip, Button } from './ui'
 import { RECOMMENDED_DEFAULTS } from '../lib/defaults'
 import { useAuthStore } from '../store/authStore'
 import { api } from '../lib/api'
 
 export function SettingsPage() {
   const user = useAuthStore(s => s.user)
+  const setUser = useAuthStore(s => s.setUser)
   const isReadOnly = user?.role === 'viewer'
   const isSuperAdmin = user?.role === 'super_admin'
   const defaults = useAppStore(s => s.defaults)
@@ -16,10 +17,20 @@ export function SettingsPage() {
   const [savedState, setSavedState] = useState<'idle' | 'saved'>('idle')
   const [users, setUsers] = useState<{ id: string; email: string; role: string; created_at: string }[]>([])
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [accountEmail, setAccountEmail] = useState(user?.email ?? '')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [accountStatus, setAccountStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [accountError, setAccountError] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalDefaults(defaults)
   }, [defaults])
+
+  useEffect(() => {
+    setAccountEmail(user?.email ?? '')
+  }, [user?.email])
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -49,8 +60,107 @@ export function SettingsPage() {
     setTimeout(() => setSavedState('idle'), 1500)
   }
 
+  const canSaveAccount = useMemo(() => {
+    if (!user) return false
+    if (newPassword && newPassword !== confirmPassword) return false
+    const emailChanged = accountEmail.trim() && accountEmail.trim() !== user.email
+    const passwordChanged = Boolean(newPassword.trim())
+    return Boolean(emailChanged || passwordChanged)
+  }, [accountEmail, confirmPassword, newPassword, user])
+
+  const saveAccount = async () => {
+    if (!user) return
+    if (newPassword && newPassword !== confirmPassword) {
+      setAccountError('New passwords do not match.')
+      setAccountStatus('error')
+      return
+    }
+    if (newPassword && !currentPassword) {
+      setAccountError('Enter your current password to change it.')
+      setAccountStatus('error')
+      return
+    }
+    setAccountStatus('saving')
+    setAccountError(null)
+    try {
+      const payload: { email?: string; current_password?: string; new_password?: string } = {}
+      if (accountEmail.trim() && accountEmail.trim() !== user.email) payload.email = accountEmail.trim()
+      if (newPassword.trim()) {
+        payload.current_password = currentPassword
+        payload.new_password = newPassword.trim()
+      }
+      const res = await api.updateAccount(payload)
+      setUser(res.user)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setAccountStatus('saved')
+      setTimeout(() => setAccountStatus('idle'), 2000)
+    } catch (err: any) {
+      setAccountError(err?.message ?? 'Unable to update account.')
+      setAccountStatus('error')
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4">
+      <Card className="p-4 space-y-4">
+        <div>
+          <div className="text-sm font-semibold text-slate-100">Account</div>
+          <div className="text-xs text-slate-400">Manage your sign-in details.</div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <Label>Email</Label>
+            <Input
+              className="mt-1"
+              value={accountEmail}
+              onChange={(e) => setAccountEmail(e.target.value)}
+              placeholder="you@company.com"
+            />
+          </div>
+          <div>
+            <Label>Current password</Label>
+            <Input
+              className="mt-1"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Required for password changes"
+            />
+          </div>
+          <div>
+            <Label>New password</Label>
+            <Input
+              className="mt-1"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Leave blank to keep current"
+            />
+          </div>
+          <div>
+            <Label>Confirm new password</Label>
+            <Input
+              className="mt-1"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repeat the new password"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+          <Button onClick={saveAccount} disabled={!canSaveAccount || accountStatus === 'saving'}>
+            {accountStatus === 'saving' ? 'Saving…' : 'Save account changes'}
+          </Button>
+          {accountStatus === 'saved' && <span className="text-emerald-200">Account updated.</span>}
+          {accountStatus === 'error' && accountError && <span className="text-rose-200">{accountError}</span>}
+          {!accountError && newPassword && newPassword !== confirmPassword && (
+            <span className="text-amber-200">Passwords must match.</span>
+          )}
+        </div>
+      </Card>
       <Card className="p-4 space-y-4">
         <div className="flex items-start justify-between">
           <div>

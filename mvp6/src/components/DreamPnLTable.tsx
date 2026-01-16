@@ -273,7 +273,7 @@ export function DreamPnLTable() {
   const getVals = (id: string) => computed?.byLineId[id] ?? Array(operatingPl?.months.length ?? 0).fill(0)
 
   return (
-    <Card className="p-5 overflow-hidden">
+    <Card className="p-6 overflow-hidden">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-lg font-semibold">P&amp;L (Management)</div>
@@ -364,7 +364,7 @@ export function DreamPnLTable() {
         </div>
       )}
 
-      <div className="mt-4 overflow-auto rounded-2xl border border-white/10">
+      <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-white/5">
         <table className="min-w-full text-sm">
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>

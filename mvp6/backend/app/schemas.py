@@ -39,6 +39,12 @@ class LoginRequest(BaseModel):
     remember: bool = False
 
 
+class AccountUpdateRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
 class UserRoleUpdate(BaseModel):
     role: str
 

@@ -8,7 +8,7 @@ import { InvestorReportTemplate } from './report/InvestorReportTemplate'
 import { Card } from './ui'
 import { SaveStatusPill } from './SaveStatus'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
-import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
+import { getPageMetrics, pageSizeForJsPdf, sanitizeColorStyles } from '../lib/reportExport'
 import { useAuthStore } from '../store/authStore'
 import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 
