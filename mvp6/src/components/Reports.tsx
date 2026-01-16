@@ -125,25 +125,48 @@ export function Reports() {
     const element = previewRef.current
     const stamp = new Date()
     setGeneratedAt(stamp)
+    const pageBreakTargets = Array.from(element.querySelectorAll<HTMLElement>('.page-break'))
+    const elementWidth = element.scrollWidth
     const canvas = await html2canvas(element, {
       scale: 2,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
+      windowWidth: elementWidth,
       windowHeight: element.scrollHeight,
       onclone: sanitizeColorStyles,
+      useCORS: true,
     })
     const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-    const ratio = Math.min(
-      (pageWidth - metrics.marginPt * 2) / canvas.width,
-      (pageHeight - metrics.marginPt * 2) / canvas.height
-    )
-    const imgWidth = canvas.width * ratio
-    const imgHeight = canvas.height * ratio
-    pdf.addImage(imgData, 'PNG', metrics.marginPt, metrics.marginPt, imgWidth, imgHeight)
+    const printableWidth = pageWidth - metrics.marginPt * 2
+    const printableHeight = pageHeight - metrics.marginPt * 2
+    const scale = printableWidth / canvas.width
+    const imgWidth = printableWidth
+    const imgHeight = canvas.height * scale
+    const canvasScale = canvas.width / elementWidth
+    const breakpoints = pageBreakTargets
+      .map(node => node.offsetTop * canvasScale)
+      .filter(bp => bp > 0 && bp < canvas.height)
+      .sort((a, b) => a - b)
+    const pageHeightCanvas = printableHeight / scale
+    let pageStart = 0
+
+    while (pageStart < canvas.height - 1) {
+      const pageLimit = pageStart + pageHeightCanvas
+      const candidates = breakpoints.filter(bp => bp > pageStart + 20 && bp < pageLimit - 20)
+      let pageEnd = candidates.length ? candidates[candidates.length - 1] : pageLimit
+      if (pageEnd <= pageStart + 10) {
+        pageEnd = pageLimit
+      }
+      if (pageStart > 0) {
+        pdf.addPage()
+      }
+      const offsetY = metrics.marginPt - pageStart * scale
+      pdf.addImage(imgData, 'PNG', metrics.marginPt, offsetY, imgWidth, imgHeight)
+      pageStart = pageEnd
+    }
     pdf.save('Investor_Report.pdf')
     setStatus('Report generated.')
     setTimeout(() => setStatus(null), 2000)
