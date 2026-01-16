@@ -125,12 +125,15 @@ export function Reports() {
     const element = previewRef.current
     const stamp = new Date()
     setGeneratedAt(stamp)
+    const pageBreakTargets = Array.from(element.querySelectorAll<HTMLElement>('.page-break'))
+    const elementWidth = element.scrollWidth
     const canvas = await html2canvas(element, {
       scale: 2,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
+      windowWidth: elementWidth,
       windowHeight: element.scrollHeight,
       onclone: sanitizeColorStyles,
+      useCORS: true,
     })
     const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)
@@ -142,17 +145,27 @@ export function Reports() {
     const scale = printableWidth / canvas.width
     const imgWidth = printableWidth
     const imgHeight = canvas.height * scale
-    let remainingHeight = imgHeight
-    let pageOffset = 0
+    const canvasScale = canvas.width / elementWidth
+    const breakpoints = pageBreakTargets
+      .map(node => node.offsetTop * canvasScale)
+      .filter(bp => bp > 0 && bp < canvas.height)
+      .sort((a, b) => a - b)
+    const pageHeightCanvas = printableHeight / scale
+    let pageStart = 0
 
-    while (remainingHeight > 0) {
-      if (pageOffset > 0) {
+    while (pageStart < canvas.height - 1) {
+      const pageLimit = pageStart + pageHeightCanvas
+      const candidates = breakpoints.filter(bp => bp > pageStart + 20 && bp < pageLimit - 20)
+      let pageEnd = candidates.length ? candidates[candidates.length - 1] : pageLimit
+      if (pageEnd <= pageStart + 10) {
+        pageEnd = pageLimit
+      }
+      if (pageStart > 0) {
         pdf.addPage()
       }
-      const offsetY = metrics.marginPt - pageOffset
+      const offsetY = metrics.marginPt - pageStart * scale
       pdf.addImage(imgData, 'PNG', metrics.marginPt, offsetY, imgWidth, imgHeight)
-      remainingHeight -= printableHeight
-      pageOffset += printableHeight
+      pageStart = pageEnd
     }
     pdf.save('Investor_Report.pdf')
     setStatus('Report generated.')
