@@ -53,12 +53,18 @@ export function Reports() {
     [gl, txnOverrides, doctorRules]
   )
   const effectivePl = useMemo(
-    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
-    [pl, effectiveLedger]
+    () =>
+      pl && effectiveLedger
+        ? buildEffectivePl(pl, effectiveLedger, true, gl?.txns.map(row => row.account))
+        : pl,
+    [pl, effectiveLedger, gl]
   )
   const operatingPl = useMemo(
-    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
-    [pl, effectiveLedger]
+    () =>
+      pl && effectiveLedger
+        ? buildEffectivePl(pl, effectiveLedger, false, gl?.txns.map(row => row.account))
+        : pl,
+    [pl, effectiveLedger, gl]
   )
 
   const reportData = useMemo(

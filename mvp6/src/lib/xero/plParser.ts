@@ -70,6 +70,21 @@ function normalizeMonthLabel(v: unknown): { key: MonthKey; label: string } | nul
         return { key, label }
       }
     }
+    const dateMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+    if (dateMatch) {
+      const month = Number(dateMatch[1])
+      const yearRaw = Number(dateMatch[3])
+      const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw
+      if (month >= 1 && month <= 12) {
+        const key = `${year}-${String(month).padStart(2, '0')}`
+        const label = new Date(Date.UTC(year, month - 1, 1)).toLocaleString('en-AU', {
+          month: 'short',
+          year: 'numeric',
+          timeZone: 'UTC',
+        })
+        return { key, label }
+      }
+    }
     // fallback: return raw string as label (still stable key via value)
     return { key: s, label: s }
   }

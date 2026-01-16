@@ -20,6 +20,18 @@ export function monthKeyFromDate(date: string): MonthKey {
   return date?.slice(0, 7)
 }
 
+export function isMonthKey(value?: string | null): value is MonthKey {
+  if (!value) return false
+  const match = value.match(/^(\d{4})-(\d{2})$/)
+  if (!match) return false
+  const month = Number(match[2])
+  return month >= 1 && month <= 12
+}
+
+function normalizeDeferralStartMonth(value: string | null | undefined, fallback: MonthKey): MonthKey {
+  return isMonthKey(value) ? value : fallback
+}
+
 function hashString(input: string) {
   let hash = 0
   for (let i = 0; i < input.length; i++) {
@@ -155,12 +167,24 @@ export function buildEffectiveLedger(
   return effective
 }
 
-export function buildEffectivePl(pl: XeroPL, ledgerRows: EffectiveTxn[], includeNonOperating = true): XeroPL {
+export function buildEffectivePl(
+  pl: XeroPL,
+  ledgerRows: EffectiveTxn[],
+  includeNonOperating = true,
+  accountUniverse?: Iterable<string>
+): XeroPL {
   const monthIndex = new Map(pl.months.map((m, idx) => [m, idx]))
   const accountMap: Record<string, number[]> = {}
   const accountSectionMap = new Map<string, XeroPLAccount['section']>(
     pl.accounts.map(account => [account.name, account.section])
   )
+
+  if (accountUniverse) {
+    for (const name of accountUniverse) {
+      if (!name) continue
+      accountMap[name] = Array(pl.months.length).fill(0)
+    }
+  }
 
   ledgerRows.forEach(row => {
     if (!includeNonOperating && row.nonOperating) return
@@ -205,7 +229,7 @@ export function resolveTreatment({
     treatment === 'DEFERRED'
       ? {
           method: 'STRAIGHT_LINE',
-          startMonth: (override?.deferral_start_month ?? rule?.deferral_start_month ?? month) as MonthKey,
+          startMonth: normalizeDeferralStartMonth(override?.deferral_start_month ?? rule?.deferral_start_month, month),
           months: override?.deferral_months ?? rule?.deferral_months ?? 12,
           includeInOperatingKPIs:
             override?.deferral_include_in_operating_kpis ?? rule?.deferral_include_in_operating_kpis ?? true,
