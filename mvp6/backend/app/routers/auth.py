@@ -68,3 +68,38 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 @router.get("/me", response_model=schemas.AuthResponse)
 def me(user: models.User = Depends(get_current_user)):
     return schemas.AuthResponse(user=user)
+
+
+@router.patch("/account", response_model=schemas.AuthResponse)
+def update_account(
+    payload: schemas.AccountUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    require_csrf(request)
+    updated = False
+
+    if payload.email:
+        email = payload.email.strip().lower()
+        if email and email != user.email:
+            existing = db.query(models.User).filter(models.User.email == email).first()
+            if existing:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+            user.email = email
+            updated = True
+
+    if payload.new_password:
+        if not payload.current_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password required")
+        if not verify_password(payload.current_password, user.password_hash):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        user.password_hash = hash_password(payload.new_password)
+        updated = True
+
+    if updated:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    return schemas.AuthResponse(user=user)

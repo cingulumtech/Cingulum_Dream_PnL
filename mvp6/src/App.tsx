@@ -127,8 +127,8 @@ export function App() {
             'radial-gradient(1200px 700px at 8% 0%, rgba(64,145,106,0.24), transparent 60%), radial-gradient(900px 620px at 92% 12%, rgba(82,183,136,0.16), transparent 55%), rgb(var(--color-canvas))',
         }}
       />
-      <div className="mx-auto max-w-[1400px] p-4 md:p-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]">
+      <div className="mx-auto max-w-[1600px] p-4 md:p-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[240px,minmax(0,1fr)]">
           <div className="space-y-4">
             <Card className="p-4">
               <AppMark
@@ -153,10 +153,23 @@ export function App() {
                         <User className="h-3 w-3" /> Account
                       </button>
                       {menuOpen && (
-                        <div className="absolute right-0 mt-2 w-32 rounded-xl border border-white/10 bg-slate-900/95 p-1 text-xs text-slate-200 shadow-lg">
+                        <div className="absolute right-0 mt-2 w-44 rounded-xl border border-white/10 bg-slate-900/95 p-1 text-xs text-slate-200 shadow-lg">
                           <button
                             type="button"
-                            onClick={onSignOut}
+                            onClick={() => {
+                              setView('settings')
+                              setMenuOpen(false)
+                            }}
+                            className="w-full rounded-lg px-2 py-2 text-left hover:bg-white/10"
+                          >
+                            Account settings
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuOpen(false)
+                              onSignOut()
+                            }}
                             className="w-full rounded-lg px-2 py-2 text-left hover:bg-white/10"
                           >
                             Sign out
@@ -194,7 +207,7 @@ export function App() {
             <UploadPanel disabled={!isAuthed || isReadOnly} />
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {!isAuthed ? (
               <AuthGate onAuthenticated={loadState} />
             ) : (

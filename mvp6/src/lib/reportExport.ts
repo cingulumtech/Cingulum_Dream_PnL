@@ -33,3 +33,19 @@ export function getPageMetrics(settings: ExportSettings) {
 export function pageSizeForJsPdf(pageSize: ExportSettings['pageSize']) {
   return pageSize === 'letter' ? 'letter' : 'a4'
 }
+
+export function sanitizeColorStyles(doc: Document) {
+  const view = doc.defaultView
+  if (!view) return
+  const elements = Array.from(doc.querySelectorAll<HTMLElement>('*'))
+  for (const el of elements) {
+    const computed = view.getComputedStyle(el)
+    if (!computed) continue
+    const color = computed.color
+    const backgroundColor = computed.backgroundColor
+    const borderColor = computed.borderColor
+    if (color) el.style.color = color
+    if (backgroundColor) el.style.backgroundColor = backgroundColor
+    if (borderColor) el.style.borderColor = borderColor
+  }
+}

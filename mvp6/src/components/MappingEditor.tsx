@@ -225,12 +225,16 @@ export function MappingEditor() {
         </div>
       )}
 
-      <div className={`mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,1fr] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
+      <div className={`mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,minmax(0,1fr)] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
         {/* Left: Dream lines */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-slate-300" />
             <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search layout lines…" />
+          </div>
+          <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
+            <MousePointer2 className="h-3 w-3" />
+            Drag accounts from the right and drop on a line to map.
           </div>
 
           <div className="mt-3 max-h-[520px] overflow-auto pr-1">
@@ -239,11 +243,11 @@ export function MappingEditor() {
                 key={l.id}
                 className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm cursor-pointer border transition ${
                   selectedLineId === l.id
-                    ? 'bg-indigo-500/15 border-indigo-400/30'
+                    ? 'bg-indigo-500/20 border-indigo-400/40 ring-1 ring-indigo-400/30'
                     : hoverLineId === l.id
-                      ? 'bg-indigo-500/10 border-indigo-400/20'
+                      ? 'bg-indigo-500/15 border-indigo-400/30'
                       : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
-                }`}
+                } ${draggingAcc ? 'border-dashed border-white/20' : ''}`}
                 onClick={() => setSelectedLineIdLocal(l.id)}
                 onDragOver={e => {
                   e.preventDefault()
@@ -265,86 +269,89 @@ export function MappingEditor() {
           </div>
         </div>
 
-        {/* Right: Accounts picker */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
-          {!selectedLine ? (
-            <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
-          ) : (
-            <>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold">{selectedLine.label}</div>
-                  <div className="text-xs text-slate-400">Tap accounts to toggle. Think “photo editing”: fast, reversible, obvious.</div>
-                </div>
-
-                <div className="mt-3">
-                  <Label>Mapped accounts</Label>
-                  <div
-                    className="mt-2 flex flex-wrap gap-2 min-h-[44px] rounded-xl border border-white/10 bg-black/20 px-2 py-2"
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={handleUnassignDrop}
-                  >
-                    {selectedLine.mappedAccounts.length === 0 && <Chip>Drop accounts to map</Chip>}
-                    {selectedLine.mappedAccounts.map(a => (
-                      <Chip
-                        key={a}
-                        className="cursor-pointer hover:bg-rose-500/10"
-                        title="Click to remove"
-                        onClick={() => toggleAccount(selectedLine, a)}
-                        draggable
-                        onDragStart={e => {
-                          setDraggingAcc(a)
-                          e.dataTransfer.setData('text/plain', a)
-                        }}
-                        onDragEnd={() => setDraggingAcc(null)}
-                      >
-                        <Check className="h-3 w-3" /> {a}
-                      </Chip>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
-                    <MousePointer2 className="h-3 w-3" />
-                    Drag a mapped chip outside this box to unassign quickly.
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="space-y-4 min-w-0">
+          {/* Right: Accounts picker */}
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+            {!selectedLine ? (
+              <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3">
                   <div>
-                    <Label>Matcher preview</Label>
-                    <Input value={matcher} onChange={e => setMatcher(e.target.value)} placeholder="Regex, e.g. rent|lease" />
-                    {!includeRegex && matcher.trim() && (
-                      <div className="mt-1 text-xs text-rose-300 flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" /> Invalid matcher regex.
-                      </div>
+                    <div className="text-base font-semibold">{selectedLine.label}</div>
+                    <div className="text-xs text-slate-400">Tap accounts to toggle. Drag-and-drop also works.</div>
+                  </div>
+
+                  <div>
+                    <Label>Mapped accounts</Label>
+                    <div
+                      className={`mt-2 flex flex-wrap gap-2 min-h-[48px] rounded-xl border px-2 py-2 transition ${
+                        draggingAcc ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-white/10 bg-black/20'
+                      }`}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={handleUnassignDrop}
+                    >
+                      {selectedLine.mappedAccounts.length === 0 && <Chip>Drop accounts to map</Chip>}
+                      {selectedLine.mappedAccounts.map(a => (
+                        <Chip
+                          key={a}
+                          className="cursor-pointer hover:bg-rose-500/10"
+                          title="Click to remove"
+                          onClick={() => toggleAccount(selectedLine, a)}
+                          draggable
+                          onDragStart={e => {
+                            setDraggingAcc(a)
+                            e.dataTransfer.setData('text/plain', a)
+                          }}
+                          onDragEnd={() => setDraggingAcc(null)}
+                        >
+                          <Check className="h-3 w-3" /> {a}
+                        </Chip>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
+                      <MousePointer2 className="h-3 w-3" />
+                      Drag a mapped chip outside this box to unassign quickly.
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div>
+                      <Label>Matcher preview</Label>
+                      <Input value={matcher} onChange={e => setMatcher(e.target.value)} placeholder="Regex, e.g. rent|lease" />
+                      {!includeRegex && matcher.trim() && (
+                        <div className="mt-1 text-xs text-rose-300 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" /> Invalid matcher regex.
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <Label>Exclude</Label>
+                      <Input value={excludeMatcher} onChange={e => setExcludeMatcher(e.target.value)} placeholder="Regex to exclude" />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                    <Chip tone={matcherPreview.matches.length ? 'good' : 'neutral'}>
+                      {matcherPreview.matches.length} matched
+                    </Chip>
+                    {matcherPreview.excluded.length > 0 && <Chip tone="bad">{matcherPreview.excluded.length} excluded</Chip>}
+                    <Button
+                      variant="ghost"
+                      onClick={applyMatcherToLine}
+                      disabled={!selectedLine || matcherPreview.matches.length === 0 || !includeRegex}
+                    >
+                      <Filter className="h-4 w-4" /> Map matched
+                    </Button>
+                    {computed && (
+                      <span className="text-slate-400">
+                        Line total preview: {(computed.byLineId[selectedLine.id]?.reduce((a, b) => a + b, 0) ?? 0).toLocaleString(undefined, {
+                          maximumFractionDigits: 0,
+                        })}
+                      </span>
                     )}
                   </div>
-                  <div>
-                    <Label>Exclude</Label>
-                    <Input value={excludeMatcher} onChange={e => setExcludeMatcher(e.target.value)} placeholder="Regex to exclude" />
-                  </div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                  <Chip tone={matcherPreview.matches.length ? 'good' : 'neutral'}>
-                    {matcherPreview.matches.length} matched
-                  </Chip>
-                  {matcherPreview.excluded.length > 0 && <Chip tone="bad">{matcherPreview.excluded.length} excluded</Chip>}
-                  <Button
-                    variant="ghost"
-                    onClick={applyMatcherToLine}
-                    disabled={!selectedLine || matcherPreview.matches.length === 0 || !includeRegex}
-                  >
-                    <Filter className="h-4 w-4" /> Map matched
-                  </Button>
-                  {computed && (
-                    <span className="text-slate-400">
-                      Line total preview: {(computed.byLineId[selectedLine.id]?.reduce((a, b) => a + b, 0) ?? 0).toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </>
+              </>
             )}
           </div>
 
@@ -386,7 +393,7 @@ export function MappingEditor() {
                     onDragEnd={() => setDraggingAcc(null)}
                     className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm cursor-pointer border ${
                       active
-                        ? 'bg-indigo-500/15 border-indigo-400/30'
+                        ? 'bg-indigo-500/20 border-indigo-400/40 ring-1 ring-indigo-400/30'
                         : matched
                           ? 'bg-emerald-500/10 border-emerald-400/30'
                           : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
@@ -405,6 +412,7 @@ export function MappingEditor() {
             </div>
           </div>
         </div>
+      </div>
     </Card>
   )
 }

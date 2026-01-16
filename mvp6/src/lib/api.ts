@@ -82,6 +82,8 @@ export const api = {
     request<{ user: ApiUser }>('auth/login', { method: 'POST', body: JSON.stringify(payload) }),
   logout: () => request<{ ok: boolean }>('auth/logout', { method: 'POST' }),
   me: () => request<{ user: ApiUser }>('auth/me'),
+  updateAccount: (payload: { email?: string; current_password?: string; new_password?: string }) =>
+    request<{ user: ApiUser }>('auth/account', { method: 'PATCH', body: JSON.stringify(payload) }),
   health: () => request<{ status: string }>('health'),
   quickAuthCheck: async () => {
     await api.health()
