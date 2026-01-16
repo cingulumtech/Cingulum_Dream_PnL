@@ -360,7 +360,7 @@ export function SavedExports() {
               <div className="text-sm font-semibold text-slate-100">Compare snapshots</div>
               <div className="text-xs text-slate-400">Quick KPI deltas between any two saved exports.</div>
             </div>
-            <Chip className="px-2 py-1 h-7">Δ KPI</Chip>
+            <Chip className="px-2 py-1 h-7">KPI change</Chip>
           </div>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             <div>
@@ -397,16 +397,16 @@ export function SavedExports() {
                   <div className="font-semibold text-slate-100">{row.label}</div>
                   <div className="flex justify-between text-slate-300">
                     <span>Base</span>
-                    <span>{row.base != null ? Math.round(row.base).toLocaleString() : '—'}</span>
+                    <span>{row.base != null ? Math.round(row.base).toLocaleString() : '-'}</span>
                   </div>
                   <div className="flex justify-between text-slate-300">
                     <span>Target</span>
-                    <span>{row.target != null ? Math.round(row.target).toLocaleString() : '—'}</span>
+                    <span>{row.target != null ? Math.round(row.target).toLocaleString() : '-'}</span>
                   </div>
                   <div className="flex justify-between text-slate-100">
-                    <span>Δ</span>
+                    <span>Change</span>
                     <span className={row.delta != null && row.delta >= 0 ? 'text-emerald-200' : 'text-rose-200'}>
-                      {row.delta != null ? Math.round(row.delta).toLocaleString() : '—'}
+                      {row.delta != null ? Math.round(row.delta).toLocaleString() : '-'}
                     </span>
                   </div>
                 </div>

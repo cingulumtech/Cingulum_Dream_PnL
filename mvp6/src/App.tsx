@@ -18,6 +18,7 @@ import { AuthGate } from './components/AuthGate'
 import { api } from './lib/api'
 import { useAuthStore } from './store/authStore'
 import { ServerSync } from './components/ServerSync'
+import { useContextMenu } from './components/ContextMenu'
 
 export function App() {
   const view = useAppStore(s => s.view)
@@ -34,6 +35,7 @@ export function App() {
 
   const { user, status, setUser, setStatus } = useAuthStore()
   const [menuOpen, setMenuOpen] = useState(false)
+  const { openMenu, pushToast } = useContextMenu()
 
   const isAuthed = status === 'authenticated'
   const isReadOnly = !!user && user.role === 'viewer'
@@ -119,12 +121,34 @@ export function App() {
   )
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden">
+    <div
+      className="relative min-h-screen overflow-x-hidden"
+      onContextMenu={(event) => {
+        if (event.defaultPrevented) return
+        event.preventDefault()
+        const selection = window.getSelection()?.toString().trim()
+        if (!selection) return
+        openMenu({
+          event,
+          title: 'Actions',
+          items: [
+            {
+              id: 'copy-selection',
+              label: 'Copy selection',
+              onSelect: async () => {
+                await navigator.clipboard.writeText(selection)
+                pushToast('Copied')
+              },
+            },
+          ],
+        })
+      }}
+    >
       <div
         className="pointer-events-none fixed inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(1200px 700px at 8% 0%, rgba(64,145,106,0.24), transparent 60%), radial-gradient(900px 620px at 92% 12%, rgba(82,183,136,0.16), transparent 55%), rgb(var(--color-canvas))',
+            'radial-gradient(1200px 700px at 8% 0%, rgba(84,168,133,0.18), transparent 60%), radial-gradient(900px 620px at 92% 12%, rgba(116,198,165,0.12), transparent 55%), rgb(var(--color-canvas))',
         }}
       />
       <div className="mx-auto max-w-[1600px] p-4 md:p-6">
@@ -148,7 +172,7 @@ export function App() {
                       <button
                         type="button"
                         onClick={() => setMenuOpen(prev => !prev)}
-                        className="flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] text-slate-200"
+                        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] text-slate-200"
                       >
                         <User className="h-3 w-3" /> Account
                       </button>

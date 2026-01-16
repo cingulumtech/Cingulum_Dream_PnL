@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,39 +7,73 @@
 :root {
   color-scheme: dark;
 
-  --font-sans: 'Roboto', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  --color-canvas: 11 20 28;
-  --color-surface: 17 31 42;
-  --color-surface-strong: 23 44 58;
-  --color-border: 48 70 84;
-  --color-border-strong: 71 98 115;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 0.95rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.35rem;
+  --text-2xl: 1.6rem;
 
-  --color-text: 232 243 246;
-  --color-text-subtle: 182 199 210;
-  --color-text-muted: 144 167 182;
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
 
-  --color-accent: 64 145 106;
-  --color-accent-soft: 82 183 136;
-  --color-accent-contrast: 193 248 222;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
 
-  --shadow-soft: 0 12px 40px rgba(5, 16, 24, 0.35);
-  --shadow-strong: 0 22px 80px rgba(5, 16, 24, 0.55);
-
+  --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;
   --radius-xl: 22px;
+
+  --shadow-soft: 0 12px 40px rgba(5, 16, 24, 0.35);
+  --shadow-strong: 0 22px 80px rgba(5, 16, 24, 0.55);
+  --shadow-lift: 0 16px 45px rgba(10, 22, 32, 0.45);
+
+  --color-canvas: 9 14 20;
+  --color-surface: 16 24 32;
+  --color-surface-strong: 22 34 45;
+  --color-border: 52 74 88;
+  --color-border-strong: 86 112 128;
+
+  --color-text: 231 238 242;
+  --color-text-subtle: 184 200 210;
+  --color-text-muted: 142 162 176;
+
+  --color-accent: 84 168 133;
+  --color-accent-soft: 116 198 165;
+  --color-accent-contrast: 202 248 230;
+
+  --color-success: 52 181 128;
+  --color-warn: 243 194 72;
+  --color-danger: 232 96 96;
+
   --blur-strong: 18px;
 }
 
-html, body { height: 100%; }
+html, body {
+  height: 100%;
+}
+
 body {
   background:
-    radial-gradient(1100px 620px at 10% 0%, rgb(var(--color-accent-soft) / 0.14), transparent 60%),
-    radial-gradient(900px 520px at 90% 10%, rgba(35, 119, 93, 0.16), transparent 60%),
+    radial-gradient(1100px 620px at 10% 0%, rgb(var(--color-accent-soft) / 0.12), transparent 60%),
+    radial-gradient(900px 520px at 90% 10%, rgba(44, 122, 94, 0.18), transparent 60%),
     rgb(var(--color-canvas));
   color: rgb(var(--color-text));
   font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  font-variant-numeric: tabular-nums;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -49,7 +83,6 @@ body {
   background: rgb(var(--color-accent-contrast));
 }
 
-/* subtle scrollbar */
 *::-webkit-scrollbar { height: 10px; width: 10px; }
 *::-webkit-scrollbar-thumb { background: rgb(var(--color-border-strong) / 0.35); border-radius: 999px; }
 *::-webkit-scrollbar-track { background: rgba(0,0,0,0.12); }
@@ -74,7 +107,6 @@ a {
   color: rgb(var(--color-accent-soft));
 }
 
-/* Native select dropdown theming (Chromium/Windows) */
 select {
   color-scheme: dark;
   background-color: color-mix(in srgb, rgb(var(--color-surface-strong)) 80%, transparent);
@@ -84,6 +116,40 @@ select {
 select option {
   background-color: rgb(var(--color-surface));
   color: rgb(var(--color-text));
+}
+
+@layer components {
+  .ui-card {
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, rgb(var(--color-surface-strong)) 85%, transparent);
+    border: 1px solid rgb(var(--color-border-strong));
+    box-shadow: var(--shadow-strong);
+  }
+
+  .ui-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border-bottom: 1px solid rgb(var(--color-border));
+  }
+
+  .ui-card-footer {
+    padding: var(--space-4);
+    border-top: 1px solid rgb(var(--color-border));
+  }
+
+  .ui-table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgb(var(--color-border));
+    background: color-mix(in srgb, rgb(var(--color-surface)) 90%, transparent);
+  }
 }
 
 @layer utilities {

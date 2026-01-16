@@ -34,13 +34,13 @@ export function Help() {
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Auditability model">
           <div>
-            • <span className="text-slate-100">Current</span> = direct from uploaded Xero P&amp;L (no transformations).
+            <span className="text-slate-100">Current</span> = direct from uploaded Xero P&amp;L (no transformations).
           </div>
           <div>
-            • <span className="text-slate-100">Dream P&amp;L</span> = re-expression only: mapped accounts roll up to management lines. No synthetic maths.
+            <span className="text-slate-100">Dream P&amp;L</span> = re-expression only: mapped accounts roll up to management lines. No synthetic maths.
           </div>
           <div>
-            • <span className="text-slate-100">Scenario</span> = explicit replacement: remove matched legacy revenue, then add bundle revenue and optional bundle costs.
+            <span className="text-slate-100">Scenario</span> = explicit replacement: remove legacy revenue, then add bundle revenue and optional bundle costs.
           </div>
           <div className="mt-3 text-xs text-slate-400">
             Trust comes from drill-down: every Dream line can open the mapped Xero accounts and (if uploaded) the matching GL transactions.
@@ -50,7 +50,7 @@ export function Help() {
         <Section title="Replacement rule (core math)">
           <div>
             Bundles are replacements, not add-ons. The scenario always follows:
-            <Formula>Scenario = Current − Legacy TMS (± consult removal) + CBA bundle + cgTMS bundle</Formula>
+            <Formula>Scenario = Current - Legacy TMS (plus or minus consult removal) + CBA bundle + cgTMS bundle</Formula>
           </div>
           <div className="mt-3">
             Movement KPI math depends on comparison mode (Reports): last3 vs prev3, scenario vs current, or month vs prior.
@@ -61,7 +61,7 @@ export function Help() {
           <div>
             Control whether bundle COGS are injected into the scenario or assumed already in your P&amp;L.
           </div>
-          <Formula>When ON: ΔCOGS = (CBA costs × CBA volume) + (cgTMS costs × Program volume)</Formula>
+          <Formula>When ON: COGS change = (CBA costs x CBA volume) + (cgTMS costs x Program volume)</Formula>
           <div className="mt-2 text-xs text-slate-400">
             When OFF, only revenue changes. Use this if your current P&amp;L already contains the bundle delivery costs.
           </div>
@@ -71,28 +71,28 @@ export function Help() {
           <div>
             Patient fees are split automatically using the global service-fee %. The remainder is the doctor payout (your cost).
           </div>
-          <Formula>Doctor payout = Patient fee × (1 − ServiceFee%)</Formula>
+          <Formula>Doctor payout = Patient fee x (1 - ServiceFee%)</Formula>
           <div className="mt-2 text-xs text-slate-400">
             If 6-week consults are enabled, the 6-month consult is automatically included for the same patients with the same fee.
           </div>
         </Section>
 
         <Section title="Troubleshooting checklist">
-          <div>1) Confirm which accounts are tagged as legacy TMS revenue (and optional consult matchers).</div>
-          <div>2) Check whether “Apply bundle costs” is ON or OFF — this drives COGS movements.</div>
+          <div>1) Confirm which accounts are tagged as legacy TMS revenue (and optional consult removal).</div>
+          <div>2) Check whether Apply bundle costs is ON or OFF. This drives COGS movements.</div>
           <div>3) Review mapping completeness: if &lt;85%, Reports will default to Legacy for accuracy.</div>
           <div>4) Re-run Saved Export from a snapshot to confirm movements are stable.</div>
         </Section>
 
         <Section title="Where to go next">
-          <div>• <span className="text-slate-100">Mapping</span>: Map remaining accounts to improve Dream completeness.</div>
-          <div>• <span className="text-slate-100">Overview</span>: Adjust levers (rent, machines, volumes) and see the P&amp;L shift.</div>
-          <div>• <span className="text-slate-100">Reports</span>: Generate investor PDF with chosen datasource + scenario overlay.</div>
+          <div><span className="text-slate-100">Mapping</span>: Map remaining accounts to improve Dream completeness.</div>
+          <div><span className="text-slate-100">Overview</span>: Adjust levers (rent, machines, volumes) and see the P&amp;L shift.</div>
+          <div><span className="text-slate-100">Reports</span>: Generate investor PDF with chosen datasource and scenario overlay.</div>
         </Section>
 
         <Section title="Simple flow (one-page mental model)">
           <div className="font-mono text-[11px] leading-relaxed text-slate-200">
-            Uploads → Map accounts → Dream P&amp;L → Scenario rule → Reports/Snapshots
+            Uploads to Map accounts to Dream P&amp;L to Scenario rule to Reports and Snapshots
             <div className="text-slate-400 mt-2">Every step keeps a trail: dataset hashes, template layout hash, and saved report configs.</div>
           </div>
         </Section>

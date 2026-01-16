@@ -123,7 +123,7 @@ function money(n: number) {
 }
 
 function pct(num: number | null | undefined) {
-  if (num == null || Number.isNaN(num)) return '—'
+  if (num == null || Number.isNaN(num)) return '-'
   return `${num.toFixed(1)}%`
 }
 
@@ -470,8 +470,8 @@ export function getReportData(opts: {
     const topMoverSentences = [...revenueDrivers.items, ...costDrivers.items]
       .sort((a, b) => Math.abs((b.delta ?? 0)) - Math.abs((a.delta ?? 0)))
       .slice(0, 2)
-      .map(d => `${d.label} Δ ${d.delta != null ? money(d.delta) : '—'} (${pct(d.pctDelta ?? null)})`)
-    if (topMoverSentences.length) executiveSummary.push(`Top movement drivers: ${topMoverSentences.join(' • ')}`)
+      .map(d => `${d.label} change ${d.delta != null ? money(d.delta) : '-'} (${pct(d.pctDelta ?? null)})`)
+    if (topMoverSentences.length) executiveSummary.push(`Top movement drivers: ${topMoverSentences.join(', ')}`)
 
     const dataQuality: DataQuality = {
       mappingCompleteness: mapping.completeness,

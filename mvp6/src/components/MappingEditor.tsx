@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Filter, MousePointer2, Search, Undo2, Wand2 } from 'lucide-react'
+import React, { useMemo, useState, useEffect } from 'react'
+import { Check, ChevronRight, GripVertical, MousePointer2, Search, Undo2, Wand2 } from 'lucide-react'
+import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
 import { computeDream } from '../lib/dream/compute'
@@ -8,8 +9,17 @@ import { setLineMappings } from '../lib/dream/edit'
 import { flattenLines } from '../lib/dream/schema'
 import { Button, Card, Chip, Input, Label } from './ui'
 import { SaveStatusPill } from './SaveStatus'
+import { motion, useReducedMotion } from 'framer-motion'
 
-type AccountRow = { name: string; section: XeroPLSection }
+type AccountRow = { name: string; section: XeroPLSection; total?: number }
+
+type SavedView = {
+  name: string
+  qLine: string
+  qAcc: string
+  accountFilter: string
+  tokens: string[]
+}
 
 const SECTION_LABEL: Record<XeroPLSection, string> = {
   trading_income: 'Revenue',
@@ -20,11 +30,87 @@ const SECTION_LABEL: Record<XeroPLSection, string> = {
 }
 
 const sectionFilterDefs = [
-  { id: 'unmapped', label: 'Unmapped only' },
-  { id: 'all', label: 'All accounts' },
+  { id: 'unmapped', label: 'Unmapped' },
+  { id: 'mapped', label: 'Mapped' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'expense', label: 'Expenses' },
+  { id: 'all', label: 'All accounts' },
 ] as const
+
+function DraggableHandle({ listeners, attributes }: { listeners: any; attributes: any }) {
+  return (
+    <button
+      type="button"
+      className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-300 cursor-grab select-none"
+      {...listeners}
+      {...attributes}
+      aria-label="Drag"
+    >
+      <GripVertical className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
+function DraggableAccount({ account, active, onToggle }: { account: AccountRow; active: boolean; onToggle: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `acc:${account.name}`,
+    data: { account: account.name },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm border transition ${
+        active
+          ? 'bg-indigo-500/20 border-indigo-400/40 ring-1 ring-indigo-400/30'
+          : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
+      } ${isDragging ? 'opacity-60 shadow-lift' : ''}`}
+      onClick={onToggle}
+    >
+      <div className="min-w-0">
+        <div className="font-semibold text-slate-100 truncate">{account.name}</div>
+        <div className="text-xs text-slate-400">{SECTION_LABEL[account.section]}</div>
+      </div>
+      <DraggableHandle listeners={listeners} attributes={attributes} />
+    </div>
+  )
+}
+
+function DroppableLine({
+  line,
+  selected,
+  activeDrop,
+  onSelect,
+  children,
+}: {
+  line: DreamLine
+  selected: boolean
+  activeDrop: boolean
+  onSelect: () => void
+  children?: React.ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `line:${line.id}` })
+  const prefersReducedMotion = useReducedMotion()
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      onClick={onSelect}
+      initial={false}
+      animate={{ scale: isOver ? 1.01 : 1 }}
+      transition={{ duration: prefersReducedMotion ? 0 : 0.16, ease: [0.2, 0.8, 0.2, 1] }}
+      className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm cursor-pointer border transition ${
+        selected
+          ? 'bg-indigo-500/20 border-indigo-400/40 ring-1 ring-indigo-400/30'
+          : activeDrop || isOver
+            ? 'bg-indigo-500/15 border-indigo-400/30'
+            : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
+      }`}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 export function MappingEditor() {
   const user = useAuthStore(s => s.user)
@@ -40,10 +126,12 @@ export function MappingEditor() {
   const [qLine, setQLine] = useState('')
   const [qAcc, setQAcc] = useState('')
   const [accountFilter, setAccountFilter] = useState<(typeof sectionFilterDefs)[number]['id']>('unmapped')
-  const [matcher, setMatcher] = useState('')
-  const [excludeMatcher, setExcludeMatcher] = useState('')
-  const [draggingAcc, setDraggingAcc] = useState<string | null>(null)
-  const [hoverLineId, setHoverLineId] = useState<string | null>(null)
+  const [activeTokens, setActiveTokens] = useState<string[]>([])
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set())
+  const [activeDragAccount, setActiveDragAccount] = useState<string | null>(null)
+  const [confirmApply, setConfirmApply] = useState(false)
+  const [savedViews, setSavedViews] = useState<SavedView[]>([])
+  const [viewName, setViewName] = useState('')
 
   const lines = useMemo(() => flattenLines(template.root), [template])
   const computed = useMemo(() => (pl ? computeDream(pl, template) : null), [pl, template])
@@ -53,7 +141,7 @@ export function MappingEditor() {
   const accounts = useMemo<AccountRow[]>(() => {
     if (!pl) return []
     return [...pl.accounts]
-      .map(a => ({ name: a.name, section: a.section }))
+      .map(a => ({ name: a.name, section: a.section, total: a.total }))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [pl])
 
@@ -83,46 +171,55 @@ export function MappingEditor() {
     return lines.filter(l => !needle || l.label.toLowerCase().includes(needle))
   }, [lines, qLine])
 
-  const includeRegex = useMemo(() => {
-    if (!matcher.trim()) return null
-    try {
-      return new RegExp(matcher, 'i')
-    } catch {
-      return null
+  const suggestedTokens = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const account of accounts) {
+      const tokens = account.name
+        .toLowerCase()
+        .split(/[^a-z0-9]+/g)
+        .filter(t => t.length >= 3)
+      tokens.forEach(token => counts.set(token, (counts.get(token) ?? 0) + 1))
     }
-  }, [matcher])
-
-  const excludeRegex = useMemo(() => {
-    if (!excludeMatcher.trim()) return null
-    try {
-      return new RegExp(excludeMatcher, 'i')
-    } catch {
-      return null
-    }
-  }, [excludeMatcher])
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([token, count]) => ({ token, count }))
+  }, [accounts])
 
   const filteredAccounts = useMemo(() => {
     const needle = qAcc.toLowerCase()
     return accounts
       .filter(a => {
         if (accountFilter === 'unmapped') return !mappedSet.has(a.name)
+        if (accountFilter === 'mapped') return mappedSet.has(a.name)
         if (accountFilter === 'revenue') return a.section === 'trading_income' || a.section === 'other_income'
         if (accountFilter === 'expense') return a.section === 'cost_of_sales' || a.section === 'operating_expenses'
         return true
       })
       .filter(a => !needle || a.name.toLowerCase().includes(needle))
-  }, [accounts, qAcc, accountFilter, mappedSet])
+      .filter(a => activeTokens.length === 0 || activeTokens.every(token => a.name.toLowerCase().includes(token)))
+  }, [accounts, qAcc, accountFilter, mappedSet, activeTokens])
 
-  const matcherPreview = useMemo(() => {
-    if (!includeRegex) return { matches: [] as AccountRow[], excluded: [] as AccountRow[] }
-    const matches = accounts.filter(a => includeRegex.test(a.name))
-    const excluded = excludeRegex ? matches.filter(a => excludeRegex.test(a.name)) : []
-    const finalMatches = matches.filter(a => !excludeRegex || !excludeRegex.test(a.name))
-    return { matches: finalMatches, excluded }
-  }, [accounts, includeRegex, excludeRegex])
+  const selectionPreview = useMemo(() => {
+    const items = accounts.filter(a => selectedAccounts.has(a.name))
+    const total = items.reduce((sum, item) => sum + Math.abs(item.total ?? 0), 0)
+    return { items, total }
+  }, [accounts, selectedAccounts])
 
-  const matcherSet = useMemo(() => new Set(matcherPreview.matches.map(a => a.name)), [matcherPreview])
-  const excludedMatcherSet = useMemo(() => new Set(matcherPreview.excluded.map(a => a.name)), [matcherPreview])
+  useEffect(() => {
+    const raw = window.localStorage.getItem('atlas-mapping-views')
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as SavedView[]
+      setSavedViews(parsed)
+    } catch {
+      setSavedViews([])
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem('atlas-mapping-views', JSON.stringify(savedViews))
+  }, [savedViews])
 
   if (!pl) {
     return (
@@ -134,7 +231,7 @@ export function MappingEditor() {
           </div>
           <div className="flex gap-2">
             <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
-            <Button variant="ghost" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
+            <Button variant="secondary" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
           </div>
         </div>
       </Card>
@@ -183,27 +280,36 @@ export function MappingEditor() {
     setMappings(selectedLine, merged)
   }
 
-  function applyMatcherToLine() {
-    if (!selectedLine || matcherPreview.matches.length === 0) return
-    const merged = Array.from(new Set([...selectedLine.mappedAccounts, ...matcherPreview.matches.map(m => m.name)]))
+  function applySelectionRule() {
+    if (!selectedLine || selectionPreview.items.length === 0) return
+    const merged = Array.from(new Set([...selectedLine.mappedAccounts, ...selectionPreview.items.map(m => m.name)]))
     setMappings(selectedLine, merged)
+    setSelectedAccounts(new Set())
+    setConfirmApply(false)
   }
 
-  function handleDropOnLine(e: React.DragEvent, lineId: string) {
-    e.preventDefault()
-    const acc = draggingAcc || e.dataTransfer.getData('text/plain')
-    if (!acc) return
-    mapAccountToLine(lineId, acc)
-    setHoverLineId(null)
+  function handleDragStart(event: DragStartEvent) {
+    const account = event.active.data.current?.account as string | undefined
+    setActiveDragAccount(account ?? null)
   }
 
-  function handleUnassignDrop(e: React.DragEvent) {
-    if (!selectedLine) return
-    e.preventDefault()
-    const acc = draggingAcc || e.dataTransfer.getData('text/plain')
-    if (!acc) return
-    removeAccountFromLine(selectedLine, acc)
+  function handleDragEnd(event: DragEndEvent) {
+    const account = event.active.data.current?.account as string | undefined
+    const overId = event.over?.id?.toString() ?? null
+    if (!account || !overId) {
+      setActiveDragAccount(null)
+      return
+    }
+    if (overId.startsWith('line:')) {
+      mapAccountToLine(overId.replace('line:', ''), account)
+    }
+    if (overId === 'unassign' && selectedLine) {
+      removeAccountFromLine(selectedLine, account)
+    }
+    setActiveDragAccount(null)
   }
+
+  const selectedView = savedViews.find(v => v.name === viewName)
 
   return (
     <Card className="p-5 overflow-hidden">
@@ -211,7 +317,7 @@ export function MappingEditor() {
         <div>
           <div className="text-lg font-semibold">Mapping</div>
           <div className="text-sm text-slate-300">
-            Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default (so you can mop them up fast).
+            Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default.
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -225,195 +331,303 @@ export function MappingEditor() {
         </div>
       )}
 
-      <div className={`mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,minmax(0,1fr)] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
-        {/* Left: Dream lines */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+      <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className={`mt-5 grid grid-cols-1 gap-4 md:grid-cols-[420px,minmax(0,1fr)] ${readOnly ? 'pointer-events-none opacity-70' : ''}`}>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-slate-300" />
-            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search layout lines…" />
+            <Input value={qLine} onChange={e => setQLine(e.target.value)} placeholder="Search layout lines" />
           </div>
           <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
             <MousePointer2 className="h-3 w-3" />
-            Drag accounts from the right and drop on a line to map.
+            Drag accounts from the right or use the selection rule builder.
           </div>
 
-          <div className="mt-3 max-h-[520px] overflow-auto pr-1">
+          <div className="mt-3 max-h-[520px] overflow-auto pr-1 space-y-1">
             {filteredLines.map(l => (
-              <div
+              <DroppableLine
                 key={l.id}
-                className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm cursor-pointer border transition ${
-                  selectedLineId === l.id
-                    ? 'bg-indigo-500/20 border-indigo-400/40 ring-1 ring-indigo-400/30'
-                    : hoverLineId === l.id
-                      ? 'bg-indigo-500/15 border-indigo-400/30'
-                      : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
-                } ${draggingAcc ? 'border-dashed border-white/20' : ''}`}
-                onClick={() => setSelectedLineIdLocal(l.id)}
-                onDragOver={e => {
-                  e.preventDefault()
-                  setHoverLineId(l.id)
-                }}
-                onDragLeave={() => setHoverLineId(null)}
-                onDrop={e => handleDropOnLine(e, l.id)}
+                line={l}
+                selected={selectedLineId === l.id}
+                activeDrop={activeDragAccount != null}
+                onSelect={() => setSelectedLineIdLocal(l.id)}
               >
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{l.label}</div>
                   <div className="text-xs text-slate-400 flex items-center gap-2">
                     {l.mappedAccounts.length ? `${l.mappedAccounts.length} mapped` : 'Unmapped'}
-                    {selectedLineId === l.id && draggingAcc && <span className="text-indigo-200">Release to map</span>}
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-slate-400" />
-              </div>
+              </DroppableLine>
             ))}
           </div>
-        </div>
+          </div>
 
-        <div className="space-y-4 min-w-0">
-          {/* Right: Accounts picker */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
-            {!selectedLine ? (
-              <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
-            ) : (
-              <>
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <div className="text-base font-semibold">{selectedLine.label}</div>
-                    <div className="text-xs text-slate-400">Tap accounts to toggle. Drag-and-drop also works.</div>
-                  </div>
-
-                  <div>
-                    <Label>Mapped accounts</Label>
-                    <div
-                      className={`mt-2 flex flex-wrap gap-2 min-h-[48px] rounded-xl border px-2 py-2 transition ${
-                        draggingAcc ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-white/10 bg-black/20'
-                      }`}
-                      onDragOver={e => e.preventDefault()}
-                      onDrop={handleUnassignDrop}
-                    >
-                      {selectedLine.mappedAccounts.length === 0 && <Chip>Drop accounts to map</Chip>}
-                      {selectedLine.mappedAccounts.map(a => (
-                        <Chip
-                          key={a}
-                          className="cursor-pointer hover:bg-rose-500/10"
-                          title="Click to remove"
-                          onClick={() => toggleAccount(selectedLine, a)}
-                          draggable
-                          onDragStart={e => {
-                            setDraggingAcc(a)
-                            e.dataTransfer.setData('text/plain', a)
-                          }}
-                          onDragEnd={() => setDraggingAcc(null)}
-                        >
-                          <Check className="h-3 w-3" /> {a}
-                        </Chip>
-                      ))}
+          <div className="space-y-4 min-w-0">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
+              {!selectedLine ? (
+                <div className="text-sm text-slate-300">Select a layout line to map accounts.</div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-base font-semibold">{selectedLine.label}</div>
+                        <div className="text-xs text-slate-400">Tap accounts to toggle. Drag handles enable drag and drop.</div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={autoSuggest}>
+                        <Wand2 className="h-3.5 w-3.5" /> Auto suggest
+                      </Button>
                     </div>
-                    <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
-                      <MousePointer2 className="h-3 w-3" />
-                      Drag a mapped chip outside this box to unassign quickly.
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div>
-                      <Label>Matcher preview</Label>
-                      <Input value={matcher} onChange={e => setMatcher(e.target.value)} placeholder="Regex, e.g. rent|lease" />
-                      {!includeRegex && matcher.trim() && (
-                        <div className="mt-1 text-xs text-rose-300 flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3" /> Invalid matcher regex.
+                      <Label>Mapped accounts</Label>
+                      <div
+                        className="mt-2 flex flex-wrap gap-2 min-h-[48px] rounded-xl border px-2 py-2 transition border-white/10 bg-black/20"
+                      >
+                        <UnassignDropZone selectedLine={selectedLine} />
+                        {selectedLine.mappedAccounts.length === 0 && <Chip>Drop accounts to map</Chip>}
+                        {selectedLine.mappedAccounts.map(a => (
+                          <MappedChip key={a} label={a} onRemove={() => toggleAccount(selectedLine, a)} />
+                        ))}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
+                        <MousePointer2 className="h-3 w-3" />
+                        Drag chips to the drop zone to unassign.
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-100">Teach by example</div>
+                          <div className="text-xs text-slate-300 mt-1">
+                            Select accounts below, preview the impact, then confirm to map them to this line.
+                          </div>
+                        </div>
+                        <Chip>{selectedAccounts.size} selected</Chip>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setConfirmApply(true)}
+                          disabled={!selectedAccounts.size}
+                        >
+                          Preview selection
+                        </Button>
+                        {confirmApply && (
+                          <>
+                            <span className="text-slate-400">
+                              {selectionPreview.items.length} accounts and {selectionPreview.total.toLocaleString(undefined, { maximumFractionDigits: 0 })} total activity
+                            </span>
+                            <Button variant="primary" size="sm" onClick={applySelectionRule}>
+                              Confirm mapping
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setConfirmApply(false)}>
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                      {computed && selectedLine && (
+                        <div className="mt-2 text-xs text-slate-400">
+                          Line total preview: {(computed.byLineId[selectedLine.id]?.reduce((a, b) => a + b, 0) ?? 0).toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                          })}
                         </div>
                       )}
                     </div>
-                    <div>
-                      <Label>Exclude</Label>
-                      <Input value={excludeMatcher} onChange={e => setExcludeMatcher(e.target.value)} placeholder="Regex to exclude" />
-                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                    <Chip tone={matcherPreview.matches.length ? 'good' : 'neutral'}>
-                      {matcherPreview.matches.length} matched
-                    </Chip>
-                    {matcherPreview.excluded.length > 0 && <Chip tone="bad">{matcherPreview.excluded.length} excluded</Chip>}
-                    <Button
-                      variant="ghost"
-                      onClick={applyMatcherToLine}
-                      disabled={!selectedLine || matcherPreview.matches.length === 0 || !includeRegex}
-                    >
-                      <Filter className="h-4 w-4" /> Map matched
-                    </Button>
-                    {computed && (
-                      <span className="text-slate-400">
-                        Line total preview: {(computed.byLineId[selectedLine.id]?.reduce((a, b) => a + b, 0) ?? 0).toLocaleString(undefined, {
-                          maximumFractionDigits: 0,
-                        })}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2">
-              {sectionFilterDefs.map(def => (
-                <Chip
-                  key={def.id}
-                  className={`cursor-pointer ${accountFilter === def.id ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
-                  onClick={() => setAccountFilter(def.id)}
-                >
-                  {def.label}
-                </Chip>
-              ))}
-              <div className="flex items-center gap-2 ml-auto">
-                <Search className="h-4 w-4 text-slate-300" />
-                <Input
-                  value={qAcc}
-                  onChange={e => setQAcc(e.target.value)}
-                  placeholder="Search Xero accounts…"
-                  className="w-64"
-                />
-              </div>
+                </>
+              )}
             </div>
 
-            <div className="mt-3 max-h-[360px] overflow-auto pr-1">
-              {filteredAccounts.map(a => {
-                const active = selectedLine?.mappedAccounts.includes(a.name)
-                const matched = matcherSet.has(a.name)
-                const excluded = excludedMatcherSet.has(a.name)
-                return (
-                  <div
-                    key={a.name}
-                    draggable
-                    onDragStart={e => {
-                      setDraggingAcc(a.name)
-                      e.dataTransfer.setData('text/plain', a.name)
-                    }}
-                    onDragEnd={() => setDraggingAcc(null)}
-                    className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm cursor-pointer border ${
-                      active
-                        ? 'bg-indigo-500/20 border-indigo-400/40 ring-1 ring-indigo-400/30'
-                        : matched
-                          ? 'bg-emerald-500/10 border-emerald-400/30'
-                          : 'bg-transparent border-white/0 hover:bg-white/5 hover:border-white/10'
-                    } ${excluded ? 'opacity-60' : ''}`}
-                    onClick={() => selectedLine && toggleAccount(selectedLine, a.name)}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {sectionFilterDefs.map(def => (
+                  <Chip
+                    key={def.id}
+                    className={`cursor-pointer ${accountFilter === def.id ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                    onClick={() => setAccountFilter(def.id)}
                   >
-                    <div className="truncate">
-                      <div className="font-semibold">{a.name}</div>
-                      <div className="text-xs text-slate-400">{SECTION_LABEL[a.section]}</div>
+                    {def.label}
+                  </Chip>
+                ))}
+                <div className="flex items-center gap-2 ml-auto">
+                  <Search className="h-4 w-4 text-slate-300" />
+                  <Input
+                    value={qAcc}
+                    onChange={e => setQAcc(e.target.value)}
+                    placeholder="Search Xero accounts"
+                    className="w-64"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span>Suggested tokens:</span>
+                {suggestedTokens.map(token => (
+                  <Chip
+                    key={token.token}
+                    className={`cursor-pointer ${activeTokens.includes(token.token) ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                    onClick={() =>
+                      setActiveTokens(prev =>
+                        prev.includes(token.token) ? prev.filter(t => t !== token.token) : [...prev, token.token]
+                      )
+                    }
+                  >
+                    {token.token} ({token.count})
+                  </Chip>
+                ))}
+                {activeTokens.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTokens([])}>
+                    Clear tokens
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <Label>Saved views</Label>
+                <select
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100"
+                  value={selectedView?.name ?? ''}
+                  onChange={(e) => {
+                    const view = savedViews.find(v => v.name === e.target.value)
+                    if (!view) return
+                    setQLine(view.qLine)
+                    setQAcc(view.qAcc)
+                    setAccountFilter(view.accountFilter as any)
+                    setActiveTokens(view.tokens)
+                    setViewName(view.name)
+                  }}
+                >
+                  <option value="">Select view</option>
+                  {savedViews.map(view => (
+                    <option key={view.name} value={view.name}>{view.name}</option>
+                  ))}
+                </select>
+                <Input
+                  className="w-40"
+                  value={viewName}
+                  onChange={e => setViewName(e.target.value)}
+                  placeholder="Name view"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    if (!viewName.trim()) return
+                    const next = savedViews.filter(v => v.name !== viewName.trim())
+                    next.push({ name: viewName.trim(), qLine, qAcc, accountFilter, tokens: activeTokens })
+                    setSavedViews(next)
+                  }}
+                >
+                  Save view
+                </Button>
+                {selectedView && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSavedViews(savedViews.filter(v => v.name !== selectedView.name))}
+                  >
+                    Delete view
+                  </Button>
+                )}
+              </div>
+
+              <div className="mt-3 max-h-[360px] overflow-auto pr-1 space-y-2">
+                {filteredAccounts.map(a => {
+                  const active = selectedLine?.mappedAccounts.includes(a.name)
+                  return (
+                    <div key={a.name} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedAccounts.has(a.name)}
+                        onChange={() =>
+                          setSelectedAccounts(prev => {
+                            const next = new Set(prev)
+                            if (next.has(a.name)) next.delete(a.name)
+                            else next.add(a.name)
+                            return next
+                          })
+                        }
+                      />
+                      <DraggableAccount account={a} active={!!active} onToggle={() => selectedLine && toggleAccount(selectedLine, a.name)} />
                     </div>
-                    {active && <Check className="h-4 w-4 text-indigo-200" />}
-                  </div>
-                )
-              })}
-              {filteredAccounts.length === 0 && <div className="text-sm text-slate-400 mt-2">No accounts match this filter.</div>}
+                  )
+                })}
+                {filteredAccounts.length === 0 && <div className="text-sm text-slate-400 mt-2">No accounts match this filter.</div>}
+              </div>
             </div>
           </div>
         </div>
+        <DragOverlay>
+          {activeDragAccount ? (
+            <div className="rounded-xl border border-indigo-400/40 bg-indigo-500/20 px-3 py-2 text-sm shadow-lift">
+              {activeDragAccount}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+        <Button variant="ghost" size="sm" onClick={undoTemplate} disabled={!canUndo}>
+          <Undo2 className="h-3.5 w-3.5" /> Undo last mapping
+        </Button>
+        <div className="flex gap-2">
+          {sectionStats.map(stat => (
+            <Chip key={stat.id} tone={stat.percent === 100 ? 'good' : 'neutral'}>
+              {stat.label} {stat.percent}% mapped
+            </Chip>
+          ))}
+        </div>
       </div>
     </Card>
+  )
+}
+
+function UnassignDropZone({ selectedLine }: { selectedLine: DreamLine }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'unassign' })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs ${
+        isOver ? 'border-rose-400/40 bg-rose-500/20 text-rose-100' : 'border-white/10 bg-white/5 text-slate-300'
+      }`}
+    >
+      Drop here to unassign
+      {isOver && selectedLine.mappedAccounts.length > 0 && (
+        <span className="text-[11px]">Release to remove</span>
+      )}
+    </div>
+  )
+}
+
+function MappedChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `mapped:${label}`,
+    data: { account: label },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+        isDragging ? 'opacity-60 shadow-lift' : 'bg-white/5 text-slate-200 border-white/10'
+      }`}
+    >
+      <button
+        type="button"
+        className="text-slate-200 hover:text-white"
+        onClick={onRemove}
+        title="Remove"
+      >
+        <Check className="h-3 w-3" />
+      </button>
+      <span className="text-slate-100">{label}</span>
+      <DraggableHandle listeners={listeners} attributes={attributes} />
+    </div>
   )
 }
 

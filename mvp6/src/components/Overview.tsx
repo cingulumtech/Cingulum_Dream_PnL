@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../store/appStore'
 import { applyBundledScenario, computeXeroTotals } from '../lib/dream/compute'
-import { Card, Chip, Input, Label } from './ui'
+import { Button, Card, Chip, Input, Label } from './ui'
+import { CopyAffordance } from './CopyAffordance'
+import { createCopyMenuItems, useContextMenu } from './ContextMenu'
 import { api } from '../lib/api'
 import {
   buildEffectiveLedger,
@@ -36,42 +38,29 @@ function moneyShort(n: number) {
   return money(n)
 }
 
+const SECTION_LABEL: Record<string, string> = {
+  trading_income: 'Revenue',
+  other_income: 'Revenue',
+  cost_of_sales: 'COGS',
+  operating_expenses: 'OpEx',
+  unknown: 'Other',
+}
+
 function toNum(v: string) {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
 }
 
-function compileMatchers(matchers: string[], fallback?: RegExp[]) {
-  const cleaned = (matchers ?? []).map(s => String(s || '').trim()).filter(Boolean)
-  if (!cleaned.length) {
-    if (!fallback || !fallback.length) return null
-    try {
-      return new RegExp(fallback.map(r => r.source).join('|'), 'i')
-    } catch {
-      return null
-    }
-  }
-  // Treat each line as a substring match (escape regex chars).
-  const pattern = cleaned.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  try {
-    return new RegExp(pattern, 'i')
-  } catch {
-    return null
-  }
+function normalizeTokens(patterns: string[], fallback: string[] = []) {
+  const cleaned = (patterns ?? []).map(s => String(s ?? '').trim().toLowerCase()).filter(Boolean)
+  const fallbackTokens = fallback.map(s => s.toLowerCase())
+  return cleaned.length ? cleaned : fallbackTokens
 }
 
-function compileList(patterns: string[]) {
-  return (patterns ?? [])
-    .map(s => {
-      const trimmed = String(s ?? '').trim()
-      if (!trimmed) return null
-      try {
-        return new RegExp(trimmed, 'i')
-      } catch {
-        return null
-      }
-    })
-    .filter(Boolean) as RegExp[]
+function tokenMatch(name: string, tokens: string[]) {
+  if (!tokens.length) return false
+  const lower = name.toLowerCase()
+  return tokens.some(token => lower.includes(token))
 }
 
 function OverviewTooltip({ active, payload, label, showScenario }: any) {
@@ -287,6 +276,7 @@ export function Overview() {
   const removeDoctorRule = useAppStore(s => s.removeDoctorRule)
   const upsertTxnOverride = useAppStore(s => s.upsertTxnOverride)
   const removeTxnOverride = useAppStore(s => s.removeTxnOverride)
+  const { openMenu, pushToast } = useContextMenu()
   const [consultModalOpen, setConsultModalOpen] = useState(false)
   const [consultMode, setConsultMode] = useState<'ap_bills' | 'mapped_accounts' | 'all_txns'>('ap_bills')
   const [doctorPatternDraft, setDoctorPatternDraft] = useState('')
@@ -298,6 +288,21 @@ export function Overview() {
   const [consultEnd, setConsultEnd] = useState('')
   const [consultMin, setConsultMin] = useState('')
   const [consultMax, setConsultMax] = useState('')
+  const [consultAmountSign, setConsultAmountSign] = useState<'all' | 'positive' | 'negative'>('all')
+  const [consultDoctorFilter, setConsultDoctorFilter] = useState<string[]>([])
+  const [consultAccountFilters, setConsultAccountFilters] = useState<string[]>([])
+  const [tmsAccountSearch, setTmsAccountSearch] = useState('')
+  const [consultAccountSearch, setConsultAccountSearch] = useState('')
+  const [tmsAccountFilter, setTmsAccountFilter] = useState<'all' | 'revenue' | 'cogs' | 'opex'>('revenue')
+  const [consultAccountFilter, setConsultAccountFilter] = useState<'all' | 'revenue' | 'cogs' | 'opex'>('revenue')
+  const [tmsDraftAccounts, setTmsDraftAccounts] = useState<string[]>(scenario.legacyTmsAccounts ?? [])
+  const [consultDraftAccounts, setConsultDraftAccounts] = useState<string[]>(scenario.legacyConsultAccounts ?? [])
+  const [consultExcludedDraft, setConsultExcludedDraft] = useState<string[]>(scenario.excludedConsultAccounts ?? [])
+  const [consultViews, setConsultViews] = useState<
+    { name: string; search: string; status: string; start: string; end: string; min: string; max: string; mode: string }[]
+  >([])
+  const [consultViewName, setConsultViewName] = useState('')
+  const [powerToolsOpen, setPowerToolsOpen] = useState(false)
   const activeDoctorPatterns = doctorPatterns.length ? doctorPatterns : DEFAULT_DOCTOR_PATTERNS
 
   useEffect(() => {
@@ -305,6 +310,26 @@ export function Overview() {
     setDoctorPatternDraft(activeDoctorPatterns.join('\n'))
     setDoctorPatternErrors([])
   }, [consultModalOpen, activeDoctorPatterns])
+
+  useEffect(() => {
+    setTmsDraftAccounts(scenario.legacyTmsAccounts ?? [])
+    setConsultDraftAccounts(scenario.legacyConsultAccounts ?? [])
+    setConsultExcludedDraft(scenario.excludedConsultAccounts ?? [])
+  }, [scenario.legacyTmsAccounts, scenario.legacyConsultAccounts, scenario.excludedConsultAccounts])
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem('atlas-consult-views')
+    if (!raw) return
+    try {
+      setConsultViews(JSON.parse(raw))
+    } catch {
+      setConsultViews([])
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem('atlas-consult-views', JSON.stringify(consultViews))
+  }, [consultViews])
 
   const effectiveLedger = useMemo(
     () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
@@ -333,6 +358,61 @@ export function Overview() {
     return { ...operatingTotals, net: netTotals.net }
   }, [operatingTotals, netTotals])
 
+  const accountTokenOptions = useMemo(() => {
+    if (!operatingPl) return []
+    const counts = new Map<string, number>()
+    operatingPl.accounts.forEach(acc => {
+      acc.name
+        .toLowerCase()
+        .split(/[^a-z0-9]+/g)
+        .filter(token => token.length >= 3)
+        .forEach(token => counts.set(token, (counts.get(token) ?? 0) + 1))
+    })
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([token, count]) => ({ token, count }))
+  }, [operatingPl])
+
+  const filterAccountList = (
+    list: { name: string; section: string }[],
+    query: string,
+    filter: 'all' | 'revenue' | 'cogs' | 'opex'
+  ) => {
+    const needle = query.toLowerCase()
+    return list.filter(acc => {
+      if (filter === 'revenue' && !(acc.section === 'trading_income' || acc.section === 'other_income')) return false
+      if (filter === 'cogs' && acc.section !== 'cost_of_sales') return false
+      if (filter === 'opex' && acc.section !== 'operating_expenses') return false
+      if (needle && !acc.name.toLowerCase().includes(needle)) return false
+      return true
+    })
+  }
+
+  const filteredTmsAccounts = useMemo(
+    () => (operatingPl ? filterAccountList(operatingPl.accounts, tmsAccountSearch, tmsAccountFilter) : []),
+    [operatingPl, tmsAccountSearch, tmsAccountFilter]
+  )
+  const filteredConsultAccounts = useMemo(
+    () => (operatingPl ? filterAccountList(operatingPl.accounts, consultAccountSearch, consultAccountFilter) : []),
+    [operatingPl, consultAccountSearch, consultAccountFilter]
+  )
+
+  const tmsPending = useMemo(() => {
+    const current = scenario.legacyTmsAccounts ?? []
+    return current.join('|') !== tmsDraftAccounts.join('|')
+  }, [scenario.legacyTmsAccounts, tmsDraftAccounts])
+
+  const consultPending = useMemo(() => {
+    const current = scenario.legacyConsultAccounts ?? []
+    return current.join('|') !== consultDraftAccounts.join('|')
+  }, [scenario.legacyConsultAccounts, consultDraftAccounts])
+
+  const consultExcludePending = useMemo(() => {
+    const current = scenario.excludedConsultAccounts ?? []
+    return current.join('|') !== consultExcludedDraft.join('|')
+  }, [scenario.excludedConsultAccounts, consultExcludedDraft])
+
   const derivedProgramCount = useMemo(() => {
     if (!scenario.machinesEnabled) return null
     const machines = Math.max(0, scenario.tmsMachines ?? 0)
@@ -344,12 +424,12 @@ export function Overview() {
 
   const baseRentLatest = useMemo(() => {
     if (!operatingPl) return null
-    const rx = compileMatchers(scenario.rentAccountMatchers ?? [], [/rent/i, /lease/i])
-    if (!rx) return null
+    const tokens = normalizeTokens(scenario.rentAccountMatchers ?? [], ['rent', 'lease'])
+    if (!tokens.length) return null
     let latest: number | null = null
     for (const a of operatingPl.accounts) {
       if (a.section !== 'operating_expenses') continue
-      if (!rx.test(a.name)) continue
+      if (!tokenMatch(a.name, tokens)) continue
       for (let i = operatingPl.monthLabels.length - 1; i >= 0; i--) {
         const v = a.values[i] ?? 0
         if (v !== 0) {
@@ -373,15 +453,22 @@ export function Overview() {
 
   const matcherPreview = useMemo(() => {
     if (!operatingPl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
-    const tmsPatterns = compileList(scenario.legacyTmsAccountMatchers ?? [])
-    const consultPatterns = scenario.includeDoctorConsultsInBundle ? compileList(scenario.legacyConsultAccountMatchers ?? []) : []
+    const tmsTokens = normalizeTokens(scenario.legacyTmsAccountMatchers ?? [])
+    const consultTokens = scenario.includeDoctorConsultsInBundle ? normalizeTokens(scenario.legacyConsultAccountMatchers ?? []) : []
+    const tmsAccountSet = new Set(scenario.legacyTmsAccounts ?? [])
+    const consultAccountSet = new Set(scenario.legacyConsultAccounts ?? [])
     const excluded = new Set(scenario.excludedConsultAccounts ?? [])
     const totals = { revenue: 0, cogs: 0, opex: 0 }
     const accounts: { name: string; total: number; section: string; kind: 'tms' | 'consult' }[] = []
 
     const shouldRemove = (name: string, kind: 'tms' | 'consult') => {
-      const patterns = kind === 'tms' ? tmsPatterns : consultPatterns
-      return patterns.length ? patterns.some(re => re.test(name)) : false
+      if (kind === 'tms') {
+        return tmsAccountSet.size ? tmsAccountSet.has(name) : tokenMatch(name, tmsTokens)
+      }
+      if (kind === 'consult') {
+        return consultAccountSet.size ? consultAccountSet.has(name) : tokenMatch(name, consultTokens)
+      }
+      return false
     }
 
     for (const a of operatingPl.accounts) {
@@ -401,7 +488,15 @@ export function Overview() {
       totals[target as 'revenue' | 'cogs' | 'opex'] += a.total ?? 0
     }
     return { accounts, totals }
-  }, [operatingPl, scenario.includeDoctorConsultsInBundle, scenario.legacyConsultAccountMatchers, scenario.legacyTmsAccountMatchers, scenario.excludedConsultAccounts])
+  }, [
+    operatingPl,
+    scenario.includeDoctorConsultsInBundle,
+    scenario.legacyConsultAccountMatchers,
+    scenario.legacyTmsAccountMatchers,
+    scenario.legacyTmsAccounts,
+    scenario.legacyConsultAccounts,
+    scenario.excludedConsultAccounts,
+  ])
 
   const doctorRuleMap = useMemo(() => {
     const map = new Map<string, any>()
@@ -419,7 +514,19 @@ export function Overview() {
     return map
   }, [txnOverrides])
 
-  const compiledDoctorPatterns = useMemo(() => compileList(activeDoctorPatterns), [activeDoctorPatterns])
+  const compiledDoctorPatterns = useMemo(() => {
+    return (activeDoctorPatterns ?? [])
+      .map(s => {
+        const trimmed = String(s ?? '').trim()
+        if (!trimmed) return null
+        try {
+          return new RegExp(trimmed, 'i')
+        } catch {
+          return null
+        }
+      })
+      .filter(Boolean) as RegExp[]
+  }, [activeDoctorPatterns])
 
   const doctorBillGroups = useMemo(() => {
     if (!gl) return []
@@ -470,17 +577,25 @@ export function Overview() {
     }
 
     const query = consultSearch.toLowerCase()
+    const consultAccountSet = new Set(consultAccountFilters)
     const minAmount = Number(consultMin) || null
     const maxAmount = Number(consultMax) || null
     const startDate = consultStart ? new Date(consultStart) : null
     const endDate = consultEnd ? new Date(consultEnd) : null
 
     return groups
+      .filter(group => (consultDoctorFilter.length ? consultDoctorFilter.includes(group.doctorContactId) : true))
       .map(group => {
         const filteredBills = group.bills.filter((item: any) => {
         if (consultStatusFilter !== 'all' && item.status !== consultStatusFilter) return false
         if (minAmount != null && item.billAmount < minAmount) return false
         if (maxAmount != null && item.billAmount > maxAmount) return false
+        if (consultAmountSign !== 'all') {
+          const amount = item.bill.amount ?? 0
+          if (consultAmountSign === 'positive' && amount < 0) return false
+          if (consultAmountSign === 'negative' && amount > 0) return false
+        }
+        if (consultAccountSet.size && !consultAccountSet.has(item.bill.account ?? '')) return false
         if (startDate && new Date(item.bill.date) < startDate) return false
         if (endDate && new Date(item.bill.date) > endDate) return false
         if (query) {
@@ -504,17 +619,31 @@ export function Overview() {
     consultMax,
     consultStart,
     consultEnd,
+    consultAmountSign,
+    consultDoctorFilter,
+    consultAccountFilters,
   ])
 
   const legacyConsultGroups = useMemo(() => {
     if (!gl) return []
-    const rx = compileMatchers(scenario.legacyConsultAccountMatchers ?? [], [])
-    if (!rx) return []
+    const consultTokens = normalizeTokens(scenario.legacyConsultAccountMatchers ?? [])
+    const consultSet = new Set(scenario.legacyConsultAccounts ?? [])
+    if (!consultTokens.length && !consultSet.size) return []
     const needle = consultSearch.toLowerCase()
+    const consultAccountSet = new Set(consultAccountFilters)
     const groups: Record<string, any> = {}
     for (const [idx, txn] of (gl.txns ?? []).entries()) {
       const label = `${txn.account ?? 'Unmapped'}`
-      if (!rx.test(label) && !(txn.description && rx.test(txn.description))) continue
+      const matches =
+        consultSet.size
+          ? consultSet.has(label)
+          : tokenMatch(label, consultTokens) || (txn.description ? tokenMatch(txn.description, consultTokens) : false)
+      if (!matches) continue
+      if (consultAmountSign !== 'all') {
+        if (consultAmountSign === 'positive' && (txn.amount ?? 0) < 0) continue
+        if (consultAmountSign === 'negative' && (txn.amount ?? 0) > 0) continue
+      }
+      if (consultAccountSet.size && !consultAccountSet.has(label)) continue
       if (needle) {
         const haystack = `${txn.description ?? ''} ${txn.reference ?? ''}`.toLowerCase()
         if (!haystack.includes(needle)) continue
@@ -524,13 +653,27 @@ export function Overview() {
       groups[label].txns.push({ key, ...txn })
     }
     return Object.values(groups)
-  }, [gl, scenario.legacyConsultAccountMatchers, consultSearch])
+  }, [gl, scenario.legacyConsultAccountMatchers, scenario.legacyConsultAccounts, consultSearch, consultAmountSign, consultAccountFilters])
+
+  const consultDoctorOptions = useMemo(
+    () =>
+      doctorBillGroups.map((group: any) => ({
+        id: group.doctorContactId,
+        label: group.doctorLabel,
+      })),
+    [doctorBillGroups]
+  )
+
+  const consultAccountOptions = useMemo(
+    () => legacyConsultGroups.map((group: any) => group.account),
+    [legacyConsultGroups]
+  )
 
   if (!operatingPl || !baseTotals) {
     return (
       <Card className="p-5">
         <div className="text-sm text-slate-300">
-          Start by uploading a Profit &amp; Loss export. Then map accounts once, and the app becomes “decision-grade”.
+          Start by uploading a Profit &amp; Loss export. Then map accounts once, and the app becomes \"decision-grade\".
         </div>
       </Card>
     )
@@ -548,6 +691,38 @@ export function Overview() {
   const currentTotal = sum(baseTotals.net)
   const scenarioTotal = scenarioTotals ? sum(scenarioTotals.net) : null
   const delta = scenarioTotal == null ? 0 : scenarioTotal - currentTotal
+
+  const chartMenuItems = useMemo(() => {
+    const items = [
+      {
+        id: 'copy-current-total',
+        label: 'Copy current total',
+        onSelect: async () => {
+          await navigator.clipboard.writeText(money(currentTotal))
+          pushToast('Copied')
+        },
+      },
+    ]
+    if (scenarioTotal != null) {
+      items.push({
+        id: 'copy-scenario-total',
+        label: 'Copy scenario total',
+        onSelect: async () => {
+          await navigator.clipboard.writeText(money(scenarioTotal))
+          pushToast('Copied')
+        },
+      })
+    }
+    items.push({
+      id: 'copy-change',
+      label: 'Copy change',
+      onSelect: async () => {
+        await navigator.clipboard.writeText(money(delta))
+        pushToast('Copied')
+      },
+    })
+    return items
+  }, [currentTotal, scenarioTotal, delta, pushToast])
 
   const best = (arr: number[]) => (arr.length ? Math.max(...arr) : 0)
   const worst = (arr: number[]) => (arr.length ? Math.min(...arr) : 0)
@@ -567,6 +742,11 @@ export function Overview() {
     scenario.machinesEnabled ? 'Programs derived from capacity' : 'Programs set manually',
     scenario.state ? `Clinic state: ${scenario.state}` : null,
   ].filter(Boolean) as string[]
+
+  const buildCopyItems = (label: string, value: string, formatted?: string) =>
+    createCopyMenuItems({ label, value, formatted, onCopied: () => pushToast('Copied') })
+
+  const selectedConsultView = consultViews.find(view => view.name === consultViewName)
 
   const saveDoctorRule = async (contactId: string, treatment: TxnTreatment, deferral?: { startMonth?: string; months?: number; includeInOperatingKPIs?: boolean }) => {
     const payload = {
@@ -641,27 +821,27 @@ export function Overview() {
           <div className="text-sm font-semibold text-slate-100">Data status</div>
           <div className="text-xs text-slate-300">
             P&amp;L: {pl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-rose-200 font-semibold">Missing</span>}
-            {plLoadedAt ? <span className="text-slate-400"> · updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
+            {plLoadedAt ? <span className="text-slate-400"> updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
           </div>
           <div className="text-xs text-slate-300">
             GL: {gl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-amber-200 font-semibold">Optional</span>}
-            {glLoadedAt ? <span className="text-slate-400"> · updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
+            {glLoadedAt ? <span className="text-slate-400"> updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
           </div>
-          <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult matcher previews &amp; drill-down.</div>
+          <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult previews and drill-down.</div>
         </Card>
 
         <Card className="p-4 space-y-2">
           <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
-          <div className="text-xs text-slate-300">Replacement rule: remove matched legacy TMS (and consult, if enabled) then add CBA + cgTMS bundle revenue. Costs can be added explicitly.</div>
+          <div className="text-xs text-slate-300">Replacement rule: remove legacy TMS (and consult, if enabled) then add CBA and cgTMS bundle revenue. Costs can be added explicitly.</div>
           <div className="text-xs text-slate-400">
-            Matchers active: {scenario.legacyTmsAccountMatchers?.length ?? 0} TMS ·{' '}
-            {scenario.includeDoctorConsultsInBundle ? `${scenario.legacyConsultAccountMatchers?.length ?? 0} consult` : 'consult off'}
+            Accounts selected: {scenario.legacyTmsAccounts?.length ?? 0} TMS and{' '}
+            {scenario.includeDoctorConsultsInBundle ? `${scenario.legacyConsultAccounts?.length ?? 0} consult` : 'consult off'}
           </div>
         </Card>
 
         <Card className="p-4 space-y-2">
           <div className="text-sm font-semibold text-slate-100">Results &amp; sensitivity</div>
-          <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} → {scenarioTotal == null ? '—' : money(scenarioTotal)}</div>
+          <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} to {scenarioTotal == null ? '-' : money(scenarioTotal)}</div>
           <div className="text-xs text-slate-300">High-leverage levers: rent override, TMS capacity (programs), consult inclusion, bundle COGS toggle.</div>
         </Card>
       </div>
@@ -671,12 +851,12 @@ export function Overview() {
           <div>
             <div className="text-lg font-semibold text-slate-100">Strategic Overview</div>
             <div className="text-sm text-slate-300 mt-1">
-              “If we ran the business this way instead of the current way, what would actually change — and is it worth it?”
+              \"If we ran the business this way instead of the current way, what would actually change - and is it worth it?\"
             </div>
           </div>
           {scenario.enabled ? (
             <Chip tone={delta >= 0 ? 'good' : 'bad'} className="shrink-0">
-              Δ {money(delta)}
+              Change {money(delta)}
             </Chip>
           ) : (
             <Chip className="shrink-0">Scenario off</Chip>
@@ -684,32 +864,93 @@ export function Overview() {
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-4"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('Current 12-mo profit', currentTotal.toString(), money(currentTotal)),
+                title: 'Current 12-mo profit',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">Current 12-mo profit</div>
             <div className="text-lg font-semibold text-slate-100 mt-1">{money(currentTotal)}</div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-slate-300">Scenario 12-mo profit</div>
-            <div className="text-lg font-semibold text-slate-100 mt-1">
-              {scenarioTotal == null ? '—' : money(scenarioTotal)}
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="Current 12-mo profit" value={currentTotal.toString()} formatted={money(currentTotal)} />
             </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-4"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('Scenario 12-mo profit', (scenarioTotal ?? 0).toString(), scenarioTotal == null ? '0' : money(scenarioTotal)),
+                title: 'Scenario 12-mo profit',
+              })
+            }
+          >
+            <div className="text-xs text-slate-300">Scenario 12-mo profit</div>
+            <div className="text-lg font-semibold text-slate-100 mt-1">
+              {scenarioTotal == null ? '-' : money(scenarioTotal)}
+            </div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="Scenario 12-mo profit" value={(scenarioTotal ?? 0).toString()} formatted={scenarioTotal == null ? '0' : money(scenarioTotal)} />
+            </div>
+          </div>
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-4"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('Avg monthly profit (current)', avg(baseTotals.net).toString(), money(avg(baseTotals.net))),
+                title: 'Avg monthly profit (current)',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">Avg monthly profit (current)</div>
             <div className="text-lg font-semibold text-slate-100 mt-1">{money(avg(baseTotals.net))}</div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="Avg monthly profit (current)" value={avg(baseTotals.net).toString()} formatted={money(avg(baseTotals.net))} />
+            </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-4"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('Best / worst (current)', `${best(baseTotals.net)} / ${worst(baseTotals.net)}`, `${money(best(baseTotals.net))} / ${money(worst(baseTotals.net))}`),
+                title: 'Best / worst (current)',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">Best / worst (current)</div>
             <div className="text-lg font-semibold text-slate-100 mt-1">
               {money(best(baseTotals.net))} / {money(worst(baseTotals.net))}
             </div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance
+                label="Best / worst (current)"
+                value={`${best(baseTotals.net)} / ${worst(baseTotals.net)}`}
+                formatted={`${money(best(baseTotals.net))} / ${money(worst(baseTotals.net))}`}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="mt-4 h-[300px]">
+        <div
+          className="mt-4 h-[300px]"
+          onContextMenu={(event) =>
+            openMenu({
+              event,
+              items: chartMenuItems,
+              title: 'Chart metrics',
+            })
+          }
+        >
           <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
             <span>P&amp;L trend (current vs scenario)</span>
-            <span>Δ shown as scenario - current</span>
+            <span>Change shown as scenario minus current</span>
           </div>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={rows} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
@@ -812,7 +1053,7 @@ export function Overview() {
                             onChange={(e) => setScenario({ rentPercentPerMonth: toNum(e.target.value) })}
                           />
                           <div className="mt-1 text-xs text-slate-300">
-                            Compounded month-to-month (as displayed left→right in the chart).
+                            Compounded month-to-month (as displayed left to right in the chart).
                           </div>
                         </div>
                       )}
@@ -828,7 +1069,7 @@ export function Overview() {
                   <div>
                     <div className="text-sm font-semibold text-slate-100">TMS machine capacity</div>
                     <div className="text-xs text-slate-300 mt-1">
-                      Derive programs/month from machines, utilisation, and a conservative 4.33 weeks/month — or override manually.
+                      Derive programs/month from machines, utilisation, and a conservative 4.33 weeks/month. Or override manually.
                     </div>
                   </div>
                   <Chip tone={scenario.machinesEnabled ? 'good' : 'bad'} className="shrink-0">
@@ -916,7 +1157,7 @@ export function Overview() {
                       onChange={(e) => setScenario({ programMonthlyCount: toNum(e.target.value) })}
                     />
                     <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-100">
-                      Manual override is active — auto capacity adjustments are paused until you switch back to Dynamic.
+                      Manual override is active. Auto capacity adjustments are paused until you switch back to Dynamic.
                     </div>
                   </div>
                 )}
@@ -975,21 +1216,79 @@ export function Overview() {
               </div>
             </div>
 
-            <div className="mt-4">
-              <Label>Legacy TMS revenue matchers (one per line)</Label>
-              <textarea
-                className="mt-2 w-full min-h-[78px] rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500/50"
-                value={(scenario.legacyTmsAccountMatchers ?? []).join('\n')}
-                onChange={(e) =>
-                  setScenario({
-                    legacyTmsAccountMatchers: e.target.value
-                      .split(/\r?\n/)
-                      .map(s => s.trim())
-                      .filter(Boolean),
-                  })
-                }
-                placeholder={'tms\ncgtms\nrTMS\ntranscranial'}
-              />
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-100">Legacy TMS revenue removal</div>
+                  <div className="text-xs text-slate-300 mt-1">
+                    Select the accounts that represent legacy TMS revenue. Changes are staged until you confirm.
+                  </div>
+                </div>
+                <Chip>{tmsDraftAccounts.length} selected</Chip>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <Label>Account filter</Label>
+                {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
+                  <Chip
+                    key={filter}
+                    className={`cursor-pointer ${tmsAccountFilter === filter ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                    onClick={() => setTmsAccountFilter(filter)}
+                  >
+                    {filter === 'all' ? 'All' : filter.toUpperCase()}
+                  </Chip>
+                ))}
+                <Input
+                  className="w-56"
+                  value={tmsAccountSearch}
+                  onChange={(e) => setTmsAccountSearch(e.target.value)}
+                  placeholder="Search accounts"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span>Suggested tokens:</span>
+                {accountTokenOptions.map(token => (
+                  <Chip
+                    key={`tms-token-${token.token}`}
+                    className="cursor-pointer"
+                    onClick={() => setTmsAccountSearch(token.token)}
+                  >
+                    {token.token} ({token.count})
+                  </Chip>
+                ))}
+              </div>
+              <div className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                {filteredTmsAccounts.map(acc => (
+                  <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={tmsDraftAccounts.includes(acc.name)}
+                      onChange={() =>
+                        setTmsDraftAccounts(prev =>
+                          prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
+                        )
+                      }
+                    />
+                    <span className="flex-1">{acc.name}</span>
+                    <span className="text-slate-400">{SECTION_LABEL[acc.section]}</span>
+                  </label>
+                ))}
+                {filteredTmsAccounts.length === 0 && <div className="text-xs text-slate-400">No accounts match this filter.</div>}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={!tmsPending}
+                  onClick={() => setScenario({ legacyTmsAccounts: tmsDraftAccounts })}
+                >
+                  Confirm selection
+                </Button>
+                {tmsPending && (
+                  <Button variant="ghost" size="sm" onClick={() => setTmsDraftAccounts(scenario.legacyTmsAccounts ?? [])}>
+                    Discard changes
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -1003,31 +1302,135 @@ export function Overview() {
                 <ToggleSwitch checked={scenario.includeDoctorConsultsInBundle} onChange={(v) => setScenario({ includeDoctorConsultsInBundle: v })} />
               </div>
               {scenario.includeDoctorConsultsInBundle && (
-                <div className="mt-4">
-                  <Label>Consult revenue account matchers (advanced)</Label>
-                  <textarea
-                    className="mt-2 w-full min-h-[72px] rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500/50"
-                    value={(scenario.legacyConsultAccountMatchers ?? []).join('\n')}
-                    onChange={(e) =>
-                      setScenario({
-                        legacyConsultAccountMatchers: e.target.value
-                          .split(/\r?\n/)
-                          .map(s => s.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    placeholder={'consult\nappointment\ndr\ndoctor'}
-                  />
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">Consult revenue removal</div>
+                        <div className="text-xs text-slate-300 mt-1">
+                          Select consult accounts to remove from the base P&amp;L. Confirm to apply.
+                        </div>
+                      </div>
+                      <Chip>{consultDraftAccounts.length} selected</Chip>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                      <Label>Account filter</Label>
+                      {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
+                        <Chip
+                          key={filter}
+                          className={`cursor-pointer ${consultAccountFilter === filter ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                          onClick={() => setConsultAccountFilter(filter)}
+                        >
+                          {filter === 'all' ? 'All' : filter.toUpperCase()}
+                        </Chip>
+                      ))}
+                      <Input
+                        className="w-56"
+                        value={consultAccountSearch}
+                        onChange={(e) => setConsultAccountSearch(e.target.value)}
+                        placeholder="Search accounts"
+                      />
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      <span>Suggested tokens:</span>
+                      {accountTokenOptions.map(token => (
+                        <Chip
+                          key={`consult-token-${token.token}`}
+                          className="cursor-pointer"
+                          onClick={() => setConsultAccountSearch(token.token)}
+                        >
+                          {token.token} ({token.count})
+                        </Chip>
+                      ))}
+                    </div>
+                    <div className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                      {filteredConsultAccounts.map(acc => (
+                        <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={consultDraftAccounts.includes(acc.name)}
+                            onChange={() =>
+                              setConsultDraftAccounts(prev =>
+                                prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
+                              )
+                            }
+                          />
+                          <span className="flex-1">{acc.name}</span>
+                          <span className="text-slate-400">{SECTION_LABEL[acc.section]}</span>
+                        </label>
+                      ))}
+                      {filteredConsultAccounts.length === 0 && <div className="text-xs text-slate-400">No accounts match this filter.</div>}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!consultPending}
+                        onClick={() => setScenario({ legacyConsultAccounts: consultDraftAccounts })}
+                      >
+                        Confirm selection
+                      </Button>
+                      {consultPending && (
+                        <Button variant="ghost" size="sm" onClick={() => setConsultDraftAccounts(scenario.legacyConsultAccounts ?? [])}>
+                          Discard changes
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">Exclude consult accounts</div>
+                        <div className="text-xs text-slate-300 mt-1">
+                          Use this to keep specific accounts in the base P&amp;L even when consult removal is on.
+                        </div>
+                      </div>
+                      <Chip tone="warn">{consultExcludedDraft.length} excluded</Chip>
+                    </div>
+                    <div className="mt-3 max-h-32 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                      {filteredConsultAccounts.map(acc => (
+                        <label key={`exclude-${acc.name}`} className="flex items-center gap-2 text-xs text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={consultExcludedDraft.includes(acc.name)}
+                            onChange={() =>
+                              setConsultExcludedDraft(prev =>
+                                prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
+                              )
+                            }
+                          />
+                          <span className="flex-1">{acc.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!consultExcludePending}
+                        onClick={() => setScenario({ excludedConsultAccounts: consultExcludedDraft })}
+                      >
+                        Confirm exclusions
+                      </Button>
+                      {consultExcludePending && (
+                        <Button variant="ghost" size="sm" onClick={() => setConsultExcludedDraft(scenario.excludedConsultAccounts ?? [])}>
+                          Discard changes
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
                     <button
                       type="button"
                       onClick={() => setConsultModalOpen(true)}
                       className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-indigo-500/15"
                     >
-                      Review &amp; exclude consult transactions
+                      Review consult transactions
                     </button>
                     <span>
-                      Doctor rules: {doctorRuleCount} · Bill overrides: {billOverrideCount}
+                      Doctor rules: {doctorRuleCount} and bill overrides: {billOverrideCount}
                     </span>
                   </div>
                 </div>
@@ -1036,11 +1439,11 @@ export function Overview() {
 
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                <div className="text-xs font-semibold text-slate-100">Matcher preview</div>
+                <div className="text-xs font-semibold text-slate-100">Removal preview</div>
                 <div className="text-xs text-slate-300 mt-1">Accounts removed: {matcherPreview.accounts.length}</div>
                 <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
                   {matcherPreview.accounts.length === 0 ? (
-                    <div className="text-slate-400">No accounts matched the current regex.</div>
+                    <div className="text-slate-400">No accounts selected for removal.</div>
                   ) : (
                     matcherPreview.accounts.map(acc => (
                       <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
@@ -1052,8 +1455,8 @@ export function Overview() {
                   )}
                 </div>
                 <div className="mt-2 text-[11px] text-slate-400">
-                  Totals removed → Revenue: <span className="text-slate-200">{money(matcherPreview.totals.revenue)}</span> · COGS:{' '}
-                  <span className="text-slate-200">{money(matcherPreview.totals.cogs)}</span> · Opex:{' '}
+                  Totals removed: Revenue <span className="text-slate-200">{money(matcherPreview.totals.revenue)}</span>, COGS{' '}
+                  <span className="text-slate-200">{money(matcherPreview.totals.cogs)}</span>, OpEx{' '}
                   <span className="text-slate-200">{money(matcherPreview.totals.opex)}</span>
                 </div>
               </div>
@@ -1062,10 +1465,10 @@ export function Overview() {
                 <div className="text-xs font-semibold text-slate-100">Capacity &amp; payout model</div>
                 <div className="text-[11px] text-slate-300">
                   Programs / month: <span className="font-semibold text-slate-100">{programDisplayCount}</span> ({scenario.machinesEnabled ? 'capacity-derived' : 'manual'}).
-                  Capacity inputs: {scenario.tmsMachines} machines · {scenario.patientsPerMachinePerWeek} patients/wk · utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
+                  Capacity inputs: {scenario.tmsMachines} machines, {scenario.patientsPerMachinePerWeek} patients per week, utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
                 </div>
                 <div className="text-[11px] text-slate-300">
-                  Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee → doctor payout {doctorPayoutPct}% of patient fee.
+                  Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee, doctor payout {doctorPayoutPct}% of patient fee.
                 </div>
               </div>
             </div>
@@ -1202,7 +1605,7 @@ export function Overview() {
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
                       <div className="text-slate-300">
                         Included costs / CBA: <span className="font-semibold text-slate-100">{money(cbaIncluded)}</span>
-                        <span className="text-slate-400"> · applied to scenario: {scenario.addBundleCostsToScenario ? 'yes' : 'no'}</span>
+                        <span className="text-slate-400"> applied to scenario: {scenario.addBundleCostsToScenario ? 'yes' : 'no'}</span>
                       </div>
                       <div className="text-slate-300">
                         Gross margin / CBA: <span className="font-semibold text-slate-100">{money((scenario.cbaPrice ?? 0) - cbaIncluded)}</span>
@@ -1273,7 +1676,7 @@ export function Overview() {
                               <span className="font-semibold text-slate-100">{derivedProgramsRounded}</span> programs / month (set above).
                             </>
                           ) : (
-                            'Manual override in use — switch to Dynamic above to auto-adjust.'
+                            'Manual override in use. Switch to Dynamic above to auto-adjust.'
                           )}
                         </div>
                       </div>
@@ -1388,7 +1791,7 @@ export function Overview() {
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
                       <div className="text-slate-300">
                         Included costs / program: <span className="font-semibold text-slate-100">{money(progIncluded)}</span>
-                        <span className="text-slate-400"> · applied to scenario: {scenario.addBundleCostsToScenario ? 'yes' : 'no'}</span>
+                        <span className="text-slate-400"> applied to scenario: {scenario.addBundleCostsToScenario ? 'yes' : 'no'}</span>
                       </div>
                       <div className="text-slate-300">
                         Gross margin / program: <span className="font-semibold text-slate-100">{money((scenario.programPrice ?? 0) - progIncluded)}</span>
@@ -1398,13 +1801,13 @@ export function Overview() {
                     <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
                       Scenario calculation (monthly):
                       <div className="mt-1 text-slate-200">
-                        Δ revenue = CBA×{money(scenario.cbaPrice ?? 0)} + Program×{money(scenario.programPrice ?? 0)}
+                        Revenue change = CBA times {money(scenario.cbaPrice ?? 0)} plus Program times {money(scenario.programPrice ?? 0)}
                       </div>
                       <div className="text-slate-200">
-                        Δ COGS = {scenario.addBundleCostsToScenario ? `CBA×${money(cbaApplied)} + Program×${money(progApplied)}` : '0 (costs assumed already in P&L)'}
+                        COGS change = {scenario.addBundleCostsToScenario ? `CBA times ${money(cbaApplied)} plus Program times ${money(progApplied)}` : '0 (costs assumed already in P&L)'}
                       </div>
                       <div className="text-slate-200">
-                        Bundle cost impact: CBA {moneyShort(cbaApplied)} /mo · Program {moneyShort(progApplied)} /mo (applied when toggle is ON).
+                        Bundle cost impact: CBA {moneyShort(cbaApplied)} per month and Program {moneyShort(progApplied)} per month (applied when toggle is ON).
                       </div>
                     </div>
                   </div>
@@ -1462,6 +1865,67 @@ export function Overview() {
               <span className="text-slate-400">Bills create expense; payments are informational only.</span>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <Label>Saved views</Label>
+              <select
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100"
+                value={selectedConsultView?.name ?? ''}
+                onChange={(e) => {
+                  const view = consultViews.find(v => v.name === e.target.value)
+                  if (!view) return
+                  setConsultViewName(view.name)
+                  setConsultSearch(view.search)
+                  setConsultStatusFilter(view.status as any)
+                  setConsultStart(view.start)
+                  setConsultEnd(view.end)
+                  setConsultMin(view.min)
+                  setConsultMax(view.max)
+                  setConsultMode(view.mode as any)
+                }}
+              >
+                <option value="">Select view</option>
+                {consultViews.map(view => (
+                  <option key={view.name} value={view.name}>{view.name}</option>
+                ))}
+              </select>
+              <Input
+                className="w-48"
+                value={consultViewName}
+                onChange={(e) => setConsultViewName(e.target.value)}
+                placeholder="Name view"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (!consultViewName.trim()) return
+                  const next = consultViews.filter(v => v.name !== consultViewName.trim())
+                  next.push({
+                    name: consultViewName.trim(),
+                    search: consultSearch,
+                    status: consultStatusFilter,
+                    start: consultStart,
+                    end: consultEnd,
+                    min: consultMin,
+                    max: consultMax,
+                    mode: consultMode,
+                  })
+                  setConsultViews(next)
+                }}
+              >
+                Save view
+              </Button>
+              {selectedConsultView && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConsultViews(consultViews.filter(v => v.name !== selectedConsultView.name))}
+                >
+                  Delete view
+                </Button>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 lg:grid-cols-5">
               <div>
                 <Label>Search</Label>
@@ -1500,46 +1964,105 @@ export function Overview() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <Label>Amount sign</Label>
+                {(['all', 'positive', 'negative'] as const).map(sign => (
+                  <Chip
+                    key={sign}
+                    className={`cursor-pointer ${consultAmountSign === sign ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                    onClick={() => setConsultAmountSign(sign)}
+                  >
+                    {sign === 'all' ? 'All' : sign}
+                  </Chip>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <Label>Contacts</Label>
+                {consultDoctorOptions.length === 0 && <span className="text-slate-400">No contacts yet</span>}
+                {consultDoctorOptions.map(opt => (
+                  <Chip
+                    key={opt.id}
+                    className={`cursor-pointer ${consultDoctorFilter.includes(opt.id) ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                    onClick={() =>
+                      setConsultDoctorFilter(prev =>
+                        prev.includes(opt.id) ? prev.filter(id => id !== opt.id) : [...prev, opt.id]
+                      )
+                    }
+                  >
+                    {opt.label}
+                  </Chip>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <Label>Accounts</Label>
+                {consultAccountOptions.length === 0 && <span className="text-slate-400">No accounts yet</span>}
+                {consultAccountOptions.map(account => (
+                  <Chip
+                    key={account}
+                    className={`cursor-pointer ${consultAccountFilters.includes(account) ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                    onClick={() =>
+                      setConsultAccountFilters(prev =>
+                        prev.includes(account) ? prev.filter(a => a !== account) : [...prev, account]
+                      )
+                    }
+                  >
+                    {account}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold text-slate-100">Doctor regex patterns</div>
-                  <div className="text-[11px] text-slate-400">One regex per line. Matches contact name (case-insensitive).</div>
+                  <div className="text-xs font-semibold text-slate-100">Power tools</div>
+                  <div className="text-[11px] text-slate-400">Advanced rules for pattern matching and legacy cleanup.</div>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-slate-300">
-                  <input type="checkbox" checked={doctorFilterEnabled} onChange={() => setDoctorFilterEnabled(v => !v)} />
-                  Enable doctor filter
-                </label>
+                <Button variant="ghost" size="sm" onClick={() => setPowerToolsOpen(v => !v)}>
+                  {powerToolsOpen ? 'Hide' : 'Show'}
+                </Button>
               </div>
-              <textarea
-                className="mt-2 w-full min-h-[90px] rounded-xl bg-slate-900/60 border border-white/10 px-3 py-2 text-xs text-slate-100"
-                value={doctorPatternDraft}
-                onChange={(e) => setDoctorPatternDraft(e.target.value)}
-                placeholder={DEFAULT_DOCTOR_PATTERNS.join('\n')}
-              />
-              {doctorPatternErrors.length > 0 && (
-                <div className="mt-2 text-xs text-rose-200 space-y-1">
-                  {doctorPatternErrors.map(err => (
-                    <div key={err}>{err}</div>
-                  ))}
+              {powerToolsOpen && (
+                <div className="mt-3 space-y-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input type="checkbox" checked={doctorFilterEnabled} onChange={() => setDoctorFilterEnabled(v => !v)} />
+                    Enable doctor filter
+                  </label>
+                  <div>
+                    <div className="text-xs text-slate-300">Doctor name patterns (regex, case-insensitive)</div>
+                    <textarea
+                      className="mt-2 w-full min-h-[90px] rounded-xl bg-slate-900/60 border border-white/10 px-3 py-2 text-xs text-slate-100"
+                      value={doctorPatternDraft}
+                      onChange={(e) => setDoctorPatternDraft(e.target.value)}
+                      placeholder={DEFAULT_DOCTOR_PATTERNS.join('\n')}
+                    />
+                    {doctorPatternErrors.length > 0 && (
+                      <div className="mt-2 text-xs text-rose-200 space-y-1">
+                        {doctorPatternErrors.map(err => (
+                          <div key={err}>{err}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => saveDoctorPatterns()}
+                      className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
+                    >
+                      Save patterns
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => resetDoctorPatterns()}
+                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100"
+                    >
+                      Reset to defaults
+                    </button>
+                  </div>
                 </div>
               )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => saveDoctorPatterns()}
-                  className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-white"
-                >
-                  Save patterns
-                </button>
-                <button
-                  type="button"
-                  onClick={() => resetDoctorPatterns()}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100"
-                >
-                  Reset to defaults
-                </button>
-              </div>
             </div>
           </div>
 
@@ -1747,7 +2270,7 @@ export function Overview() {
                                 <div className="space-y-1 text-[11px] text-slate-300">
                                   {item.payments.map((pay: any, idx: number) => (
                                     <div key={idx} className="flex items-center justify-between">
-                                      <span>{pay.date} · {pay.description ?? pay.reference ?? 'Payment'}</span>
+                                      <span>{pay.date} {pay.description ?? pay.reference ?? 'Payment'}</span>
                                       <span>{money(pay.amount)}</span>
                                     </div>
                                   ))}
@@ -1769,7 +2292,7 @@ export function Overview() {
                   Legacy consult account review (fallback). AP Bills mode is recommended for clean exclusions.
                 </div>
                 {legacyConsultGroups.length === 0 ? (
-                  <div className="text-xs text-slate-400">No consult transactions matched the current regex.</div>
+                  <div className="text-xs text-slate-400">No consult transactions matched the current filters.</div>
                 ) : (
                   legacyConsultGroups.map(group => (
                     <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">

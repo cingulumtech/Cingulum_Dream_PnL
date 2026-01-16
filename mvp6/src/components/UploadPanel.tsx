@@ -26,7 +26,7 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
   async function onPickPL(file: File | null) {
     if (!file) return
     setErr('')
-    setStatus('Parsing Profit & Loss…')
+    setStatus('Parsing Profit & Loss...')
     try {
       const buf = await readFileAsArrayBuffer(file)
       const parsed = parseXeroProfitAndLoss(buf)
@@ -50,7 +50,7 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
           })
         )
         .catch(() => null)
-      setStatus(`Loaded P&L: ${parsed.accounts.length} accounts × ${parsed.months.length} months`)
+      setStatus(`Loaded P&L: ${parsed.accounts.length} accounts x ${parsed.months.length} months`)
     } catch (e: any) {
       setErr(e?.message ?? String(e))
       setStatus('')
@@ -60,7 +60,7 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
   async function onPickGL(file: File | null) {
     if (!file) return
     setErr('')
-    setStatus('Parsing General Ledger Detail…')
+    setStatus('Parsing General Ledger Detail...')
     try {
       const buf = await readFileAsArrayBuffer(file)
       const parsed = parseXeroGeneralLedgerDetail(buf)
@@ -128,7 +128,7 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
           </div>
           {pl && (
             <div className="mt-3 text-xs text-slate-300">
-              {pl.accounts.length.toLocaleString()} accounts · {pl.months.length} months
+              {pl.accounts.length.toLocaleString()} accounts and {pl.months.length} months
             </div>
           )}
         </div>

@@ -9,12 +9,12 @@ const PCT_FORMATTER = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 
 const DATETIME_FORMATTER = new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
 
 function money(n: number | null | undefined) {
-  if (n == null || Number.isNaN(n)) return '—'
+  if (n == null || Number.isNaN(n)) return '-'
   return MONEY_FORMATTER.format(n)
 }
 
 function pct(n: number | null | undefined) {
-  if (n == null || Number.isNaN(n)) return '—'
+  if (n == null || Number.isNaN(n)) return '-'
   return `${PCT_FORMATTER.format(n)}%`
 }
 
@@ -86,7 +86,7 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
               <th className="text-left px-3 py-2">Driver</th>
               <th className="text-right px-3 py-2">Actual</th>
               <th className="text-right px-3 py-2">Comparison</th>
-              <th className="text-right px-3 py-2">Δ / %</th>
+              <th className="text-right px-3 py-2">Change / Percent</th>
               <th className="text-right px-3 py-2">Profit impact</th>
               <th className="text-right px-3 py-2">Contribution</th>
             </tr>
@@ -114,7 +114,7 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
                       tone={impactTone === 'good' ? 'good' : impactTone === 'bad' ? 'bad' : 'neutral'}
                       className={`justify-end px-2 py-[2px] text-[10px] ${impactClass}`}
                     >
-                      {impactTone === 'good' ? '▲' : impactTone === 'bad' ? '▼' : '•'} {money(d.profitImpact)}
+                      {impactTone === 'good' ? 'Increase' : impactTone === 'bad' ? 'Decrease' : 'No change'} {money(d.profitImpact)}
                     </Chip>
                   </td>
                   <td className="px-3 py-2 text-right">{pct(d.contributionPct)}</td>
@@ -246,7 +246,7 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
         )}
 
         <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200 pt-3">
-          <div>Accounting Atlas • Cover</div>
+          <div>Accounting Atlas Cover</div>
           <div>Movement: {movementBadge}</div>
         </div>
       </div>
@@ -309,7 +309,7 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
         ) : (
           <Callout title="Scenario attribution unavailable" detail="Turn on scenario and map at least 85% of key accounts to see attribution." />
         )}
-        <div className="text-xs text-slate-600">Assumptions: {scenarioNotes.join(' • ')}</div>
+        <div className="text-xs text-slate-600">Assumptions: {scenarioNotes.join(', ')}</div>
       </Section>
 
       {/* P&L summary */}
@@ -334,9 +334,9 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
                 <tr key={row.label} className="border-t border-slate-200">
                   <td className="py-1">{row.label}</td>
                   <td className="py-1 text-right">{formatValue(row.current, row.format)}</td>
-                  <td className="py-1 text-right">{row.scenario != null ? formatValue(row.scenario, row.format) : '—'}</td>
+                  <td className="py-1 text-right">{row.scenario != null ? formatValue(row.scenario, row.format) : '-'}</td>
                   <td className={`py-1 text-right ${((row.variance ?? 0) >= 0) ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {row.variance != null ? formatValue(row.variance, row.format) : '—'}
+                    {row.variance != null ? formatValue(row.variance, row.format) : '-'}
                   </td>
                 </tr>
               ))}
@@ -399,7 +399,7 @@ export function InvestorReportTemplate({ data, meta }: { data: ReportData; meta?
       <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
         <AppMark size="sm" />
         <div className="text-right leading-tight">
-          <div>Accounting Atlas — Cingulum Health</div>
+          <div>Accounting Atlas - Cingulum Health</div>
           <div>{periodLabel}</div>
         </div>
       </div>

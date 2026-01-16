@@ -71,7 +71,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => Promise<v
         </div>
         <div>
           <Label>Password</Label>
-          <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+          <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
         </div>
         {mode === 'signup' && (
           <div>
@@ -94,7 +94,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => Promise<v
           disabled={busy}
           className="w-full rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500/30 disabled:opacity-50"
         >
-          {busy ? 'Working…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+          {busy ? 'Working...' : mode === 'signin' ? 'Sign in' : 'Create account'}
         </button>
       </form>
     </Card>
