@@ -30,6 +30,17 @@ export type SnapshotPayload = {
   data: Record<string, any>
 }
 
+export type XeroTenant = {
+  tenantId: string
+  tenantName: string
+}
+
+export type XeroStatus = {
+  connected: boolean
+  tenantId?: string | null
+  expiresAt?: string | null
+}
+
 const DEFAULT_API_BASE = '/api'
 const RAW_API_BASE = import.meta.env.VITE_API_URL
 
@@ -146,4 +157,11 @@ export const api = {
   getPreference: (key: string) => request<UserPreference | null>(`ledger/preferences/${key}`),
   upsertPreference: (key: string, payload: { value_json: Record<string, any> }) =>
     request<UserPreference>(`ledger/preferences/${key}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  xeroStatus: () => request<XeroStatus>('xero/status'),
+  xeroAuthorize: () => request<{ url: string }>('xero/authorize'),
+  xeroTenants: () => request<XeroTenant[]>('xero/tenants'),
+  xeroSelectTenant: (tenantId: string) =>
+    request<{ ok: boolean; tenantId: string }>('xero/tenant', { method: 'POST', body: JSON.stringify({ tenant_id: tenantId }) }),
+  xeroSync: (payload: { from_date: string; to_date: string; include_gl: boolean }) =>
+    request<{ pl: any; gl: any | null; tenantId: string }>('xero/sync', { method: 'POST', body: JSON.stringify(payload) }),
 }
