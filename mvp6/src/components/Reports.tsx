@@ -135,7 +135,6 @@ export function Reports() {
       onclone: sanitizeColorStyles,
       useCORS: true,
     })
-    const imgData = canvas.toDataURL('image/png')
     const metrics = getPageMetrics(defaults.exportSettings)
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
     const pageWidth = pdf.internal.pageSize.getWidth()
@@ -144,7 +143,6 @@ export function Reports() {
     const printableHeight = pageHeight - metrics.marginPt * 2
     const scale = printableWidth / canvas.width
     const imgWidth = printableWidth
-    const imgHeight = canvas.height * scale
     const canvasScale = canvas.width / elementWidth
     const breakpoints = pageBreakTargets
       .map(node => node.offsetTop * canvasScale)
@@ -160,11 +158,19 @@ export function Reports() {
       if (pageEnd <= pageStart + 10) {
         pageEnd = pageLimit
       }
-      if (pageStart > 0) {
-        pdf.addPage()
+      const sliceHeight = Math.min(pageEnd, canvas.height) - pageStart
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width = canvas.width
+      pageCanvas.height = sliceHeight
+      const ctx = pageCanvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(canvas, 0, pageStart, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
+        const sliceData = pageCanvas.toDataURL('image/png')
+        if (pageStart > 0) {
+          pdf.addPage()
+        }
+        pdf.addImage(sliceData, 'PNG', metrics.marginPt, metrics.marginPt, imgWidth, sliceHeight * scale)
       }
-      const offsetY = metrics.marginPt - pageStart * scale
-      pdf.addImage(imgData, 'PNG', metrics.marginPt, offsetY, imgWidth, imgHeight)
       pageStart = pageEnd
     }
     pdf.save('Investor_Report.pdf')
