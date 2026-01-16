@@ -37,6 +37,18 @@ export function pageSizeForJsPdf(pageSize: ExportSettings['pageSize']) {
 export function sanitizeColorStyles(doc: Document) {
   const view = doc.defaultView
   if (!view) return
+  const style = doc.createElement('style')
+  style.setAttribute('data-report-export-fallbacks', 'true')
+  style.textContent = `
+    .glass { background: rgba(22, 34, 45, 0.88); }
+    select { background-color: rgba(22, 34, 45, 0.8); }
+    .ui-card { background: rgba(22, 34, 45, 0.85); }
+    .ui-table-toolbar { background: rgba(16, 24, 32, 0.9); }
+    .bg-white\\/5 { background-color: rgba(22, 34, 45, 0.82); }
+    .bg-white\\/10 { background-color: rgba(22, 34, 45, 0.95); }
+    .text-slate-200 { color: rgb(218, 227, 232); }
+  `
+  doc.head.appendChild(style)
   const normalizeColor = (value: string) => {
     if (!value) return value
     if (!/color\(|oklch|oklab|lab|lch/i.test(value)) return value
