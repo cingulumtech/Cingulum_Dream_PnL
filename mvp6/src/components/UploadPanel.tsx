@@ -16,8 +16,8 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
   const setPL = useAppStore(s => s.setPL)
   const setGL = useAppStore(s => s.setGL)
   const addImport = useAppStore(s => s.addImport)
-  const xeroProfitLossUrl = 'https://go.xero.com/Reports/ProfitAndLoss'
-  const xeroGeneralLedgerUrl = 'https://go.xero.com/Reports/GeneralLedger'
+  const xeroProfitLossUrl = 'https://reporting.xero.com/!Xp!d2/v1/Run/15056556'
+  const xeroGeneralLedgerUrl = 'https://reporting.xero.com/!Xp!d2/v1/Run/1071'
 
   const [status, setStatus] = useState<string>('')
   const [err, setErr] = useState<string>('')
