@@ -1,14 +1,15 @@
 import React, { useMemo, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ChevronDown, ChevronRight, RefreshCcw, Settings2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { computeDepAmort, computeDream, computeDreamTotals, computeXeroTotals } from '../lib/dream/compute'
 import { DreamGroup, DreamLine } from '../lib/types'
 import { Button, Card, Chip, Input } from './ui'
 import { formatCurrency, formatPercent } from '../lib/format'
-import { DataHealthSummary } from './DataHealthSummary'
 import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 import { createCopyMenuItems, buildRowCopyItems, useContextMenu } from './ContextMenu'
 import { CopyAffordance } from './CopyAffordance'
+import { PageHeader } from './PageHeader'
 
 function Row({
   node,
@@ -21,6 +22,12 @@ function Row({
   coveragePct,
   onOpenMenu,
   onCopyToast,
+  rowPadding,
+  pinnedFirstColumn,
+  selectedRows,
+  onToggleSelect,
+  showZeros,
+  prefersReducedMotion,
 }: {
   node: DreamGroup | DreamLine
   depth: number
@@ -32,16 +39,27 @@ function Row({
   coveragePct: (id: string) => number
   onOpenMenu: ReturnType<typeof useContextMenu>['openMenu']
   onCopyToast: () => void
+  rowPadding: string
+  pinnedFirstColumn: boolean
+  selectedRows: string[]
+  onToggleSelect: (id: string) => void
+  showZeros: boolean
+  prefersReducedMotion: boolean | null
 }) {
   const isGroup = node.kind === 'group'
   const pad = 12 + depth * 14
   const vals = isGroup ? null : getVals(node.id)
   const coverage = isGroup || !vals ? null : coveragePct(node.id)
+  const allZeros = !isGroup && (vals ?? []).every(v => (v ?? 0) === 0)
+
+  if (!isGroup && !showZeros && allZeros) return null
 
   return (
     <>
-      <tr
-        className="border-t border-white/10 hover:bg-white/5 cursor-pointer focus-within:bg-white/5"
+      <motion.tr
+        className={`border-t border-white/10 hover:bg-white/5 cursor-pointer focus-within:bg-white/5 ${
+          selectedRows.includes(node.id) ? 'bg-indigo-500/10' : ''
+        }`}
         onClick={() => (isGroup ? toggle(node.id) : onSelect(node.id))}
         tabIndex={0}
         onKeyDown={e => {
@@ -64,9 +82,23 @@ function Row({
             title: 'Dream line',
           })
         }}
+        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -6 }}
       >
-        <td className="px-3 py-2" style={{ paddingLeft: pad }}>
+        <td
+          className={`px-3 ${rowPadding} ${pinnedFirstColumn ? 'sticky left-0 z-10 bg-slate-950' : ''}`}
+          style={{ paddingLeft: pad }}
+        >
           <div className="flex items-center gap-2">
+            {!isGroup && (
+              <input
+                type="checkbox"
+                checked={selectedRows.includes(node.id)}
+                onClick={(event) => event.stopPropagation()}
+                onChange={() => onToggleSelect(node.id)}
+              />
+            )}
             {isGroup ? (
               expanded.has(node.id) ? <ChevronDown className="h-4 w-4 text-slate-300" /> : <ChevronRight className="h-4 w-4 text-slate-300" />
             ) : (
@@ -86,7 +118,7 @@ function Row({
         {Array.from({ length: months }).map((_, i) => (
           <td
             key={i}
-            className="px-3 py-2 text-right tabular-nums group"
+            className={`px-3 ${rowPadding} text-right tabular-nums group`}
             onContextMenu={(event) => {
               if (isGroup) return
               const value = vals?.[i] ?? 0
@@ -114,25 +146,33 @@ function Row({
             </div>
           </td>
         ))}
-      </tr>
+      </motion.tr>
 
-      {isGroup &&
-        expanded.has(node.id) &&
-        node.children.map(child => (
-          <Row
-            key={child.id}
-            node={child}
-            depth={depth + 1}
-            months={months}
-            getVals={getVals}
-            onSelect={onSelect}
-            expanded={expanded}
-            toggle={toggle}
-            coveragePct={coveragePct}
-            onOpenMenu={onOpenMenu}
-            onCopyToast={onCopyToast}
-          />
-        ))}
+      <AnimatePresence initial={false}>
+        {isGroup &&
+          expanded.has(node.id) &&
+          node.children.map(child => (
+            <Row
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              months={months}
+              getVals={getVals}
+              onSelect={onSelect}
+              expanded={expanded}
+              toggle={toggle}
+              coveragePct={coveragePct}
+              onOpenMenu={onOpenMenu}
+              onCopyToast={onCopyToast}
+              rowPadding={rowPadding}
+              pinnedFirstColumn={pinnedFirstColumn}
+              selectedRows={selectedRows}
+              onToggleSelect={onToggleSelect}
+              showZeros={showZeros}
+              prefersReducedMotion={prefersReducedMotion}
+            />
+          ))}
+      </AnimatePresence>
     </>
   )
 }
@@ -146,9 +186,24 @@ export function DreamPnLTable() {
   const setSelectedLineId = useAppStore(s => s.setSelectedLineId)
   const setView = useAppStore(s => s.setView)
   const [q, setQ] = useState('')
+  const [showZeros, setShowZeros] = useState(true)
+  const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable')
+  const [pinnedFirstColumn, setPinnedFirstColumn] = useState(true)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [datePreset, setDatePreset] = useState<'ttm' | 'last6' | 'last3' | 'custom' | 'all'>('ttm')
+  const [customStart, setCustomStart] = useState<string>('')
+  const [customEnd, setCustomEnd] = useState<string>('')
+  const [selectedRows, setSelectedRows] = useState<string[]>([])
+  const [firstColumnWidth, setFirstColumnWidth] = useState(260)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['rev', 'cogs', 'opex']))
+  const [sectionFilters, setSectionFilters] = useState<{ rev: boolean; cogs: boolean; opex: boolean }>({
+    rev: true,
+    cogs: true,
+    opex: true,
+  })
   const [showReconciliation, setShowReconciliation] = useState(false)
   const { openMenu, pushToast } = useContextMenu()
+  const prefersReducedMotion = useReducedMotion()
   const buildCopyItems = (label: string, value: string, formatted?: string) =>
     createCopyMenuItems({ label, value, formatted, onCopied: () => pushToast('Copied') })
 
@@ -170,6 +225,29 @@ export function DreamPnLTable() {
         : pl,
     [pl, effectiveLedger, gl]
   )
+
+  const monthRange = useMemo(() => {
+    if (!operatingPl) return { start: 0, end: -1 }
+    const count = operatingPl.monthLabels.length
+    let start = 0
+    let end = count - 1
+    if (datePreset === 'ttm') start = Math.max(0, count - 12)
+    if (datePreset === 'last6') start = Math.max(0, count - 6)
+    if (datePreset === 'last3') start = Math.max(0, count - 3)
+    if (datePreset === 'custom') {
+      const startIdx = customStart ? operatingPl.monthLabels.indexOf(customStart) : 0
+      const endIdx = customEnd ? operatingPl.monthLabels.indexOf(customEnd) : count - 1
+      start = startIdx >= 0 ? startIdx : 0
+      end = endIdx >= 0 ? endIdx : count - 1
+      if (start > end) [start, end] = [end, start]
+    }
+    return { start, end }
+  }, [operatingPl, datePreset, customStart, customEnd])
+
+  const visibleMonthLabels = useMemo(() => {
+    if (!operatingPl || monthRange.end < 0) return []
+    return operatingPl.monthLabels.slice(monthRange.start, monthRange.end + 1)
+  }, [operatingPl, monthRange])
 
   const computed = useMemo(() => (operatingPl ? computeDream(operatingPl, template) : null), [operatingPl, template])
   const totals = useMemo(() => (operatingPl && computed ? computeDreamTotals(operatingPl, template, computed) : null), [operatingPl, template, computed])
@@ -257,16 +335,17 @@ export function DreamPnLTable() {
     const grossProfit = totals.revenue.map((r, i) => r - totals.cogs[i])
     const ebit = totals.revenue.map((r, i) => r - totals.cogs[i] - totals.opex[i])
     const ebitda = ebit.map((e, i) => e + (hasAnyMapping ? (depAmort[i] ?? 0) : 0))
+    const slice = (values: number[]) => values.slice(monthRange.start, monthRange.end + 1)
     return [
-      { label: 'Total revenue', values: totals.revenue },
-      { label: 'Total COGS', values: totals.cogs },
-      { label: 'Gross profit', values: grossProfit },
-      { label: 'Total OpEx', values: totals.opex },
-      { label: 'EBITDA', values: ebitda },
-      { label: 'EBIT', values: ebit },
-      { label: 'Net profit', values: netTotals.net },
+      { label: 'Total revenue', values: slice(totals.revenue) },
+      { label: 'Total COGS', values: slice(totals.cogs) },
+      { label: 'Gross profit', values: slice(grossProfit) },
+      { label: 'Total OpEx', values: slice(totals.opex) },
+      { label: 'EBITDA', values: slice(ebitda) },
+      { label: 'EBIT', values: slice(ebit) },
+      { label: 'Net profit', values: slice(netTotals.net) },
     ]
-  }, [operatingPl, totals, netTotals, depAmort, hasAnyMapping])
+  }, [operatingPl, totals, netTotals, depAmort, hasAnyMapping, monthRange])
 
   const reconciliationRows = useMemo(() => {
     if (!totals || !legacyTotals || !netTotals) return [] as { label: string; legacy: number; management: number; delta: number }[]
@@ -293,6 +372,9 @@ export function DreamPnLTable() {
     return (filter(template.root) as DreamGroup) ?? template.root
   }, [template, q])
 
+  const sliceVals = (values: number[]) => values.slice(monthRange.start, monthRange.end + 1)
+  const getVals = (id: string) => sliceVals(computed?.byLineId[id] ?? Array(operatingPl?.months.length ?? 0).fill(0))
+
   function toggle(id: string) {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -302,45 +384,87 @@ export function DreamPnLTable() {
     })
   }
 
+  const rowPadding = density === 'compact' ? 'py-1.5' : 'py-2.5'
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedRows(prev => (prev.includes(id) ? prev.filter(row => row !== id) : [...prev, id]))
+  }
+
+  const collectRows = (node: DreamGroup | DreamLine, rows: { label: string; values: number[]; id: string }[]) => {
+    if (node.kind === 'line') {
+      const values = getVals(node.id)
+      if (!showZeros && values.every(v => (v ?? 0) === 0)) return
+      rows.push({ label: node.label, values, id: node.id })
+      return
+    }
+    node.children.forEach(child => collectRows(child, rows))
+  }
+
+  const visibleRows = useMemo(() => {
+    const rows: { label: string; values: number[]; id: string }[] = []
+    rootFiltered.children
+      .filter(child => child.kind !== 'group' || sectionFilters[child.id as 'rev' | 'cogs' | 'opex'])
+      .forEach(child => collectRows(child, rows))
+    return rows
+  }, [rootFiltered, sectionFilters, showZeros, getVals])
+
+  const buildCsv = (rows: { label: string; values: number[] }[]) => {
+    const header = ['Line item', ...visibleMonthLabels]
+    const body = rows.map(row => [row.label, ...row.values.map(v => (v ?? 0).toString())])
+    return [header, ...body].map(line => line.join(',')).join('\n')
+  }
+
+  const copyCsv = async (rows: { label: string; values: number[] }[]) => {
+    if (!rows.length) {
+      pushToast('No rows to copy')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(buildCsv(rows))
+      pushToast('Copied')
+    } catch {
+      pushToast('Copy failed')
+    }
+  }
+
   if (!effectivePl) {
     return (
-      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold">P&amp;L (Management)</div>
-            <div className="text-sm text-slate-200">
-              Upload the Profit &amp; Loss export to unlock the management view and drill-down.
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
-            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
-          </div>
-        </div>
-      </Card>
+      <div className="space-y-4">
+        <PageHeader
+          title="P&amp;L (Management)"
+          subtitle="Upload the Profit & Loss export to unlock the management view and drill-down."
+          actions={
+            <>
+              <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+              <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
+            </>
+          }
+        />
+        <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+          <div className="text-sm text-slate-200">Upload a P&amp;L to unlock the management table.</div>
+        </Card>
+      </div>
     )
   }
 
-  const getVals = (id: string) => computed?.byLineId[id] ?? Array(operatingPl?.months.length ?? 0).fill(0)
-
   return (
-    <Card className="p-6 overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold">P&amp;L (Management)</div>
-          <div className="text-sm text-slate-300">
-            Same underlying Xero data, re-expressed into your management layout. Click a line to drill down.
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 justify-end">
-          <Chip tone={unmappedAccountNames.length ? 'bad' : 'good'}>
-            {unmappedAccountNames.length ? `${unmappedAccountNames.length} unmapped` : 'All accounts mapped'}
-          </Chip>
-          <Button variant="ghost" onClick={() => setView('mapping')}>
-            <Settings2 className="h-4 w-4" /> Map accounts
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="P&amp;L (Management)"
+        subtitle="Same underlying Xero data, re-expressed into your management layout. Click a line to drill down."
+        actions={
+          <>
+            <Chip tone={unmappedAccountNames.length ? 'bad' : 'good'}>
+              {unmappedAccountNames.length ? `${unmappedAccountNames.length} unmapped` : 'All accounts mapped'}
+            </Chip>
+            <Button variant="ghost" onClick={() => setView('mapping')}>
+              <Settings2 className="h-4 w-4" /> Map accounts
+            </Button>
+          </>
+        }
+      />
+
+      <Card className="p-6 overflow-hidden">
 
       {totals && (
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -419,21 +543,161 @@ export function DreamPnLTable() {
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="w-80">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search management lines..." />
+          <Button variant="ghost" size="sm" onClick={() => setFilterOpen(true)}>
+            Filters
+          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-          <span>Unmapped lines show as \"Unmapped\" until you map accounts.</span>
+          <Button variant="ghost" size="sm" onClick={() => setExpanded(new Set())}>
+            Collapse all
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setExpanded(new Set(['rev', 'cogs', 'opex']))}>
+            Expand all
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setDensity(prev => (prev === 'compact' ? 'comfortable' : 'compact'))}>
+            Density: {density === 'compact' ? 'Compact' : 'Comfortable'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setPinnedFirstColumn(prev => !prev)}>
+            {pinnedFirstColumn ? 'Unpin first column' : 'Pin first column'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => copyCsv(visibleRows.map(row => ({ label: row.label, values: row.values })))}>
+            Copy visible (CSV)
+          </Button>
           <Button
             variant="ghost"
-            className={`px-3 py-1 text-xs ${showReconciliation ? 'border-indigo-400/40 bg-indigo-500/10' : ''}`}
+            size="sm"
+            onClick={() => copyCsv(visibleRows.filter(row => selectedRows.includes(row.id)).map(row => ({ label: row.label, values: row.values })))}
+          >
+            Copy selected
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={showReconciliation ? 'border-indigo-400/40 bg-indigo-500/10' : ''}
             onClick={() => setShowReconciliation(v => !v)}
           >
             <RefreshCcw className="h-3.5 w-3.5" /> {showReconciliation ? 'Hide' : 'Show'} reconciliation
           </Button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {filterOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setFilterOpen(false)}
+          >
+            <motion.div
+              className="h-full w-full max-w-md bg-slate-950 border-l border-white/10 p-5"
+              initial={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 30 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-slate-100">Table filters</div>
+                <Button variant="ghost" size="sm" onClick={() => setFilterOpen(false)}>Close</Button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-xs text-slate-300">
+                <div>
+                  <div className="font-semibold text-slate-100">Date range</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(['ttm', 'last6', 'last3', 'custom', 'all'] as const).map(preset => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setDatePreset(preset)}
+                        className={`rounded-full border px-3 py-1 text-xs ${
+                          datePreset === preset ? 'border-indigo-400/40 bg-indigo-500/15 text-slate-100' : 'border-white/10 bg-white/5 text-slate-300'
+                        }`}
+                      >
+                        {preset === 'ttm' ? 'TTM' : preset === 'last6' ? 'Last 6' : preset === 'last3' ? 'Last 3' : preset === 'custom' ? 'Custom' : 'All'}
+                      </button>
+                    ))}
+                  </div>
+                  {datePreset === 'custom' && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <select
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        className="rounded-xl bg-white/5 border border-white/10 px-2 py-1 text-xs text-slate-100"
+                      >
+                        <option value="">Start</option>
+                        {operatingPl?.monthLabels.map(label => (
+                          <option key={`start-${label}`} value={label}>{label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        className="rounded-xl bg-white/5 border border-white/10 px-2 py-1 text-xs text-slate-100"
+                      >
+                        <option value="">End</option>
+                        {operatingPl?.monthLabels.map(label => (
+                          <option key={`end-${label}`} value={label}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-100">Show zero rows</div>
+                    <div className="text-[11px] text-slate-400">Hide lines with no activity.</div>
+                  </div>
+                  <input type="checkbox" checked={showZeros} onChange={() => setShowZeros(v => !v)} />
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-100">Categories</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {([
+                      { id: 'rev', label: 'Revenue' },
+                      { id: 'cogs', label: 'COGS' },
+                      { id: 'opex', label: 'OpEx' },
+                    ] as const).map(section => (
+                      <label key={section.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={sectionFilters[section.id]}
+                          onChange={() =>
+                            setSectionFilters(prev => ({
+                              ...prev,
+                              [section.id]: !prev[section.id],
+                            }))
+                          }
+                        />
+                        <span>{section.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-100">First column width</div>
+                  <input
+                    type="range"
+                    min={200}
+                    max={420}
+                    value={firstColumnWidth}
+                    onChange={(e) => setFirstColumnWidth(Number(e.target.value))}
+                    className="w-full mt-2"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showReconciliation && reconciliationRows.length > 0 && (
         <div className="mt-3 overflow-auto rounded-2xl border border-white/10">
@@ -465,50 +729,69 @@ export function DreamPnLTable() {
 
       <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-white/5">
         <table className="min-w-full text-sm">
-          <thead className="bg-white/5 sticky top-0 z-10">
+          <colgroup>
+            <col style={{ width: firstColumnWidth }} />
+          </colgroup>
+          <thead className="bg-white/5 sticky top-0 z-20">
             <tr>
-              <th className="text-left px-3 py-2 font-semibold">Dream category</th>
-              {operatingPl?.monthLabels.map(m => (
-                <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{m}</th>
+              <th
+                className={`text-left px-3 ${rowPadding} font-semibold ${pinnedFirstColumn ? 'sticky left-0 z-30 bg-slate-950' : ''}`}
+              >
+                Dream category
+              </th>
+              {visibleMonthLabels.map(m => (
+                <th key={m} className={`text-right px-3 ${rowPadding} font-semibold whitespace-nowrap`}>{m}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rootFiltered.children.map(child => (
-                  <Row
-                    key={child.id}
-                    node={child}
-                    depth={0}
-                    months={operatingPl?.months.length ?? 0}
-                    getVals={getVals}
-                    onSelect={id => setSelectedLineId(id)}
-                    expanded={expanded}
-                    toggle={toggle}
-                    coveragePct={coveragePct}
-                    onOpenMenu={openMenu}
-                    onCopyToast={() => pushToast('Copied')}
-                  />
-                ))}
+            {rootFiltered.children
+              .filter(child => child.kind !== 'group' || sectionFilters[child.id as 'rev' | 'cogs' | 'opex'])
+              .map(child => (
+                <Row
+                  key={child.id}
+                  node={child}
+                  depth={0}
+                  months={visibleMonthLabels.length}
+                  getVals={getVals}
+                  onSelect={id => setSelectedLineId(id)}
+                  expanded={expanded}
+                  toggle={toggle}
+                  coveragePct={coveragePct}
+                  onOpenMenu={openMenu}
+                  onCopyToast={() => pushToast('Copied')}
+                  rowPadding={rowPadding}
+                  pinnedFirstColumn={pinnedFirstColumn}
+                  selectedRows={selectedRows}
+                  onToggleSelect={toggleSelectRow}
+                  showZeros={showZeros}
+                  prefersReducedMotion={prefersReducedMotion}
+                />
+              ))}
           </tbody>
           <tfoot className="bg-white/5 sticky bottom-0 z-10 border-t border-white/10">
             {monthlyFooter.map(row => (
               <tr key={row.label} className="border-t border-white/10">
-                <td className="px-3 py-2 font-semibold text-slate-100">{row.label}</td>
+                <td
+                  className={`px-3 ${rowPadding} font-semibold text-slate-100 ${pinnedFirstColumn ? 'sticky left-0 z-10 bg-slate-950' : ''}`}
+                >
+                  {row.label}
+                </td>
                 {row.values.map((v, i) => (
                   <td
                     key={i}
-                    className="px-3 py-2 text-right font-semibold tabular-nums text-slate-100 group"
+                    className={`px-3 ${rowPadding} text-right font-semibold tabular-nums text-slate-100 group`}
                     onContextMenu={(event) =>
                       openMenu({
                         event,
-                        items: buildCopyItems(row.label, v.toString(), formatCurrency(v)),
+                        items: buildCopyItems(row.label, (v ?? 0).toString(), formatCurrency(v ?? 0)),
                         title: row.label,
                       })
                     }
                   >
                     <div className="flex items-center justify-end gap-2">
                       {formatCurrency(v)}
-                      <CopyAffordance label={row.label} value={v.toString()} formatted={formatCurrency(v)} />
+                      <CopyAffordance label={row.label} value={(v ?? 0).toString()} formatted={formatCurrency(v ?? 0)} />
                     </div>
                   </td>
                 ))}
@@ -522,5 +805,6 @@ export function DreamPnLTable() {
         Tip: click any line item to see mapped accounts and GL transactions. Use <span className="kbd">Map accounts</span> to edit mappings.
       </div>
     </Card>
+    </div>
   )
 }

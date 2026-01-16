@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { Card, Input, Label, Button, Chip } from './ui'
 import { api } from '../lib/api'
+import { PageHeader } from './PageHeader'
 import { buildSnapshotSummary, ensureExportSettings, ensureReportConfig, fingerprintGl, fingerprintPl, fingerprintTemplate } from '../lib/snapshotUtils'
 import { useAuthStore } from '../store/authStore'
 
@@ -220,6 +221,13 @@ export function SavedExports() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
+      <PageHeader
+        title="Snapshots"
+        subtitle="Save and compare scenario states across P&L, mapping, and report settings."
+        actions={
+          readOnly ? <Chip tone="warn">Read-only</Chip> : <Chip tone="neutral">Editable</Chip>
+        }
+      />
       <Card className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div>

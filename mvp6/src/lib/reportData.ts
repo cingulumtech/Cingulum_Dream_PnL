@@ -138,7 +138,7 @@ function flattenLinesWithSection(root: DreamGroup, parentSection: 'rev' | 'cogs'
   return out
 }
 
-function calcMappingStats(pl: XeroPL | null, template: DreamTemplate): {
+export function calcMappingStats(pl: XeroPL | null, template: DreamTemplate): {
   completeness: number
   missingAccounts: string[]
   missingKeyAccounts: string[]

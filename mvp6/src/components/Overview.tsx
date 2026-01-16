@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../store/appStore'
 import { applyBundledScenario, computeXeroTotals } from '../lib/dream/compute'
@@ -6,6 +7,7 @@ import { Button, Card, Chip, Input, Label } from './ui'
 import { CopyAffordance } from './CopyAffordance'
 import { createCopyMenuItems, useContextMenu } from './ContextMenu'
 import { api } from '../lib/api'
+import { PageHeader } from './PageHeader'
 import {
   buildEffectiveLedger,
   buildEffectivePl,
@@ -277,6 +279,7 @@ export function Overview() {
   const upsertTxnOverride = useAppStore(s => s.upsertTxnOverride)
   const removeTxnOverride = useAppStore(s => s.removeTxnOverride)
   const { openMenu, pushToast } = useContextMenu()
+  const prefersReducedMotion = useReducedMotion()
   const [consultModalOpen, setConsultModalOpen] = useState(false)
   const [consultMode, setConsultMode] = useState<'ap_bills' | 'mapped_accounts' | 'all_txns'>('ap_bills')
   const [doctorPatternDraft, setDoctorPatternDraft] = useState('')
@@ -295,6 +298,10 @@ export function Overview() {
   const [consultAccountSearch, setConsultAccountSearch] = useState('')
   const [tmsAccountFilter, setTmsAccountFilter] = useState<'all' | 'revenue' | 'cogs' | 'opex'>('revenue')
   const [consultAccountFilter, setConsultAccountFilter] = useState<'all' | 'revenue' | 'cogs' | 'opex'>('revenue')
+  const [doctorSelectorOpen, setDoctorSelectorOpen] = useState(false)
+  const [consultSelectorOpen, setConsultSelectorOpen] = useState(false)
+  const [statusDrawerOpen, setStatusDrawerOpen] = useState(false)
+  const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4>(1)
   const [tmsDraftAccounts, setTmsDraftAccounts] = useState<string[]>(scenario.legacyTmsAccounts ?? [])
   const [consultDraftAccounts, setConsultDraftAccounts] = useState<string[]>(scenario.legacyConsultAccounts ?? [])
   const [consultExcludedDraft, setConsultExcludedDraft] = useState<string[]>(scenario.excludedConsultAccounts ?? [])
@@ -302,6 +309,8 @@ export function Overview() {
     { name: string; search: string; status: string; start: string; end: string; min: string; max: string; mode: string }[]
   >([])
   const [consultViewName, setConsultViewName] = useState('')
+  const [consultAccountSuggestionsAccepted, setConsultAccountSuggestionsAccepted] = useState(false)
+  const [doctorAccountSuggestionsAccepted, setDoctorAccountSuggestionsAccepted] = useState(false)
   const [powerToolsOpen, setPowerToolsOpen] = useState(false)
   const activeDoctorPatterns = doctorPatterns.length ? doctorPatterns : DEFAULT_DOCTOR_PATTERNS
 
@@ -358,22 +367,6 @@ export function Overview() {
     return { ...operatingTotals, net: netTotals.net }
   }, [operatingTotals, netTotals])
 
-  const accountTokenOptions = useMemo(() => {
-    if (!operatingPl) return []
-    const counts = new Map<string, number>()
-    operatingPl.accounts.forEach(acc => {
-      acc.name
-        .toLowerCase()
-        .split(/[^a-z0-9]+/g)
-        .filter(token => token.length >= 3)
-        .forEach(token => counts.set(token, (counts.get(token) ?? 0) + 1))
-    })
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([token, count]) => ({ token, count }))
-  }, [operatingPl])
-
   const filterAccountList = (
     list: { name: string; section: string }[],
     query: string,
@@ -397,21 +390,6 @@ export function Overview() {
     () => (operatingPl ? filterAccountList(operatingPl.accounts, consultAccountSearch, consultAccountFilter) : []),
     [operatingPl, consultAccountSearch, consultAccountFilter]
   )
-
-  const tmsPending = useMemo(() => {
-    const current = scenario.legacyTmsAccounts ?? []
-    return current.join('|') !== tmsDraftAccounts.join('|')
-  }, [scenario.legacyTmsAccounts, tmsDraftAccounts])
-
-  const consultPending = useMemo(() => {
-    const current = scenario.legacyConsultAccounts ?? []
-    return current.join('|') !== consultDraftAccounts.join('|')
-  }, [scenario.legacyConsultAccounts, consultDraftAccounts])
-
-  const consultExcludePending = useMemo(() => {
-    const current = scenario.excludedConsultAccounts ?? []
-    return current.join('|') !== consultExcludedDraft.join('|')
-  }, [scenario.excludedConsultAccounts, consultExcludedDraft])
 
   const derivedProgramCount = useMemo(() => {
     if (!scenario.machinesEnabled) return null
@@ -451,29 +429,17 @@ export function Overview() {
     return { ...raw, net: raw.net.map((v, i) => v + (nonOperatingNet[i] ?? 0)) }
   }, [operatingPl, baseTotals, netTotals, scenario])
 
-  const matcherPreview = useMemo(() => {
+  const draftRemovalPreview = useMemo(() => {
     if (!operatingPl) return { accounts: [], totals: { revenue: 0, cogs: 0, opex: 0 } }
-    const tmsTokens = normalizeTokens(scenario.legacyTmsAccountMatchers ?? [])
-    const consultTokens = scenario.includeDoctorConsultsInBundle ? normalizeTokens(scenario.legacyConsultAccountMatchers ?? []) : []
-    const tmsAccountSet = new Set(scenario.legacyTmsAccounts ?? [])
-    const consultAccountSet = new Set(scenario.legacyConsultAccounts ?? [])
-    const excluded = new Set(scenario.excludedConsultAccounts ?? [])
+    const tmsAccountSet = new Set(tmsDraftAccounts ?? [])
+    const consultAccountSet = new Set(consultDraftAccounts ?? [])
+    const excluded = new Set(consultExcludedDraft ?? [])
     const totals = { revenue: 0, cogs: 0, opex: 0 }
     const accounts: { name: string; total: number; section: string; kind: 'tms' | 'consult' }[] = []
 
-    const shouldRemove = (name: string, kind: 'tms' | 'consult') => {
-      if (kind === 'tms') {
-        return tmsAccountSet.size ? tmsAccountSet.has(name) : tokenMatch(name, tmsTokens)
-      }
-      if (kind === 'consult') {
-        return consultAccountSet.size ? consultAccountSet.has(name) : tokenMatch(name, consultTokens)
-      }
-      return false
-    }
-
     for (const a of operatingPl.accounts) {
-      const matchedTms = shouldRemove(a.name, 'tms')
-      const matchedConsult = shouldRemove(a.name, 'consult')
+      const matchedTms = tmsAccountSet.has(a.name)
+      const matchedConsult = consultAccountSet.has(a.name)
       if (!matchedTms && !matchedConsult) continue
       if (matchedConsult && excluded.has(a.name)) continue
 
@@ -488,15 +454,21 @@ export function Overview() {
       totals[target as 'revenue' | 'cogs' | 'opex'] += a.total ?? 0
     }
     return { accounts, totals }
-  }, [
-    operatingPl,
-    scenario.includeDoctorConsultsInBundle,
-    scenario.legacyConsultAccountMatchers,
-    scenario.legacyTmsAccountMatchers,
-    scenario.legacyTmsAccounts,
-    scenario.legacyConsultAccounts,
-    scenario.excludedConsultAccounts,
-  ])
+  }, [operatingPl, tmsDraftAccounts, consultDraftAccounts, consultExcludedDraft])
+
+  const doctorAccountSuggestions = useMemo(() => {
+    if (!operatingPl) return []
+    const tokens = normalizeTokens(scenario.legacyTmsAccountMatchers ?? [])
+    if (!tokens.length) return []
+    return operatingPl.accounts.filter(acc => tokenMatch(acc.name, tokens)).map(acc => acc.name)
+  }, [operatingPl, scenario.legacyTmsAccountMatchers])
+
+  const consultAccountSuggestions = useMemo(() => {
+    if (!operatingPl) return []
+    const tokens = normalizeTokens(scenario.legacyConsultAccountMatchers ?? [])
+    if (!tokens.length) return []
+    return operatingPl.accounts.filter(acc => tokenMatch(acc.name, tokens)).map(acc => acc.name)
+  }, [operatingPl, scenario.legacyConsultAccountMatchers])
 
   const doctorRuleMap = useMemo(() => {
     const map = new Map<string, any>()
@@ -815,54 +787,30 @@ export function Overview() {
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="p-4 space-y-2">
-          <div className="text-sm font-semibold text-slate-100">Data status</div>
-          <div className="text-xs text-slate-300">
-            P&amp;L: {pl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-rose-200 font-semibold">Missing</span>}
-            {plLoadedAt ? <span className="text-slate-400"> updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
-          </div>
-          <div className="text-xs text-slate-300">
-            GL: {gl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-amber-200 font-semibold">Optional</span>}
-            {glLoadedAt ? <span className="text-slate-400"> updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
-          </div>
-          <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult previews and drill-down.</div>
-        </Card>
+      <div className="grid grid-cols-1 gap-4">
+        <PageHeader
+          title="Strategic Overview"
+          subtitle="If we ran the business this way instead of the current way, what would actually change — and is it worth it?"
+          actions={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setStatusDrawerOpen(true)}>
+                Details
+              </Button>
+              {scenario.enabled ? (
+                <Chip tone={delta >= 0 ? 'good' : 'bad'} className="shrink-0">
+                  Change {money(delta)}
+                </Chip>
+              ) : (
+                <Chip className="shrink-0">Scenario off</Chip>
+              )}
+            </>
+          }
+        />
 
-        <Card className="p-4 space-y-2">
-          <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
-          <div className="text-xs text-slate-300">Replacement rule: remove legacy TMS (and consult, if enabled) then add CBA and cgTMS bundle revenue. Costs can be added explicitly.</div>
-          <div className="text-xs text-slate-400">
-            Accounts selected: {scenario.legacyTmsAccounts?.length ?? 0} TMS and{' '}
-            {scenario.includeDoctorConsultsInBundle ? `${scenario.legacyConsultAccounts?.length ?? 0} consult` : 'consult off'}
-          </div>
-        </Card>
+        <Card className="p-5">
 
-        <Card className="p-4 space-y-2">
-          <div className="text-sm font-semibold text-slate-100">Results &amp; sensitivity</div>
-          <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} to {scenarioTotal == null ? '-' : money(scenarioTotal)}</div>
-          <div className="text-xs text-slate-300">High-leverage levers: rent override, TMS capacity (programs), consult inclusion, bundle COGS toggle.</div>
-        </Card>
-      </div>
-
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-lg font-semibold text-slate-100">Strategic Overview</div>
-            <div className="text-sm text-slate-300 mt-1">
-              \"If we ran the business this way instead of the current way, what would actually change - and is it worth it?\"
-            </div>
-          </div>
-          {scenario.enabled ? (
-            <Chip tone={delta >= 0 ? 'good' : 'bad'} className="shrink-0">
-              Change {money(delta)}
-            </Chip>
-          ) : (
-            <Chip className="shrink-0">Scenario off</Chip>
-          )}
-        </div>
-
+        <div className="text-sm font-semibold text-slate-100">Current vs scenario</div>
+        <div className="text-xs text-slate-400 mt-1">Snapshot KPIs + interactive monthly trend.</div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
           <div
             className="group relative rounded-2xl border border-white/10 bg-white/5 p-4"
@@ -967,6 +915,17 @@ export function Overview() {
               )}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold text-slate-100">Levers</div>
+            <div className="text-xs text-slate-400 mt-1">Change a few key inputs, review impact, then apply.</div>
+          </div>
+          <Chip className="shrink-0">Scenario controls</Chip>
         </div>
 
         <div className="mt-5 space-y-4">
@@ -1217,261 +1176,406 @@ export function Overview() {
             </div>
 
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-slate-100">Legacy TMS revenue removal</div>
+                  <div className="text-sm font-semibold text-slate-100">Doctor &amp; Consult Setup</div>
                   <div className="text-xs text-slate-300 mt-1">
-                    Select the accounts that represent legacy TMS revenue. Changes are staged until you confirm.
+                    No default selections are applied. Suggestions are opt-in, previewed, and reversible.
                   </div>
                 </div>
-                <Chip>{tmsDraftAccounts.length} selected</Chip>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                <Label>Account filter</Label>
-                {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
-                  <Chip
-                    key={filter}
-                    className={`cursor-pointer ${tmsAccountFilter === filter ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
-                    onClick={() => setTmsAccountFilter(filter)}
-                  >
-                    {filter === 'all' ? 'All' : filter.toUpperCase()}
-                  </Chip>
-                ))}
-                <Input
-                  className="w-56"
-                  value={tmsAccountSearch}
-                  onChange={(e) => setTmsAccountSearch(e.target.value)}
-                  placeholder="Search accounts"
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span>Suggested tokens:</span>
-                {accountTokenOptions.map(token => (
-                  <Chip
-                    key={`tms-token-${token.token}`}
-                    className="cursor-pointer"
-                    onClick={() => setTmsAccountSearch(token.token)}
-                  >
-                    {token.token} ({token.count})
-                  </Chip>
-                ))}
-              </div>
-              <div className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
-                {filteredTmsAccounts.map(acc => (
-                  <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={tmsDraftAccounts.includes(acc.name)}
-                      onChange={() =>
-                        setTmsDraftAccounts(prev =>
-                          prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
-                        )
-                      }
-                    />
-                    <span className="flex-1">{acc.name}</span>
-                    <span className="text-slate-400">{SECTION_LABEL[acc.section]}</span>
-                  </label>
-                ))}
-                {filteredTmsAccounts.length === 0 && <div className="text-xs text-slate-400">No accounts match this filter.</div>}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
-                  disabled={!tmsPending}
-                  onClick={() => setScenario({ legacyTmsAccounts: tmsDraftAccounts })}
+                  onClick={() => {
+                    setTmsDraftAccounts([])
+                    setConsultDraftAccounts([])
+                    setConsultExcludedDraft([])
+                    setDoctorAccountSuggestionsAccepted(false)
+                    setConsultAccountSuggestionsAccepted(false)
+                    setScenario({
+                      legacyTmsAccounts: [],
+                      legacyConsultAccounts: [],
+                      excludedConsultAccounts: [],
+                      includeDoctorConsultsInBundle: false,
+                    })
+                    pushToast('Selections reset.')
+                  }}
                 >
-                  Confirm selection
+                  Reset to none
                 </Button>
-                {tmsPending && (
-                  <Button variant="ghost" size="sm" onClick={() => setTmsDraftAccounts(scenario.legacyTmsAccounts ?? [])}>
-                    Discard changes
-                  </Button>
-                )}
               </div>
-            </div>
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-semibold text-slate-100">Consults in bundle</div>
-                  <div className="text-xs text-slate-300 mt-1">
-                    If consults are billed inside the bundle, turn this ON so existing consult revenue is removed (no double counting).
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                {[1, 2, 3, 4].map(step => (
+                  <button
+                    key={step}
+                    type="button"
+                    onClick={() => setSetupStep(step as 1 | 2 | 3 | 4)}
+                    className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${
+                      setupStep === step ? 'border-indigo-400/40 bg-indigo-500/15 text-slate-50' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    Step {step}
+                  </button>
+                ))}
+              </div>
+
+              {setupStep === 1 && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-100">Select doctor revenue accounts</div>
+                      <div className="text-xs text-slate-300 mt-1">
+                        Choose the revenue accounts that represent doctor revenue. Suggested matches are optional.
+                      </div>
+                    </div>
+                    <Chip>{tmsDraftAccounts.length} selected</Chip>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                    <Button variant="secondary" size="sm" onClick={() => setDoctorSelectorOpen(true)}>
+                      Open selector
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={!doctorAccountSuggestions.length || doctorAccountSuggestionsAccepted}
+                      onClick={() => {
+                        setTmsDraftAccounts(prev => Array.from(new Set([...prev, ...doctorAccountSuggestions])))
+                        setDoctorAccountSuggestionsAccepted(true)
+                      }}
+                    >
+                      Accept all suggestions
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                    {doctorAccountSuggestions.length === 0 ? (
+                      <span>No suggestions yet.</span>
+                    ) : (
+                      doctorAccountSuggestions.map(acc => (
+                        <button
+                          key={`doctor-suggest-${acc}`}
+                          type="button"
+                          onClick={() => setTmsDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
+                          className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
+                        >
+                          Suggested · {acc}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
-                <ToggleSwitch checked={scenario.includeDoctorConsultsInBundle} onChange={(v) => setScenario({ includeDoctorConsultsInBundle: v })} />
-              </div>
-              {scenario.includeDoctorConsultsInBundle && (
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-100">Consult revenue removal</div>
-                        <div className="text-xs text-slate-300 mt-1">
-                          Select consult accounts to remove from the base P&amp;L. Confirm to apply.
-                        </div>
+              )}
+
+              {setupStep === 2 && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-100">Select consult revenue accounts</div>
+                      <div className="text-xs text-slate-300 mt-1">
+                        Choose consult revenue accounts and optionally exclude any that should remain in the base P&amp;L.
                       </div>
-                      <Chip>{consultDraftAccounts.length} selected</Chip>
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                      <Label>Account filter</Label>
-                      {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
-                        <Chip
-                          key={filter}
-                          className={`cursor-pointer ${consultAccountFilter === filter ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
-                          onClick={() => setConsultAccountFilter(filter)}
+                    <Chip>{consultDraftAccounts.length} selected</Chip>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                    <Button variant="secondary" size="sm" onClick={() => setConsultSelectorOpen(true)}>
+                      Open selector
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={!consultAccountSuggestions.length || consultAccountSuggestionsAccepted}
+                      onClick={() => {
+                        setConsultDraftAccounts(prev => Array.from(new Set([...prev, ...consultAccountSuggestions])))
+                        setConsultAccountSuggestionsAccepted(true)
+                      }}
+                    >
+                      Accept all suggestions
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                    {consultAccountSuggestions.length === 0 ? (
+                      <span>No suggestions yet.</span>
+                    ) : (
+                      consultAccountSuggestions.map(acc => (
+                        <button
+                          key={`consult-suggest-${acc}`}
+                          type="button"
+                          onClick={() => setConsultDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
+                          className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
                         >
-                          {filter === 'all' ? 'All' : filter.toUpperCase()}
-                        </Chip>
-                      ))}
-                      <Input
-                        className="w-56"
-                        value={consultAccountSearch}
-                        onChange={(e) => setConsultAccountSearch(e.target.value)}
-                        placeholder="Search accounts"
-                      />
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                      <span>Suggested tokens:</span>
-                      {accountTokenOptions.map(token => (
-                        <Chip
-                          key={`consult-token-${token.token}`}
-                          className="cursor-pointer"
-                          onClick={() => setConsultAccountSearch(token.token)}
-                        >
-                          {token.token} ({token.count})
-                        </Chip>
-                      ))}
-                    </div>
-                    <div className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
-                      {filteredConsultAccounts.map(acc => (
-                        <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
-                          <input
-                            type="checkbox"
-                            checked={consultDraftAccounts.includes(acc.name)}
-                            onChange={() =>
-                              setConsultDraftAccounts(prev =>
-                                prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
-                              )
-                            }
-                          />
-                          <span className="flex-1">{acc.name}</span>
-                          <span className="text-slate-400">{SECTION_LABEL[acc.section]}</span>
-                        </label>
-                      ))}
-                      {filteredConsultAccounts.length === 0 && <div className="text-xs text-slate-400">No accounts match this filter.</div>}
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={!consultPending}
-                        onClick={() => setScenario({ legacyConsultAccounts: consultDraftAccounts })}
-                      >
-                        Confirm selection
-                      </Button>
-                      {consultPending && (
-                        <Button variant="ghost" size="sm" onClick={() => setConsultDraftAccounts(scenario.legacyConsultAccounts ?? [])}>
-                          Discard changes
-                        </Button>
+                          Suggested · {acc}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {setupStep === 3 && (
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                    <div className="text-xs font-semibold text-slate-100">Review impact</div>
+                    <div className="text-xs text-slate-300 mt-1">Accounts removed: {draftRemovalPreview.accounts.length}</div>
+                    <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
+                      {draftRemovalPreview.accounts.length === 0 ? (
+                        <div className="text-slate-400">No accounts selected for removal.</div>
+                      ) : (
+                        draftRemovalPreview.accounts.map(acc => (
+                          <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
+                            <span className="font-semibold text-slate-100">{acc.name}</span>
+                            <span className="text-slate-400 uppercase text-[10px]">{acc.kind}</span>
+                            <span className="text-slate-200">{money(acc.total)}</span>
+                          </div>
+                        ))
                       )}
+                    </div>
+                    <div className="mt-2 text-[11px] text-slate-400">
+                      Totals removed: Revenue <span className="text-slate-200">{money(draftRemovalPreview.totals.revenue)}</span>, COGS{' '}
+                      <span className="text-slate-200">{money(draftRemovalPreview.totals.cogs)}</span>, OpEx{' '}
+                      <span className="text-slate-200">{money(draftRemovalPreview.totals.opex)}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-400">
+                      Months affected: <span className="text-slate-200">{operatingPl?.monthLabels.length ?? 0}</span>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-100">Exclude consult accounts</div>
-                        <div className="text-xs text-slate-300 mt-1">
-                          Use this to keep specific accounts in the base P&amp;L even when consult removal is on.
-                        </div>
-                      </div>
-                      <Chip tone="warn">{consultExcludedDraft.length} excluded</Chip>
+                  <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
+                    <div className="text-xs font-semibold text-slate-100">Capacity &amp; payout model</div>
+                    <div className="text-[11px] text-slate-300">
+                      Programs / month: <span className="font-semibold text-slate-100">{programDisplayCount}</span> ({scenario.machinesEnabled ? 'capacity-derived' : 'manual'}).
+                      Capacity inputs: {scenario.tmsMachines} machines, {scenario.patientsPerMachinePerWeek} patients per week, utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
                     </div>
-                    <div className="mt-3 max-h-32 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
-                      {filteredConsultAccounts.map(acc => (
-                        <label key={`exclude-${acc.name}`} className="flex items-center gap-2 text-xs text-slate-200">
-                          <input
-                            type="checkbox"
-                            checked={consultExcludedDraft.includes(acc.name)}
-                            onChange={() =>
-                              setConsultExcludedDraft(prev =>
-                                prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
-                              )
-                            }
-                          />
-                          <span className="flex-1">{acc.name}</span>
-                        </label>
-                      ))}
+                    <div className="text-[11px] text-slate-300">
+                      Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee, doctor payout {doctorPayoutPct}% of patient fee.
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={!consultExcludePending}
-                        onClick={() => setScenario({ excludedConsultAccounts: consultExcludedDraft })}
-                      >
-                        Confirm exclusions
-                      </Button>
-                      {consultExcludePending && (
-                        <Button variant="ghost" size="sm" onClick={() => setConsultExcludedDraft(scenario.excludedConsultAccounts ?? [])}>
-                          Discard changes
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
                     <button
                       type="button"
                       onClick={() => setConsultModalOpen(true)}
-                      className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-indigo-500/15"
+                      className="mt-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-indigo-500/15"
                     >
                       Review consult transactions
                     </button>
-                    <span>
-                      Doctor rules: {doctorRuleCount} and bill overrides: {billOverrideCount}
-                    </span>
                   </div>
+                </div>
+              )}
+
+              {setupStep === 4 && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
+                  <div className="text-sm font-semibold text-slate-100">Apply to scenario</div>
+                  <div className="text-xs text-slate-300">
+                    Confirm and apply the staged doctor/consult selections to the active scenario. You can revisit any step to adjust.
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setScenario({
+                        legacyTmsAccounts: tmsDraftAccounts,
+                        legacyConsultAccounts: consultDraftAccounts,
+                        excludedConsultAccounts: consultExcludedDraft,
+                        includeDoctorConsultsInBundle: consultDraftAccounts.length > 0,
+                      })
+                      pushToast('Scenario updated.')
+                    }}
+                  >
+                    Apply to scenario
+                  </Button>
                 </div>
               )}
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                <div className="text-xs font-semibold text-slate-100">Removal preview</div>
-                <div className="text-xs text-slate-300 mt-1">Accounts removed: {matcherPreview.accounts.length}</div>
-                <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
-                  {matcherPreview.accounts.length === 0 ? (
-                    <div className="text-slate-400">No accounts selected for removal.</div>
-                  ) : (
-                    matcherPreview.accounts.map(acc => (
-                      <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                        <span className="font-semibold text-slate-100">{acc.name}</span>
-                        <span className="text-slate-400 uppercase text-[10px]">{acc.kind}</span>
-                        <span className="text-slate-200">{money(acc.total)}</span>
+            <AnimatePresence>
+              {doctorSelectorOpen && (
+                <motion.div
+                  className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setDoctorSelectorOpen(false)}
+                >
+                  <motion.div
+                    className="h-full w-full max-w-lg bg-slate-950 border-l border-white/10 p-5"
+                    initial={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 280, damping: 30 }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-slate-100">Select doctor revenue accounts</div>
+                      <Button variant="ghost" size="sm" onClick={() => setDoctorSelectorOpen(false)}>Done</Button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                        <Label>Account filter</Label>
+                        {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
+                          <Chip
+                            key={filter}
+                            className={`cursor-pointer ${tmsAccountFilter === filter ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                            onClick={() => setTmsAccountFilter(filter)}
+                          >
+                            {filter === 'all' ? 'All' : filter.toUpperCase()}
+                          </Chip>
+                        ))}
+                        <Input
+                          className="w-56"
+                          value={tmsAccountSearch}
+                          onChange={(e) => setTmsAccountSearch(e.target.value)}
+                          placeholder="Search accounts"
+                        />
                       </div>
-                    ))
-                  )}
-                </div>
-                <div className="mt-2 text-[11px] text-slate-400">
-                  Totals removed: Revenue <span className="text-slate-200">{money(matcherPreview.totals.revenue)}</span>, COGS{' '}
-                  <span className="text-slate-200">{money(matcherPreview.totals.cogs)}</span>, OpEx{' '}
-                  <span className="text-slate-200">{money(matcherPreview.totals.opex)}</span>
-                </div>
-              </div>
 
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
-                <div className="text-xs font-semibold text-slate-100">Capacity &amp; payout model</div>
-                <div className="text-[11px] text-slate-300">
-                  Programs / month: <span className="font-semibold text-slate-100">{programDisplayCount}</span> ({scenario.machinesEnabled ? 'capacity-derived' : 'manual'}).
-                  Capacity inputs: {scenario.tmsMachines} machines, {scenario.patientsPerMachinePerWeek} patients per week, utilisation {Math.round((scenario.utilisation ?? 0) * 100)}%.
-                </div>
-                <div className="text-[11px] text-slate-300">
-                  Doctor payout: clinic retains {scenario.doctorServiceFeePct}% service fee, doctor payout {doctorPayoutPct}% of patient fee.
-                </div>
-              </div>
-            </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        <span>Suggested</span>
+                        {doctorAccountSuggestions.map(acc => (
+                          <button
+                            key={`doctor-suggest-drawer-${acc}`}
+                            type="button"
+                            onClick={() => setTmsDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
+                            className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
+                          >
+                            Suggested · {acc}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="max-h-72 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                        {filteredTmsAccounts.map(acc => (
+                          <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={tmsDraftAccounts.includes(acc.name)}
+                              onChange={() =>
+                                setTmsDraftAccounts(prev =>
+                                  prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
+                                )
+                              }
+                            />
+                            <span className="flex-1">{acc.name}</span>
+                            <span className="text-slate-400">{SECTION_LABEL[acc.section]}</span>
+                          </label>
+                        ))}
+                        {filteredTmsAccounts.length === 0 && <div className="text-xs text-slate-400">No accounts match this filter.</div>}
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <Button variant="ghost" size="sm" onClick={() => setTmsDraftAccounts([])}>
+                          Reset to none
+                        </Button>
+                        <div>{tmsDraftAccounts.length} selected</div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {consultSelectorOpen && (
+                <motion.div
+                  className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setConsultSelectorOpen(false)}
+                >
+                  <motion.div
+                    className="h-full w-full max-w-lg bg-slate-950 border-l border-white/10 p-5"
+                    initial={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 280, damping: 30 }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-slate-100">Select consult revenue accounts</div>
+                      <Button variant="ghost" size="sm" onClick={() => setConsultSelectorOpen(false)}>Done</Button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                        <Label>Account filter</Label>
+                        {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
+                          <Chip
+                            key={filter}
+                            className={`cursor-pointer ${consultAccountFilter === filter ? 'bg-indigo-500/15 border-indigo-400/30' : ''}`}
+                            onClick={() => setConsultAccountFilter(filter)}
+                          >
+                            {filter === 'all' ? 'All' : filter.toUpperCase()}
+                          </Chip>
+                        ))}
+                        <Input
+                          className="w-56"
+                          value={consultAccountSearch}
+                          onChange={(e) => setConsultAccountSearch(e.target.value)}
+                          placeholder="Search accounts"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        <span>Suggested</span>
+                        {consultAccountSuggestions.map(acc => (
+                          <button
+                            key={`consult-suggest-drawer-${acc}`}
+                            type="button"
+                            onClick={() => setConsultDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
+                            className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
+                          >
+                            Suggested · {acc}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="max-h-56 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                        {filteredConsultAccounts.map(acc => (
+                          <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={consultDraftAccounts.includes(acc.name)}
+                              onChange={() =>
+                                setConsultDraftAccounts(prev =>
+                                  prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
+                                )
+                              }
+                            />
+                            <span className="flex-1">{acc.name}</span>
+                            <span className="text-slate-400">{SECTION_LABEL[acc.section]}</span>
+                          </label>
+                        ))}
+                        {filteredConsultAccounts.length === 0 && <div className="text-xs text-slate-400">No accounts match this filter.</div>}
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-xs font-semibold text-slate-100">Exclude accounts</div>
+                        <div className="mt-2 max-h-28 overflow-auto space-y-2 text-xs text-slate-200">
+                          {filteredConsultAccounts.map(acc => (
+                            <label key={`exclude-${acc.name}`} className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={consultExcludedDraft.includes(acc.name)}
+                                onChange={() =>
+                                  setConsultExcludedDraft(prev =>
+                                    prev.includes(acc.name) ? prev.filter(a => a !== acc.name) : [...prev, acc.name]
+                                  )
+                                }
+                              />
+                              <span className="flex-1">{acc.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <Button variant="ghost" size="sm" onClick={() => { setConsultDraftAccounts([]); setConsultExcludedDraft([]) }}>
+                          Reset to none
+                        </Button>
+                        <div>{consultDraftAccounts.length} selected</div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Bundle streams */}
             {(() => {
@@ -1833,6 +1937,61 @@ export function Overview() {
           </div>
       </Card>
     </div>
+
+    <AnimatePresence>
+      {statusDrawerOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setStatusDrawerOpen(false)}
+        >
+          <motion.div
+            className="h-full w-full max-w-md bg-slate-950 border-l border-white/10 p-5"
+            initial={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 30 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-100">Overview details</div>
+              <Button variant="ghost" size="sm" onClick={() => setStatusDrawerOpen(false)}>Close</Button>
+            </div>
+            <div className="mt-4 space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+                <div className="text-sm font-semibold text-slate-100">Data status</div>
+                <div className="text-xs text-slate-300">
+                  P&amp;L: {pl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-rose-200 font-semibold">Missing</span>}
+                  {plLoadedAt ? <span className="text-slate-400"> updated {new Date(plLoadedAt).toLocaleString()}</span> : null}
+                </div>
+                <div className="text-xs text-slate-300">
+                  GL: {gl ? <span className="text-emerald-200 font-semibold">Loaded</span> : <span className="text-amber-200 font-semibold">Optional</span>}
+                  {glLoadedAt ? <span className="text-slate-400"> updated {new Date(glLoadedAt).toLocaleString()}</span> : null}
+                </div>
+                <div className="text-xs text-slate-400">Scenario requires P&amp;L; GL unlocks consult previews and drill-down.</div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+                <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
+                <div className="text-xs text-slate-300">Replacement rule: remove legacy TMS (and consult, if enabled) then add CBA and cgTMS bundle revenue. Costs can be added explicitly.</div>
+                <div className="text-xs text-slate-400">
+                  Accounts selected: {scenario.legacyTmsAccounts?.length ?? 0} doctor and {scenario.legacyConsultAccounts?.length ?? 0} consult
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+                <div className="text-sm font-semibold text-slate-100">Results &amp; sensitivity</div>
+                <div className="text-xs text-slate-300">Current vs scenario (12 mo): {money(currentTotal)} to {scenarioTotal == null ? '-' : money(scenarioTotal)}</div>
+                <div className="text-xs text-slate-300">High-leverage levers: rent override, TMS capacity (programs), consult inclusion, bundle COGS toggle.</div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
     {consultModalOpen ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur">
         <div className="w-full max-w-6xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">

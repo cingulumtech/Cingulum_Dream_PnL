@@ -6,6 +6,7 @@ import { DreamGroup, DreamLine } from '../lib/types'
 import { addGroup, addLine, findNode, findParent, moveChild, removeNode, setLineMappings, updateNodeLabel } from '../lib/dream/edit'
 import { Button, Card, Chip, Input, Label } from './ui'
 import { SaveStatusPill } from './SaveStatus'
+import { PageHeader } from './PageHeader'
 import { DREAM_TEMPLATE_SCHEMA, flattenLines, generateNodeId, validateTemplate } from '../lib/dream/schema'
 import { computeDream, computeDreamTotals } from '../lib/dream/compute'
 
@@ -172,24 +173,23 @@ export function TemplateEditor() {
     template.schemaVersion === DREAM_TEMPLATE_SCHEMA ? 'good' : 'bad'
 
   return (
-    <Card className="p-5 overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold">Layout</div>
-          <div className="text-sm text-slate-300">
-            Edit categories and line items like an iPhone editor: select, rename, move, add, delete. Mapping stays separate.
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Chip tone={metadataChipTone}>
-            Schema {template.schemaVersion || 'unknown'} version {template.version ?? 1}
-          </Chip>
-          <SaveStatusPill status={templateSaveStatus} />
-          <Button variant="ghost" onClick={() => undoTemplate()} disabled={!canUndo}>
-            <RotateCcw className="h-4 w-4" /> Undo
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="Layout"
+        subtitle="Edit categories and line items like an iPhone editor: select, rename, move, add, delete. Mapping stays separate."
+        actions={
+          <>
+            <Chip tone={metadataChipTone}>
+              Schema {template.schemaVersion || 'unknown'} version {template.version ?? 1}
+            </Chip>
+            <SaveStatusPill status={templateSaveStatus} />
+            <Button variant="ghost" onClick={() => undoTemplate()} disabled={!canUndo}>
+              <RotateCcw className="h-4 w-4" /> Undo
+            </Button>
+          </>
+        }
+      />
+      <Card className="p-5 overflow-hidden">
       {readOnly && (
         <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
           View-only access enabled. Contact an admin to unlock editing.
@@ -382,6 +382,7 @@ export function TemplateEditor() {
         )}
       </div>
     </Card>
+    </div>
   )
 }
 

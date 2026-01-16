@@ -133,32 +133,17 @@ export function applyBundledScenario(
 
   // Replacement rule: remove legacy streams (TMS; optionally consults), then add bundle revenue.
   // We operate at the Xero account level for the removal, then add simulated bundle lines.
-  const compileTokens = (patterns: string[]) =>
-    (patterns ?? [])
-      .map(s => String(s ?? '').trim().toLowerCase())
-      .filter(Boolean)
-
-  const tmsTokens = compileTokens(scenario.legacyTmsAccountMatchers ?? [])
-  const consultTokens = scenario.includeDoctorConsultsInBundle
-    ? compileTokens(scenario.legacyConsultAccountMatchers ?? [])
-    : []
   const tmsAccountSet = new Set(scenario.legacyTmsAccounts ?? [])
   const consultAccountSet = new Set(scenario.legacyConsultAccounts ?? [])
   const excludedConsultAccounts = new Set(scenario.excludedConsultAccounts ?? [])
 
-  const tokenMatch = (name: string, tokens: string[]) => {
-    if (!tokens.length) return false
-    const lower = name.toLowerCase()
-    return tokens.some(token => lower.includes(token))
-  }
-
   const shouldRemove = (name: string) => {
-    const tmsMatch = tmsAccountSet.size ? tmsAccountSet.has(name) : tokenMatch(name, tmsTokens)
-    const consultMatch = consultAccountSet.size ? consultAccountSet.has(name) : tokenMatch(name, consultTokens)
+    const tmsMatch = tmsAccountSet.size ? tmsAccountSet.has(name) : false
+    const consultMatch = consultAccountSet.size ? consultAccountSet.has(name) : false
     return tmsMatch || (scenario.includeDoctorConsultsInBundle ? consultMatch : false)
   }
 
-  if (tmsAccountSet.size || consultAccountSet.size || tmsTokens.length || consultTokens.length) {
+  if (tmsAccountSet.size || consultAccountSet.size) {
     for (const a of pl.accounts) {
       if (!shouldRemove(a.name)) continue
       if (excludedConsultAccounts.has(a.name)) continue
