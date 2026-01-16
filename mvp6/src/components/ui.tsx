@@ -80,7 +80,11 @@ export function Chip(props: React.HTMLAttributes<HTMLDivElement> & { tone?: 'neu
   return (
     <div
       {...rest}
-      className={clsx('inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs', tones[tone], className)}
+      className={clsx(
+        'inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-xs whitespace-nowrap overflow-hidden text-ellipsis',
+        tones[tone],
+        className
+      )}
     />
   )
 }
