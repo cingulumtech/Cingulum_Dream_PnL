@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText, Settings2, User } from 'lucide-react'
+import { BarChart3, FileSpreadsheet, LayoutGrid, HelpCircle, Wand2, Settings, Database, FileText, Settings2, ChevronDown } from 'lucide-react'
 import { useAppStore, type View } from './store/appStore'
 import { UploadPanel } from './components/UploadPanel'
 import { Overview } from './components/Overview'
@@ -160,48 +160,46 @@ export function App() {
                 caption="Accounting Atlas turns your mapped Xero exports into a board-grade story for Cingulum Health."
               />
               {user && (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-xs font-semibold text-slate-100">
-                        {user.email.slice(0, 2).toUpperCase()}
+                <div className="relative mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen(prev => !prev)}
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-left transition hover:bg-white/10"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-xs font-semibold text-slate-100">
+                          {user.email.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="text-xs text-slate-300">{user.email}</div>
                       </div>
-                      <div className="text-xs text-slate-300">{user.email}</div>
+                      <ChevronDown className={`h-4 w-4 text-slate-300 transition ${menuOpen ? 'rotate-180' : ''}`} />
                     </div>
-                    <div className="relative flex items-center">
+                  </button>
+                  {menuOpen && (
+                    <div className="absolute right-0 mt-2 w-44 rounded-xl border border-white/10 bg-slate-900/95 p-1 text-xs text-slate-200 shadow-lg">
                       <button
                         type="button"
-                        onClick={() => setMenuOpen(prev => !prev)}
-                        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] text-slate-200 leading-none h-7"
+                        onClick={() => {
+                          setView('settings')
+                          setMenuOpen(false)
+                        }}
+                        className="w-full rounded-lg px-2 py-2 text-left hover:bg-white/10"
                       >
-                        <User className="h-3 w-3" /> Account
+                        Account settings
                       </button>
-                      {menuOpen && (
-                        <div className="absolute right-0 mt-2 w-44 rounded-xl border border-white/10 bg-slate-900/95 p-1 text-xs text-slate-200 shadow-lg">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setView('settings')
-                              setMenuOpen(false)
-                            }}
-                            className="w-full rounded-lg px-2 py-2 text-left hover:bg-white/10"
-                          >
-                            Account settings
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuOpen(false)
-                              onSignOut()
-                            }}
-                            className="w-full rounded-lg px-2 py-2 text-left hover:bg-white/10"
-                          >
-                            Sign out
-                          </button>
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false)
+                          onSignOut()
+                        }}
+                        className="w-full rounded-lg px-2 py-2 text-left hover:bg-white/10"
+                      >
+                        Sign out
+                      </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </Card>

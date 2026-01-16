@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, MoveHorizontal } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { Card, Chip, Input, Button } from './ui'
 import { XeroPLSection } from '../lib/types'
@@ -11,6 +11,7 @@ import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 import { useContextMenu, createCopyMenuItems, buildRowCopyItems } from './ContextMenu'
 import { CopyAffordance } from './CopyAffordance'
 import { PageHeader } from './PageHeader'
+import { useDragScroll } from '../lib/useDragScroll'
 
 const sectionLabels: Record<XeroPLSection, string> = {
   trading_income: 'Trading Income',
@@ -32,11 +33,12 @@ export function LegacyPnLTable() {
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable')
   const [pinnedFirstColumn, setPinnedFirstColumn] = useState(true)
   const [filterOpen, setFilterOpen] = useState(false)
-  const [datePreset, setDatePreset] = useState<'ttm' | 'last6' | 'last3' | 'custom' | 'all'>('ttm')
+  const [datePreset, setDatePreset] = useState<'ttm' | 'last6' | 'last3' | 'last1' | 'custom' | 'all'>('ttm')
   const [customStart, setCustomStart] = useState<string>('')
   const [customEnd, setCustomEnd] = useState<string>('')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
   const [firstColumnWidth, setFirstColumnWidth] = useState(260)
+  const { ref: tableRef, dragging, handlers: dragHandlers } = useDragScroll<HTMLDivElement>()
   const [expandedSections, setExpandedSections] = useState<Record<XeroPLSection, boolean>>({
     trading_income: true,
     cost_of_sales: true,
@@ -82,6 +84,7 @@ export function LegacyPnLTable() {
     let start = 0
     let end = count - 1
     if (datePreset === 'ttm') start = Math.max(0, count - 12)
+    if (datePreset === 'last1') start = Math.max(0, count - 1)
     if (datePreset === 'last6') start = Math.max(0, count - 6)
     if (datePreset === 'last3') start = Math.max(0, count - 3)
     if (datePreset === 'custom') {
@@ -209,11 +212,56 @@ export function LegacyPnLTable() {
       <PageHeader title="P&L (Legacy)" subtitle="Rows mirror Xero accounts. Columns are months." />
       <Card className="p-5 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search accounts..." />
             <Button variant="ghost" size="sm" onClick={() => setFilterOpen(true)}>
               Filters
             </Button>
+            <div className="flex flex-wrap items-center gap-1 rounded-full border border-white/10 bg-white/5 px-1 py-1 text-[11px] text-slate-300">
+              {[
+                { id: 'last1', label: '1M' },
+                { id: 'last3', label: '3M' },
+                { id: 'last6', label: '6M' },
+                { id: 'ttm', label: '12M' },
+                { id: 'all', label: 'All' },
+                { id: 'custom', label: 'Range' },
+              ].map(option => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setDatePreset(option.id as typeof datePreset)}
+                  className={`rounded-full px-3 py-1 transition ${
+                    datePreset === option.id ? 'bg-indigo-500/20 text-slate-100' : 'text-slate-300 hover:text-slate-100'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {datePreset === 'custom' && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <select
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="rounded-xl bg-white/5 border border-white/10 px-2 py-1 text-xs text-slate-100"
+                >
+                  <option value="">Start</option>
+                  {effectivePl?.monthLabels.map(label => (
+                    <option key={`start-${label}`} value={label}>{label}</option>
+                  ))}
+                </select>
+                <select
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="rounded-xl bg-white/5 border border-white/10 px-2 py-1 text-xs text-slate-100"
+                >
+                  <option value="">End</option>
+                  {effectivePl?.monthLabels.map(label => (
+                    <option key={`end-${label}`} value={label}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
             <Button variant="ghost" size="sm" onClick={() => setExpandedSections({
@@ -306,7 +354,7 @@ export function LegacyPnLTable() {
                 <div>
                   <div className="font-semibold text-slate-100">Date range</div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {(['ttm', 'last6', 'last3', 'custom', 'all'] as const).map(preset => (
+                    {(['last1', 'ttm', 'last6', 'last3', 'custom', 'all'] as const).map(preset => (
                       <button
                         key={preset}
                         type="button"
@@ -315,7 +363,17 @@ export function LegacyPnLTable() {
                           datePreset === preset ? 'border-indigo-400/40 bg-indigo-500/15 text-slate-100' : 'border-white/10 bg-white/5 text-slate-300'
                         }`}
                       >
-                        {preset === 'ttm' ? 'TTM' : preset === 'last6' ? 'Last 6' : preset === 'last3' ? 'Last 3' : preset === 'custom' ? 'Custom' : 'All'}
+                        {preset === 'last1'
+                          ? 'Last 1'
+                          : preset === 'ttm'
+                            ? 'TTM'
+                            : preset === 'last6'
+                              ? 'Last 6'
+                              : preset === 'last3'
+                                ? 'Last 3'
+                                : preset === 'custom'
+                                  ? 'Custom'
+                                  : 'All'}
                       </button>
                     ))}
                   </div>
@@ -391,12 +449,21 @@ export function LegacyPnLTable() {
         )}
       </AnimatePresence>
 
-      <div className="mt-4 overflow-auto rounded-2xl border border-white/10">
+      <div
+        ref={tableRef}
+        {...dragHandlers}
+        className={`group relative mt-4 overflow-auto rounded-2xl border border-white/10 bg-slate-950/40 ${dragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+      >
+        <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-white/10 bg-slate-900/80 px-3 py-1 text-[11px] text-slate-200 opacity-0 transition group-hover:opacity-100">
+          <span className="inline-flex items-center gap-1">
+            <MoveHorizontal className="h-3.5 w-3.5" /> Drag to pan
+          </span>
+        </div>
         <table className="min-w-full text-sm">
           <colgroup>
             <col style={{ width: firstColumnWidth }} />
           </colgroup>
-          <thead className="bg-white/5 sticky top-0 z-20">
+          <thead className="bg-slate-900/80 sticky top-0 z-20 backdrop-blur">
             <tr>
               <th
                 className={`text-left px-3 ${rowPadding} font-semibold ${pinnedFirstColumn ? 'sticky left-0 z-30 bg-slate-950' : ''}`}
@@ -413,7 +480,7 @@ export function LegacyPnLTable() {
           <tbody>
             {sections.map(sec => (
               <React.Fragment key={sec.section}>
-                <tr className="bg-white/5 border-t border-white/10">
+                <tr className="bg-slate-900/70 border-t border-white/10">
                   <td
                     className={`px-3 ${rowPadding} font-semibold ${pinnedFirstColumn ? 'sticky left-0 z-20 bg-slate-950' : ''}`}
                     colSpan={1 + visibleMonthLabels.length}
@@ -438,7 +505,7 @@ export function LegacyPnLTable() {
                     sec.accounts.map(a => (
                       <motion.tr
                         key={`${sec.section}:${a.name}`}
-                        className={`border-t border-white/10 hover:bg-white/5 cursor-pointer focus-within:bg-white/5 ${
+                        className={`border-t border-white/10 hover:bg-white/10 cursor-pointer focus-within:bg-white/10 odd:bg-slate-900/30 even:bg-slate-900/10 ${
                           selectedRows.includes(a.name) ? 'bg-indigo-500/10' : ''
                         }`}
                         onClick={() => handleActivate(`__acc__:${a.name}`)}
@@ -497,9 +564,9 @@ export function LegacyPnLTable() {
               </React.Fragment>
             ))}
           </tbody>
-          <tfoot className="bg-white/5 sticky bottom-0 z-10 border-t border-white/10">
+          <tfoot className="bg-indigo-500/10 sticky bottom-0 z-10 border-t border-indigo-400/20">
             {(footer?.rows ?? []).map(row => (
-              <tr key={row.label} className="border-t border-white/10">
+              <tr key={row.label} className="border-t border-indigo-400/20">
                 <td
                   className={`px-3 ${rowPadding} font-semibold text-slate-100 whitespace-nowrap ${pinnedFirstColumn ? 'sticky left-0 z-10 bg-slate-950' : ''}`}
                 >
@@ -528,7 +595,7 @@ export function LegacyPnLTable() {
           </tfoot>
         </table>
       </div>
-      <div className="mt-3 text-xs text-slate-400">Tip: click an account to drill into the General Ledger (if loaded).</div>
+      <div className="mt-3 text-xs text-slate-400">Tip: drag to pan horizontally, and click an account to drill into the General Ledger (if loaded).</div>
     </Card>
     </div>
   )
