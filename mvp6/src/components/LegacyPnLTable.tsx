@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ChevronDown, ChevronRight, MoveHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronRight, MousePointer2, MoveHorizontal } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { Card, Chip, Input, Button } from './ui'
 import { XeroPLSection } from '../lib/types'
@@ -38,6 +38,7 @@ export function LegacyPnLTable() {
   const [customEnd, setCustomEnd] = useState<string>('')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
   const [firstColumnWidth, setFirstColumnWidth] = useState(260)
+  const [showHelper, setShowHelper] = useState(true)
   const { ref: tableRef, dragging, handlers: dragHandlers } = useDragScroll<HTMLDivElement>()
   const [expandedSections, setExpandedSections] = useState<Record<XeroPLSection, boolean>>({
     trading_income: true,
@@ -58,6 +59,11 @@ export function LegacyPnLTable() {
   const prefersReducedMotion = useReducedMotion()
   const buildCopyItems = (label: string, value: string, formatted?: string) =>
     createCopyMenuItems({ label, value, formatted, onCopied: () => pushToast('Copied') })
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowHelper(false), 6000)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const effectiveLedger = useMemo(
     () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
@@ -210,7 +216,35 @@ export function LegacyPnLTable() {
   return (
     <div className="space-y-4">
       <PageHeader title="P&L (Legacy)" subtitle="Rows mirror Xero accounts. Columns are months." />
-      <Card className="p-5 overflow-hidden">
+      <div className="relative">
+        <AnimatePresence>
+          {showHelper && (
+            <motion.div
+              className="absolute right-4 top-4 z-20 max-w-xs rounded-2xl border border-indigo-400/30 bg-slate-950/90 p-3 text-xs text-slate-200 shadow-lg"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.35 }}
+            >
+              <div className="flex items-start gap-2">
+                <motion.div
+                  className="mt-0.5 text-indigo-200"
+                  animate={{ x: [0, 6, 0] }}
+                  transition={{ duration: 1.6, repeat: Infinity }}
+                >
+                  <MousePointer2 className="h-4 w-4" />
+                </motion.div>
+                <div>
+                  <div className="font-semibold text-slate-100">Tip: Drill down</div>
+                  <div className="text-[11px] text-slate-300">
+                    Right-click any account row and choose Drill down to view the underlying transactions.
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <Card className="p-5 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search accounts..." />
@@ -596,7 +630,8 @@ export function LegacyPnLTable() {
         </table>
       </div>
       <div className="mt-3 text-xs text-slate-400">Tip: drag to pan horizontally, and click an account to drill into the General Ledger (if loaded).</div>
-    </Card>
+        </Card>
+      </div>
     </div>
   )
 }
