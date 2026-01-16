@@ -80,15 +80,15 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
         </div>
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-[11px] text-slate-700">
+        <table className="w-full table-fixed text-[11px] text-slate-700">
           <thead className="bg-slate-100 text-slate-500">
             <tr>
-              <th className="text-left px-3 py-2">Driver</th>
-              <th className="text-right px-3 py-2">Actual</th>
-              <th className="text-right px-3 py-2">Comparison</th>
-              <th className="text-right px-3 py-2">Change / Percent</th>
-              <th className="text-right px-3 py-2">Profit impact</th>
-              <th className="text-right px-3 py-2">Contribution</th>
+              <th className="w-[32%] text-left px-3 py-2">Driver</th>
+              <th className="w-[14%] text-right px-3 py-2">Actual</th>
+              <th className="w-[14%] text-right px-3 py-2">Comparison</th>
+              <th className="w-[16%] text-right px-3 py-2">Change / Percent</th>
+              <th className="w-[16%] text-right px-3 py-2">Profit impact</th>
+              <th className="w-[8%] text-right px-3 py-2">Contribution</th>
             </tr>
           </thead>
           <tbody>
@@ -98,18 +98,20 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
               return (
                 <tr key={d.label} className="border-t border-slate-200">
                   <td className="px-3 py-2 font-semibold text-slate-900">
-                    <div className="flex items-center gap-2">
-                      <span>{d.label}</span>
-                      <Chip tone="neutral" className="px-2 py-[2px] text-[10px]">{d.sectionType === 'income' ? 'Income' : 'Expense'}</Chip>
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className="min-w-0 break-words">{d.label}</span>
+                      <Chip tone="neutral" className="shrink-0 px-2 py-[2px] text-[10px]">
+                        {d.sectionType === 'income' ? 'Income' : 'Expense'}
+                      </Chip>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right">{money(d.currentValue)}</td>
-                  <td className="px-3 py-2 text-right">{money(d.compareValue)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{money(d.currentValue)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{money(d.compareValue)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="font-semibold">{money(d.delta)}</div>
                     <div className="text-[10px] text-slate-500">{pct(d.pctDelta)}</div>
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
                     <Chip
                       tone={impactTone === 'good' ? 'good' : impactTone === 'bad' ? 'bad' : 'neutral'}
                       className={`justify-end px-2 py-[2px] text-[10px] ${impactClass}`}
@@ -117,7 +119,7 @@ function DriverTable({ title, result, movementBadge }: { title: string; result: 
                       {impactTone === 'good' ? 'Increase' : impactTone === 'bad' ? 'Decrease' : 'No change'} {money(d.profitImpact)}
                     </Chip>
                   </td>
-                  <td className="px-3 py-2 text-right">{pct(d.contributionPct)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{pct(d.contributionPct)}</td>
                 </tr>
               )
             })}
