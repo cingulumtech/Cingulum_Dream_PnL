@@ -76,7 +76,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  register: (payload: { email: string; password: string; remember: boolean; invite_code?: string }) =>
+  register: (payload: { email: string; password: string; remember: boolean }) =>
     request<{ user: ApiUser }>('auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload: { email: string; password: string; remember: boolean }) =>
     request<{ user: ApiUser }>('auth/login', { method: 'POST', body: JSON.stringify(payload) }),
@@ -115,8 +115,12 @@ export const api = {
   deleteShare: (snapshotId: string, shareId: string) =>
     request<{ ok: boolean }>(`snapshots/${snapshotId}/shares/${shareId}`, { method: 'DELETE' }),
   listUsers: () => request<{ id: string; email: string; role: string; created_at: string }[]>('users'),
+  createUser: (payload: { email: string; password: string; role?: string }) =>
+    request<{ id: string; email: string; role: string; created_at: string }>('users', { method: 'POST', body: JSON.stringify(payload) }),
   updateUserRole: (userId: string, payload: { role: string }) =>
     request<{ id: string; email: string; role: string; created_at: string }>(`users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteUser: (userId: string) =>
+    request<{ ok: boolean }>(`users/${userId}`, { method: 'DELETE' }),
   listTxnOverrides: () => request<TxnOverride[]>('ledger/overrides'),
   upsertTxnOverride: (payload: {
     source: string

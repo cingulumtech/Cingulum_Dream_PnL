@@ -5,12 +5,13 @@ import { api } from '../lib/api'
 import { PageHeader } from './PageHeader'
 import { buildSnapshotSummary, ensureExportSettings, ensureReportConfig, fingerprintGl, fingerprintPl, fingerprintTemplate } from '../lib/snapshotUtils'
 import { useAuthStore } from '../store/authStore'
+import { isReadOnlyRole } from '../lib/userRoles'
 
 const roles = ['viewer', 'editor', 'admin'] as const
 
 export function SavedExports() {
   const user = useAuthStore(s => s.user)
-  const readOnly = user?.role === 'viewer'
+  const readOnly = isReadOnlyRole(user?.role)
   const snapshots = useAppStore(s => s.snapshots)
   const setSnapshots = useAppStore(s => s.setSnapshots)
   const upsertSnapshot = useAppStore(s => s.upsertSnapshot)

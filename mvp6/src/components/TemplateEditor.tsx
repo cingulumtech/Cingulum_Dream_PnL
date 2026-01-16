@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowDown, ArrowUp, Download, FolderPlus, Plus, RotateCcw, ShieldCheck, Type, Upload } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
+import { isReadOnlyRole } from '../lib/userRoles'
 import { DreamGroup, DreamLine } from '../lib/types'
 import { addGroup, addLine, findNode, findParent, moveChild, removeNode, setLineMappings, updateNodeLabel } from '../lib/dream/edit'
 import { Button, Card, Chip, Input, Label } from './ui'
@@ -12,7 +13,7 @@ import { computeDream, computeDreamTotals } from '../lib/dream/compute'
 
 export function TemplateEditor() {
   const user = useAuthStore(s => s.user)
-  const readOnly = user?.role === 'viewer'
+  const readOnly = isReadOnlyRole(user?.role)
   const template = useAppStore(s => s.template)
   const setTemplate = useAppStore(s => s.setTemplate)
   const resetTemplate = useAppStore(s => s.resetTemplate)

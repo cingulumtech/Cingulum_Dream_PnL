@@ -5,12 +5,15 @@ import { RECOMMENDED_DEFAULTS } from '../lib/defaults'
 import { useAuthStore } from '../store/authStore'
 import { api } from '../lib/api'
 import { PageHeader } from './PageHeader'
+import { canDeleteUsers, canManageUsers, displayUserRole, isReadOnlyRole, normalizeUserRole, USER_ROLE_OPTIONS } from '../lib/userRoles'
 
 export function SettingsPage() {
   const user = useAuthStore(s => s.user)
   const setUser = useAuthStore(s => s.setUser)
-  const isReadOnly = user?.role === 'viewer'
-  const isSuperAdmin = user?.role === 'super_admin'
+  const isReadOnly = isReadOnlyRole(user?.role)
+  const isSuperAdmin = normalizeUserRole(user?.role) === 'super_admin'
+  const isAdmin = canManageUsers(user?.role)
+  const canDelete = canDeleteUsers(user?.role)
   const defaults = useAppStore(s => s.defaults)
   const setDefaults = useAppStore(s => s.setDefaults)
   const resetDefaults = useAppStore(s => s.resetDefaults)
@@ -24,6 +27,11 @@ export function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [accountStatus, setAccountStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [accountError, setAccountError] = useState<string | null>(null)
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState('view')
+  const [newUserStatus, setNewUserStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [newUserError, setNewUserError] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalDefaults(defaults)
@@ -34,12 +42,19 @@ export function SettingsPage() {
   }, [user?.email])
 
   useEffect(() => {
-    if (!isSuperAdmin) return
+    if (!isAdmin) return
     api
       .listUsers()
       .then(setUsers)
       .catch((err: any) => setUsersError(err?.message ?? 'Unable to load users'))
-  }, [isSuperAdmin])
+  }, [isAdmin])
+
+  useEffect(() => {
+    const allowedRoles = isSuperAdmin ? USER_ROLE_OPTIONS : ['view', 'edit']
+    if (!allowedRoles.includes(newUserRole)) {
+      setNewUserRole(allowedRoles[0])
+    }
+  }, [isSuperAdmin, newUserRole])
 
   const updateState = (state: 'NSW/QLD' | 'WA' | 'VIC', field: 'suggestedCbaPrice' | 'suggestedProgramPrice' | 'mriCostByState' | 'mriPatientByState', val: number) => {
     setLocalDefaults(prev => ({
@@ -100,6 +115,31 @@ export function SettingsPage() {
     } catch (err: any) {
       setAccountError(err?.message ?? 'Unable to update account.')
       setAccountStatus('error')
+    }
+  }
+
+  const createUser = async () => {
+    if (!newUserEmail.trim() || !newUserPassword.trim()) {
+      setNewUserError('Email and password are required.')
+      setNewUserStatus('error')
+      return
+    }
+    setNewUserStatus('saving')
+    setNewUserError(null)
+    try {
+      const created = await api.createUser({
+        email: newUserEmail.trim(),
+        password: newUserPassword.trim(),
+        role: newUserRole,
+      })
+      setUsers(prev => [...prev, created])
+      setNewUserEmail('')
+      setNewUserPassword('')
+      setNewUserStatus('saved')
+      setTimeout(() => setNewUserStatus('idle'), 2000)
+    } catch (err: any) {
+      setNewUserError(err?.message ?? 'Unable to create user.')
+      setNewUserStatus('error')
     }
   }
 
@@ -319,11 +359,54 @@ export function SettingsPage() {
         ) : null}
       </Card>
 
-      {isSuperAdmin && (
+      {isAdmin && (
         <Card className="p-4 space-y-3">
           <div>
             <div className="text-sm font-semibold text-slate-100">User access</div>
-            <div className="text-xs text-slate-400">Control who can edit vs view. New users default to viewer.</div>
+            <div className="text-xs text-slate-400">Control who can edit vs view. New users default to view.</div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+            <div className="text-xs font-semibold text-slate-200">Create user</div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <Label>Email</Label>
+                <Input
+                  className="mt-1"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="new.user@company.com"
+                />
+              </div>
+              <div>
+                <Label>Temporary password</Label>
+                <Input
+                  className="mt-1"
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  placeholder="Set a password"
+                />
+              </div>
+              <div>
+                <Label>Role</Label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-slate-100"
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value)}
+                >
+                  {(isSuperAdmin ? USER_ROLE_OPTIONS : ['view', 'edit']).map(role => (
+                    <option key={role} value={role}>{role.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+              <Button onClick={createUser} disabled={newUserStatus === 'saving'}>
+                {newUserStatus === 'saving' ? 'Creating...' : 'Create user'}
+              </Button>
+              {newUserStatus === 'saved' && <span className="text-emerald-200">User created.</span>}
+              {newUserStatus === 'error' && newUserError && <span className="text-rose-200">{newUserError}</span>}
+            </div>
           </div>
           {usersError && <div className="text-xs text-rose-200">{usersError}</div>}
           <div className="space-y-2">
@@ -333,19 +416,41 @@ export function SettingsPage() {
                   <div className="font-semibold text-slate-100">{u.email}</div>
                   <div className="text-[11px] text-slate-400">Created {new Date(u.created_at).toLocaleDateString()}</div>
                 </div>
-                <select
-                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
-                  value={u.role}
-                  onChange={async (e) => {
-                    const nextRole = e.target.value
-                    const updated = await api.updateUserRole(u.id, { role: nextRole })
-                    setUsers(prev => prev.map(item => (item.id === u.id ? updated : item)))
-                  }}
-                >
-                  {['viewer', 'editor', 'admin', 'super_admin'].map(role => (
-                    <option key={role} value={role}>{role.replace('_', ' ')}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  {isSuperAdmin ? (
+                    <select
+                      className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                      value={normalizeUserRole(u.role) ?? 'view'}
+                      onChange={async (e) => {
+                        const nextRole = e.target.value
+                        const updated = await api.updateUserRole(u.id, { role: nextRole })
+                        setUsers(prev => prev.map(item => (item.id === u.id ? updated : item)))
+                      }}
+                    >
+                      {USER_ROLE_OPTIONS.map(role => (
+                        <option key={role} value={role}>{role.replace('_', ' ')}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100">
+                      {displayUserRole(u.role)}
+                    </span>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (u.id === user?.id) return
+                        await api.deleteUser(u.id)
+                        setUsers(prev => prev.filter(item => item.id !== u.id))
+                      }}
+                      disabled={u.id === user?.id}
+                      className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-100 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             {users.length === 0 && !usersError && <div className="text-xs text-slate-400">No users found yet.</div>}

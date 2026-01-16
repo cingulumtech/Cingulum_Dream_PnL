@@ -11,11 +11,12 @@ import { PageHeader } from './PageHeader'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf, sanitizeColorStyles } from '../lib/reportExport'
 import { useAuthStore } from '../store/authStore'
+import { isReadOnlyRole } from '../lib/userRoles'
 import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 
 export function Reports() {
   const user = useAuthStore(s => s.user)
-  const readOnly = user?.role === 'viewer'
+  const readOnly = isReadOnlyRole(user?.role)
   const pl = useAppStore(s => s.pl)
   const gl = useAppStore(s => s.gl)
   const scenario = useAppStore(s => s.scenario)

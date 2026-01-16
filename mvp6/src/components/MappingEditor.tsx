@@ -3,6 +3,7 @@ import { Check, ChevronRight, GripVertical, MousePointer2, Search, Undo2, Wand2 
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
+import { isReadOnlyRole } from '../lib/userRoles'
 import { computeDream } from '../lib/dream/compute'
 import { DreamLine, XeroPLSection } from '../lib/types'
 import { setLineMappings } from '../lib/dream/edit'
@@ -115,7 +116,7 @@ function DroppableLine({
 
 export function MappingEditor() {
   const user = useAuthStore(s => s.user)
-  const readOnly = user?.role === 'viewer'
+  const readOnly = isReadOnlyRole(user?.role)
   const pl = useAppStore(s => s.pl)
   const template = useAppStore(s => s.template)
   const setTemplate = useAppStore(s => s.setTemplate)
