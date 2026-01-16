@@ -1,5 +1,6 @@
 import React from 'react'
 import { Card, Chip } from './ui'
+import { PageHeader } from './PageHeader'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -20,16 +21,13 @@ function Formula({ children }: { children: React.ReactNode }) {
 
 export function Help() {
   return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold">Help</div>
-          <div className="mt-1 text-sm text-slate-300">
-            A clear explanation of how the app stays auditable and how the scenario math works.
-          </div>
-        </div>
-        <Chip>Last updated: MVP6</Chip>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="Help"
+        subtitle="A clear explanation of how the app stays auditable and how the scenario math works."
+        actions={<Chip>Last updated: MVP6</Chip>}
+      />
+      <Card className="p-5">
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Auditability model">
@@ -103,5 +101,6 @@ export function Help() {
         data source and comparison mode.
       </div>
     </Card>
+    </div>
   )
 }

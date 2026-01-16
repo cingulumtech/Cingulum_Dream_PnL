@@ -168,11 +168,11 @@ export function App() {
                       </div>
                       <div className="text-xs text-slate-300">{user.email}</div>
                     </div>
-                    <div className="relative">
+                    <div className="relative flex items-center">
                       <button
                         type="button"
                         onClick={() => setMenuOpen(prev => !prev)}
-                        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] text-slate-200"
+                        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] text-slate-200 leading-none h-7"
                       >
                         <User className="h-3 w-3" /> Account
                       </button>

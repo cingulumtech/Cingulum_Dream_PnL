@@ -4,6 +4,7 @@ import { Card, Input, Label, Chip, Button } from './ui'
 import { RECOMMENDED_DEFAULTS } from '../lib/defaults'
 import { useAuthStore } from '../store/authStore'
 import { api } from '../lib/api'
+import { PageHeader } from './PageHeader'
 
 export function SettingsPage() {
   const user = useAuthStore(s => s.user)
@@ -104,6 +105,13 @@ export function SettingsPage() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
+      <PageHeader
+        title="Settings"
+        subtitle="Manage account access and defaults."
+        actions={
+          savedState === 'saved' ? <Chip tone="good">Saved</Chip> : <Chip tone="neutral">Changes pending</Chip>
+        }
+      />
       <Card className="p-4 space-y-4">
         <div>
           <div className="text-sm font-semibold text-slate-100">Account</div>

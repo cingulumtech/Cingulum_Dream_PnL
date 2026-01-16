@@ -9,6 +9,7 @@ import { setLineMappings } from '../lib/dream/edit'
 import { flattenLines } from '../lib/dream/schema'
 import { Button, Card, Chip, Input, Label } from './ui'
 import { SaveStatusPill } from './SaveStatus'
+import { PageHeader } from './PageHeader'
 import { motion, useReducedMotion } from 'framer-motion'
 
 type AccountRow = { name: string; section: XeroPLSection; total?: number }
@@ -223,18 +224,21 @@ export function MappingEditor() {
 
   if (!pl) {
     return (
-      <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold">Mapping</div>
-            <div className="text-sm text-slate-200">Import the Profit &amp; Loss export to start mapping Xero accounts.</div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
-            <Button variant="secondary" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
-          </div>
-        </div>
-      </Card>
+      <div className="space-y-4">
+        <PageHeader
+          title="Mapping"
+          subtitle="Import the Profit & Loss export to start mapping Xero accounts."
+          actions={
+            <>
+              <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
+              <Button variant="secondary" onClick={() => document.getElementById('gl-upload-input')?.click()}>Upload GL (optional)</Button>
+            </>
+          }
+        />
+        <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
+          <div className="text-sm text-slate-200">Upload a P&amp;L to unlock mapping.</div>
+        </Card>
+      </div>
     )
   }
 
@@ -312,19 +316,18 @@ export function MappingEditor() {
   const selectedView = savedViews.find(v => v.name === viewName)
 
   return (
-    <Card className="p-5 overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold">Mapping</div>
-          <div className="text-sm text-slate-300">
-            Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default.
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
-          <SaveStatusPill status={templateSaveStatus} />
-        </div>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="Mapping"
+        subtitle="Assign Xero accounts to your management layout. Unmapped accounts are highlighted by default."
+        actions={
+          <>
+            <Chip>{unmappedAccounts.length} unmapped accounts</Chip>
+            <SaveStatusPill status={templateSaveStatus} />
+          </>
+        }
+      />
+      <Card className="p-5 overflow-hidden">
       {readOnly && (
         <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
           View-only access enabled. Contact an admin to unlock editing.
@@ -584,6 +587,7 @@ export function MappingEditor() {
         </div>
       </div>
     </Card>
+    </div>
   )
 }
 
