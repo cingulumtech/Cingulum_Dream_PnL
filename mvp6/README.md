@@ -25,6 +25,18 @@ cp .env.example .env
 Update `ALLOWED_SIGNUP_CODES` in `.env` to control who can register (single code or comma-separated list). Defaults to `invite-code-2657` if not set.
 The first registered user is assigned `super_admin`; all later users default to `viewer` until upgraded in Settings.
 
+To enable direct Xero syncs, add the following to `.env` (values supplied by Xero):
+```bash
+XERO_CLIENT_ID=...
+XERO_CLIENT_SECRET=...
+XERO_REDIRECT_URI=https://atlas.cingulum.cloud/api/xero/callback
+```
+Optional: `XERO_SCOPES` to override the default OAuth scopes.
+
+In the Xero developer portal, make sure you register:
+- **Company / Application URL**: `https://atlas.cingulum.cloud`
+- **Redirect URI**: `https://atlas.cingulum.cloud/api/xero/callback`
+
 3) Create a virtualenv + install backend deps
 ```bash
 cd backend
