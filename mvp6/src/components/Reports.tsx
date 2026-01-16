@@ -133,6 +133,7 @@ export function Reports() {
       windowWidth: elementWidth,
       windowHeight: element.scrollHeight,
       onclone: sanitizeColorStyles,
+      useCORS: true,
     })
     const metrics = getPageMetrics(defaults.exportSettings)
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
