@@ -1,5 +1,6 @@
 import os
 import secrets
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +8,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
+from xero_python.accounting import AccountingApi
+from xero_python.api_client import ApiClient, serialize
+from xero_python.api_client.configuration import Configuration
+from xero_python.api_client.oauth2 import OAuth2Token
+from xero_python.exceptions import AccessTokenExpiredError
+from xero_python.identity import IdentityApi
 
 from .. import models
 from ..auth import get_current_user, require_csrf
@@ -265,24 +272,47 @@ def upsert_connection(db: Session, user_id: str, token_data: Dict[str, Any]) -> 
     return connection
 
 
-def ensure_access_token(db: Session, connection: models.XeroConnection, config: Dict[str, str]) -> str:
-    if connection.expires_at > datetime.utcnow() + timedelta(seconds=60):
-        return connection.access_token
-
-    response = httpx.post(
-        XERO_TOKEN_URL,
-        data={
-            "grant_type": "refresh_token",
-            "refresh_token": connection.refresh_token,
-        },
-        auth=(config["client_id"], config["client_secret"]),
-        timeout=30,
+def build_xero_api_client(
+    db: Session,
+    connection: models.XeroConnection,
+    config: Dict[str, str],
+) -> ApiClient:
+    oauth2_token = OAuth2Token(
+        client_id=config["client_id"],
+        client_secret=config["client_secret"],
     )
-    if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail="Failed to refresh Xero token")
-    token_data = response.json()
-    connection = upsert_connection(db, connection.user_id, token_data)
-    return connection.access_token
+    api_client = ApiClient(Configuration(oauth2_token=oauth2_token))
+
+    @api_client.oauth2_token_getter
+    def token_getter() -> Dict[str, Any]:
+        expires_at = int(connection.expires_at.timestamp())
+        return {
+            "access_token": connection.access_token,
+            "refresh_token": connection.refresh_token,
+            "expires_at": expires_at,
+            "expires_in": max(0, expires_at - int(time.time())),
+            "token_type": "Bearer",
+            "scope": config["scopes"].split(),
+        }
+
+    @api_client.oauth2_token_saver
+    def token_saver(token: Dict[str, Any]) -> None:
+        token_data = {
+            "access_token": token["access_token"],
+            "refresh_token": token.get("refresh_token", connection.refresh_token),
+            "expires_in": int(token.get("expires_in", 1800)),
+        }
+        upsert_connection(db, connection.user_id, token_data)
+
+    return api_client
+
+
+def ensure_access_token(db: Session, connection: models.XeroConnection, config: Dict[str, str]) -> str:
+    api_client = build_xero_api_client(db, connection, config)
+    try:
+        return api_client.configuration.oauth2_token.get_valid_access_token(api_client)
+    except AccessTokenExpiredError as exc:
+        raise HTTPException(status_code=502, detail="Failed to refresh Xero token") from exc
 
 
 @router.get("/status")
@@ -347,15 +377,13 @@ def xero_tenants(user: models.User = Depends(get_current_user), db: Session = De
     connection = db.query(models.XeroConnection).filter(models.XeroConnection.user_id == user.id).first()
     if not connection:
         raise HTTPException(status_code=400, detail="Xero connection not found")
-    access_token = ensure_access_token(db, connection, config)
-    response = httpx.get(
-        XERO_CONNECTIONS_URL,
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=30,
-    )
-    if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail="Failed to fetch Xero tenants")
-    return response.json()
+    api_client = build_xero_api_client(db, connection, config)
+    identity_api = IdentityApi(api_client)
+    try:
+        connections = identity_api.get_connections()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Failed to fetch Xero tenants") from exc
+    return serialize(connections)
 
 
 @router.post("/tenant")
@@ -397,22 +425,17 @@ def xero_sync(
     if not connection or not connection.tenant_id:
         raise HTTPException(status_code=400, detail="Xero tenant is not selected")
 
-    access_token = ensure_access_token(db, connection, config)
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "xero-tenant-id": connection.tenant_id,
-        "Accept": "application/json",
-    }
-
-    pl_response = httpx.get(
-        XERO_REPORT_PL_URL,
-        params={"fromDate": from_date, "toDate": to_date},
-        headers=headers,
-        timeout=60,
-    )
-    if pl_response.status_code >= 400:
-        raise HTTPException(status_code=502, detail="Failed to fetch Xero Profit & Loss")
-    pl_data = pl_response.json()
+    api_client = build_xero_api_client(db, connection, config)
+    accounting_api = AccountingApi(api_client)
+    try:
+        pl_report = accounting_api.get_report_profit_and_loss(
+            connection.tenant_id,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Failed to fetch Xero Profit & Loss") from exc
+    pl_data = serialize(pl_report)
     pl_report = (pl_data.get("Reports") or [None])[0]
     if not pl_report:
         raise HTTPException(status_code=502, detail="Xero Profit & Loss report was empty")
@@ -420,6 +443,12 @@ def xero_sync(
 
     gl_parsed = None
     if include_gl:
+        access_token = ensure_access_token(db, connection, config)
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "xero-tenant-id": connection.tenant_id,
+            "Accept": "application/json",
+        }
         gl_response = httpx.get(
             XERO_REPORT_GL_URL,
             params={"fromDate": from_date, "toDate": to_date},
