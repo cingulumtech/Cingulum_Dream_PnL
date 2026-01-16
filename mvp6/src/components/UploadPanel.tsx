@@ -16,6 +16,8 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
   const setPL = useAppStore(s => s.setPL)
   const setGL = useAppStore(s => s.setGL)
   const addImport = useAppStore(s => s.addImport)
+  const xeroProfitLossUrl = 'https://go.xero.com/Reports/ProfitAndLoss'
+  const xeroGeneralLedgerUrl = 'https://go.xero.com/Reports/GeneralLedger'
 
   const [status, setStatus] = useState<string>('')
   const [err, setErr] = useState<string>('')
@@ -126,6 +128,17 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
               <Upload className="h-4 w-4" /> Choose file
             </Button>
           </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+            <span>Need a 12-month P&amp;L export?</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open(xeroProfitLossUrl, '_blank', 'noopener,noreferrer')}
+              disabled={disabled}
+            >
+              Open Xero P&amp;L
+            </Button>
+          </div>
           {pl && (
             <div className="mt-3 text-xs text-slate-300">
               {pl.accounts.length.toLocaleString()} accounts and {pl.months.length} months
@@ -150,6 +163,17 @@ export function UploadPanel({ disabled = false }: { disabled?: boolean }) {
             />
             <Button className="w-full" variant="ghost" onClick={() => glInput.current?.click()} disabled={disabled}>
               <FileText className="h-4 w-4" /> Choose file
+            </Button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+            <span>Want drill-down detail?</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open(xeroGeneralLedgerUrl, '_blank', 'noopener,noreferrer')}
+              disabled={disabled}
+            >
+              Open Xero GL
             </Button>
           </div>
           {gl && <div className="mt-3 text-xs text-slate-300">{gl.txns.length.toLocaleString()} transactions</div>}

@@ -309,8 +309,6 @@ export function Overview() {
     { name: string; search: string; status: string; start: string; end: string; min: string; max: string; mode: string }[]
   >([])
   const [consultViewName, setConsultViewName] = useState('')
-  const [consultAccountSuggestionsAccepted, setConsultAccountSuggestionsAccepted] = useState(false)
-  const [doctorAccountSuggestionsAccepted, setDoctorAccountSuggestionsAccepted] = useState(false)
   const [powerToolsOpen, setPowerToolsOpen] = useState(false)
   const activeDoctorPatterns = doctorPatterns.length ? doctorPatterns : DEFAULT_DOCTOR_PATTERNS
 
@@ -455,20 +453,6 @@ export function Overview() {
     }
     return { accounts, totals }
   }, [operatingPl, tmsDraftAccounts, consultDraftAccounts, consultExcludedDraft])
-
-  const doctorAccountSuggestions = useMemo(() => {
-    if (!operatingPl) return []
-    const tokens = normalizeTokens(scenario.legacyTmsAccountMatchers ?? [])
-    if (!tokens.length) return []
-    return operatingPl.accounts.filter(acc => tokenMatch(acc.name, tokens)).map(acc => acc.name)
-  }, [operatingPl, scenario.legacyTmsAccountMatchers])
-
-  const consultAccountSuggestions = useMemo(() => {
-    if (!operatingPl) return []
-    const tokens = normalizeTokens(scenario.legacyConsultAccountMatchers ?? [])
-    if (!tokens.length) return []
-    return operatingPl.accounts.filter(acc => tokenMatch(acc.name, tokens)).map(acc => acc.name)
-  }, [operatingPl, scenario.legacyConsultAccountMatchers])
 
   const doctorRuleMap = useMemo(() => {
     const map = new Map<string, any>()
@@ -1180,9 +1164,9 @@ export function Overview() {
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-slate-100">Doctor &amp; Consult Setup</div>
+                  <div className="text-sm font-semibold text-slate-100">Exclude from Scenario</div>
                   <div className="text-xs text-slate-300 mt-1">
-                    No default selections are applied. Suggestions are opt-in, previewed, and reversible.
+                    Manually choose the accounts you want excluded from the scenario overlay. Recommended: exclude any TMS revenue and any doctor consultations tied to TMS treatment.
                   </div>
                 </div>
                 <Button
@@ -1192,8 +1176,6 @@ export function Overview() {
                     setTmsDraftAccounts([])
                     setConsultDraftAccounts([])
                     setConsultExcludedDraft([])
-                    setDoctorAccountSuggestionsAccepted(false)
-                    setConsultAccountSuggestionsAccepted(false)
                     setScenario({
                       legacyTmsAccounts: [],
                       legacyConsultAccounts: [],
@@ -1209,10 +1191,10 @@ export function Overview() {
 
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
                 {([
-                  { id: 1, title: 'Doctor revenue', detail: 'TMS treatment accounts' },
-                  { id: 2, title: 'Consult revenue', detail: 'Non-TMS consults' },
-                  { id: 3, title: 'Review impact', detail: 'Preview removals' },
-                  { id: 4, title: 'Apply scenario', detail: 'Commit changes' },
+                  { id: 1, title: 'Exclude TMS revenue', detail: 'Legacy TMS treatment accounts' },
+                  { id: 2, title: 'Exclude TMS-related consults', detail: 'Doctor consults tied to TMS treatment' },
+                  { id: 3, title: 'Review impact', detail: 'Preview exclusions' },
+                  { id: 4, title: 'Apply exclusions', detail: 'Commit changes' },
                 ] as const).map(step => (
                   <button
                     key={step.id}
@@ -1233,41 +1215,31 @@ export function Overview() {
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-100">Select doctor (TMS treatment) revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Exclude TMS treatment revenue accounts</div>
                       <div className="text-xs text-slate-300 mt-1">
-                        Choose the revenue accounts that represent doctor/TMS treatment revenue. Suggested matches are optional and can be refined later.
+                        Manually select every legacy TMS revenue account to remove from the scenario. This prevents double counting when bundle revenue is added.
                       </div>
                     </div>
                     <Chip>{tmsDraftAccounts.length} selected</Chip>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
                     <Button variant="secondary" size="sm" onClick={() => setDoctorSelectorOpen(true)}>
-                      Open selector
+                      Open manual selector
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!doctorAccountSuggestions.length || doctorAccountSuggestionsAccepted}
-                      onClick={() => {
-                        setTmsDraftAccounts(prev => Array.from(new Set([...prev, ...doctorAccountSuggestions])))
-                        setDoctorAccountSuggestionsAccepted(true)
-                      }}
-                    >
-                      Accept all suggestions
-                    </Button>
+                    <span className="text-[11px] text-slate-400">Nothing is auto-selected.</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                    {doctorAccountSuggestions.length === 0 ? (
-                      <span>No suggestions yet.</span>
+                    {tmsDraftAccounts.length === 0 ? (
+                      <span>No accounts selected yet.</span>
                     ) : (
-                      doctorAccountSuggestions.map(acc => (
+                      tmsDraftAccounts.map(acc => (
                         <button
-                          key={`doctor-suggest-${acc}`}
+                          key={`doctor-selected-${acc}`}
                           type="button"
-                          onClick={() => setTmsDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
-                          className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
+                          onClick={() => setTmsDraftAccounts(prev => prev.filter(a => a !== acc))}
+                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-200 hover:bg-white/10"
                         >
-                          Suggested · {acc}
+                          {acc} · Remove
                         </button>
                       ))
                     )}
@@ -1279,41 +1251,31 @@ export function Overview() {
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-100">Select consult (non-TMS) revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Exclude TMS-related consult accounts</div>
                       <div className="text-xs text-slate-300 mt-1">
-                        Choose consult-only revenue accounts. You can also exclude consults that should remain in the base P&amp;L.
+                        Manually select doctor consultation revenue related to TMS treatment. Leave unrelated consults in the base P&amp;L for accuracy.
                       </div>
                     </div>
                     <Chip>{consultDraftAccounts.length} selected</Chip>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
                     <Button variant="secondary" size="sm" onClick={() => setConsultSelectorOpen(true)}>
-                      Open selector
+                      Open manual selector
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!consultAccountSuggestions.length || consultAccountSuggestionsAccepted}
-                      onClick={() => {
-                        setConsultDraftAccounts(prev => Array.from(new Set([...prev, ...consultAccountSuggestions])))
-                        setConsultAccountSuggestionsAccepted(true)
-                      }}
-                    >
-                      Accept all suggestions
-                    </Button>
+                    <span className="text-[11px] text-slate-400">Exclude only what&apos;s tied to TMS treatment.</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                    {consultAccountSuggestions.length === 0 ? (
-                      <span>No suggestions yet.</span>
+                    {consultDraftAccounts.length === 0 ? (
+                      <span>No accounts selected yet.</span>
                     ) : (
-                      consultAccountSuggestions.map(acc => (
+                      consultDraftAccounts.map(acc => (
                         <button
-                          key={`consult-suggest-${acc}`}
+                          key={`consult-selected-${acc}`}
                           type="button"
-                          onClick={() => setConsultDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
-                          className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
+                          onClick={() => setConsultDraftAccounts(prev => prev.filter(a => a !== acc))}
+                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-200 hover:bg-white/10"
                         >
-                          Suggested · {acc}
+                          {acc} · Remove
                         </button>
                       ))
                     )}
@@ -1325,10 +1287,10 @@ export function Overview() {
                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
                     <div className="text-xs font-semibold text-slate-100">Review impact</div>
-                    <div className="text-xs text-slate-300 mt-1">Accounts removed: {draftRemovalPreview.accounts.length}</div>
+                    <div className="text-xs text-slate-300 mt-1">Accounts excluded: {draftRemovalPreview.accounts.length}</div>
                     <div className="mt-2 text-[11px] text-slate-300 space-y-1 max-h-32 overflow-auto pr-1">
                       {draftRemovalPreview.accounts.length === 0 ? (
-                        <div className="text-slate-400">No accounts selected for removal.</div>
+                        <div className="text-slate-400">No accounts selected for exclusion.</div>
                       ) : (
                         draftRemovalPreview.accounts.map(acc => (
                           <div key={acc.name} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
@@ -1340,7 +1302,7 @@ export function Overview() {
                       )}
                     </div>
                     <div className="mt-2 text-[11px] text-slate-400">
-                      Totals removed: Revenue <span className="text-slate-200">{money(draftRemovalPreview.totals.revenue)}</span>, COGS{' '}
+                      Totals excluded: Revenue <span className="text-slate-200">{money(draftRemovalPreview.totals.revenue)}</span>, COGS{' '}
                       <span className="text-slate-200">{money(draftRemovalPreview.totals.cogs)}</span>, OpEx{' '}
                       <span className="text-slate-200">{money(draftRemovalPreview.totals.opex)}</span>
                     </div>
@@ -1371,9 +1333,9 @@ export function Overview() {
 
               {setupStep === 4 && (
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
-                  <div className="text-sm font-semibold text-slate-100">Apply to scenario</div>
+                  <div className="text-sm font-semibold text-slate-100">Apply exclusions to scenario</div>
                   <div className="text-xs text-slate-300">
-                    Confirm and apply the staged doctor/consult selections to the active scenario. You can revisit any step to adjust.
+                    Confirm and apply the staged exclusions to the active scenario. You can revisit any step to adjust.
                   </div>
                   <Button
                     variant="secondary"
@@ -1388,7 +1350,7 @@ export function Overview() {
                       pushToast('Scenario updated.')
                     }}
                   >
-                    Apply to scenario
+                    Apply exclusions
                   </Button>
                 </div>
               )}
@@ -1412,7 +1374,7 @@ export function Overview() {
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-slate-100">Select doctor (TMS) revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Exclude TMS treatment revenue</div>
                       <Button variant="ghost" size="sm" onClick={() => setDoctorSelectorOpen(false)}>Done</Button>
                     </div>
                     <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-3">
@@ -1433,20 +1395,6 @@ export function Overview() {
                           onChange={(e) => setTmsAccountSearch(e.target.value)}
                           placeholder="Search accounts"
                         />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                        <span>Suggested</span>
-                        {doctorAccountSuggestions.map(acc => (
-                          <button
-                            key={`doctor-suggest-drawer-${acc}`}
-                            type="button"
-                            onClick={() => setTmsDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
-                            className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
-                          >
-                            Suggested · {acc}
-                          </button>
-                        ))}
                       </div>
 
                       <div className="rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
@@ -1498,7 +1446,7 @@ export function Overview() {
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-slate-100">Select consult (non-TMS) revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Exclude TMS-related consult revenue</div>
                       <Button variant="ghost" size="sm" onClick={() => setConsultSelectorOpen(false)}>Done</Button>
                     </div>
                     <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-3">
@@ -1521,20 +1469,6 @@ export function Overview() {
                         />
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                        <span>Suggested</span>
-                        {consultAccountSuggestions.map(acc => (
-                          <button
-                            key={`consult-suggest-drawer-${acc}`}
-                            type="button"
-                            onClick={() => setConsultDraftAccounts(prev => (prev.includes(acc) ? prev : [...prev, acc]))}
-                            className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-100"
-                          >
-                            Suggested · {acc}
-                          </button>
-                        ))}
-                      </div>
-
                       <div className="rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
                         {filteredConsultAccounts.map(acc => (
                           <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
@@ -1555,7 +1489,7 @@ export function Overview() {
                       </div>
 
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs font-semibold text-slate-100">Exclude accounts</div>
+                        <div className="text-xs font-semibold text-slate-100">Keep in base (do not exclude)</div>
                         <div className="mt-2 space-y-2 text-xs text-slate-200">
                           {filteredConsultAccounts.map(acc => (
                             <label key={`exclude-${acc.name}`} className="flex items-center gap-2">
@@ -1581,16 +1515,16 @@ export function Overview() {
                             size="sm"
                             onClick={() => setConsultExcludedDraft(Array.from(new Set([...consultDraftAccounts])))}
                           >
-                            Exclude selected
+                            Keep selected
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => setConsultExcludedDraft([])}>
-                            Clear exclusions
+                            Clear keep list
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => { setConsultDraftAccounts([]); setConsultExcludedDraft([]) }}>
                             Reset to none
                           </Button>
                         </div>
-                        <div>{consultDraftAccounts.length} selected · {consultExcludedDraft.length} excluded</div>
+                        <div>{consultDraftAccounts.length} excluded · {consultExcludedDraft.length} kept</div>
                       </div>
                     </div>
                   </motion.div>
@@ -1996,9 +1930,9 @@ export function Overview() {
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
                 <div className="text-sm font-semibold text-slate-100">Scenario setup</div>
-                <div className="text-xs text-slate-300">Replacement rule: remove legacy TMS (and consult, if enabled) then add CBA and cgTMS bundle revenue. Costs can be added explicitly.</div>
+                <div className="text-xs text-slate-300">Replacement rule: exclude legacy TMS (and related consults, if enabled) then add CBA and cgTMS bundle revenue. Costs can be added explicitly.</div>
                 <div className="text-xs text-slate-400">
-                  Accounts selected: {scenario.legacyTmsAccounts?.length ?? 0} doctor and {scenario.legacyConsultAccounts?.length ?? 0} consult
+                  Accounts excluded: {scenario.legacyTmsAccounts?.length ?? 0} TMS revenue and {scenario.legacyConsultAccounts?.length ?? 0} consult
                 </div>
               </div>
 
@@ -2018,7 +1952,7 @@ export function Overview() {
         <div className="w-full max-w-6xl max-h-[90vh] rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl flex flex-col overflow-hidden">
           <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
             <div>
-              <div className="text-sm font-semibold text-slate-100">Consult review (Bundle Finder)</div>
+              <div className="text-sm font-semibold text-slate-100">Consult exclusions review</div>
               <div className="text-xs text-slate-400">Bills-first view for clean exclusions. Payments nest under each bill.</div>
             </div>
             <button
@@ -2244,249 +2178,249 @@ export function Overview() {
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="space-y-4">
-            {consultMode === 'ap_bills' && (
-              <>
-                {doctorBillGroups.length === 0 ? (
-                  <div className="text-xs text-slate-300">No AP bills matched the current filters.</div>
-                ) : (
-                  doctorBillGroups.map(group => (
-                    <div key={group.doctorContactId} className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-100">{group.doctorLabel}</div>
-                          <div className="text-xs text-slate-400">{group.bills.length} bills</div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
-                            value={group.rule?.default_treatment ?? 'OPERATING'}
-                            onChange={(e) => {
-                              const next = e.target.value as TxnTreatment
-                              if (next === 'DEFERRED') {
-                                saveDoctorRule(group.doctorContactId, next, {
-                                  startMonth: group.rule?.deferral_start_month ?? '',
-                                  months: group.rule?.deferral_months ?? 12,
-                                  includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
-                                })
-                              } else {
-                                saveDoctorRule(group.doctorContactId, next)
-                              }
-                            }}
-                          >
-                            <option value="OPERATING">Operating</option>
-                            <option value="NON_OPERATING">Non-operating</option>
-                            <option value="DEFERRED">Deferred</option>
-                            <option value="EXCLUDE">Exclude</option>
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => saveDoctorRule(group.doctorContactId, 'EXCLUDE')}
-                            className="rounded-xl border border-rose-400/40 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-100"
-                          >
-                            Exclude all
-                          </button>
-                          {group.rule && (
+            <div className="space-y-4">
+              {consultMode === 'ap_bills' && (
+                <>
+                  {doctorBillGroups.length === 0 ? (
+                    <div className="text-xs text-slate-300">No AP bills matched the current filters.</div>
+                  ) : (
+                    doctorBillGroups.map(group => (
+                      <div key={group.doctorContactId} className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-100">{group.doctorLabel}</div>
+                            <div className="text-xs text-slate-400">{group.bills.length} bills</div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
+                              value={group.rule?.default_treatment ?? 'OPERATING'}
+                              onChange={(e) => {
+                                const next = e.target.value as TxnTreatment
+                                if (next === 'DEFERRED') {
+                                  saveDoctorRule(group.doctorContactId, next, {
+                                    startMonth: group.rule?.deferral_start_month ?? '',
+                                    months: group.rule?.deferral_months ?? 12,
+                                    includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
+                                  })
+                                } else {
+                                  saveDoctorRule(group.doctorContactId, next)
+                                }
+                              }}
+                            >
+                              <option value="OPERATING">Operating</option>
+                              <option value="NON_OPERATING">Non-operating</option>
+                              <option value="DEFERRED">Deferred</option>
+                              <option value="EXCLUDE">Exclude</option>
+                            </select>
                             <button
                               type="button"
-                              onClick={() => clearDoctorRule(group.doctorContactId)}
-                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
+                              onClick={() => saveDoctorRule(group.doctorContactId, 'EXCLUDE')}
+                              className="rounded-xl border border-rose-400/40 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-100"
                             >
-                              Clear rule
+                              Exclude all
                             </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {group.rule?.default_treatment === 'DEFERRED' && (
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
-                          <label className="flex items-center gap-2">
-                            Start month
-                            <input
-                              type="month"
-                              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
-                              value={group.rule?.deferral_start_month ?? ''}
-                              onChange={(e) =>
-                                saveDoctorRule(group.doctorContactId, 'DEFERRED', {
-                                  startMonth: e.target.value,
-                                  months: group.rule?.deferral_months ?? 12,
-                                  includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
-                                })
-                              }
-                            />
-                          </label>
-                          <label className="flex items-center gap-2">
-                            Months
-                            <input
-                              type="number"
-                              min={1}
-                              className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
-                              value={group.rule?.deferral_months ?? 12}
-                              onChange={(e) =>
-                                saveDoctorRule(group.doctorContactId, 'DEFERRED', {
-                                  startMonth: group.rule?.deferral_start_month ?? '',
-                                  months: Number(e.target.value),
-                                  includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
-                                })
-                              }
-                            />
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={group.rule?.deferral_include_in_operating_kpis ?? true}
-                              onChange={(e) =>
-                                saveDoctorRule(group.doctorContactId, 'DEFERRED', {
-                                  startMonth: group.rule?.deferral_start_month ?? '',
-                                  months: group.rule?.deferral_months ?? 12,
-                                  includeInOperatingKPIs: e.target.checked,
-                                })
-                              }
-                            />
-                            Include in operating KPIs
-                          </label>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        {group.bills.map((item: any) => (
-                          <div key={item.billHash} className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-semibold text-slate-100">{item.bill.reference ?? item.bill.description ?? 'Bill'}</div>
-                                <div className="text-xs text-slate-400">{item.bill.date}</div>
-                                <div className="text-xs text-slate-300">Amount: {money(item.bill.amount)}</div>
-                                <div className="text-[11px] text-slate-400">Status: {item.status}</div>
-                              </div>
-                              <div className="flex flex-col items-end gap-2">
-                                <select
-                                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
-                                  value={item.resolved.treatment}
-                                  onChange={(e) => {
-                                    const next = e.target.value as TxnTreatment
-                                    if (next === 'DEFERRED') {
-                                      saveBillOverride(item.bill, next, {
-                                        startMonth: item.resolved.deferral?.startMonth ?? '',
-                                        months: item.resolved.deferral?.months ?? 12,
-                                        includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
-                                      })
-                                    } else {
-                                      saveBillOverride(item.bill, next)
-                                    }
-                                  }}
-                                >
-                                  <option value="OPERATING">Operating</option>
-                                  <option value="NON_OPERATING">Non-operating</option>
-                                  <option value="DEFERRED">Deferred</option>
-                                  <option value="EXCLUDE">Exclude</option>
-                                </select>
-                                {item.override && (
-                                  <button
-                                    type="button"
-                                    onClick={() => clearBillOverride(item.override.id)}
-                                    className="text-[10px] text-slate-400 hover:text-slate-200"
-                                  >
-                                    Revert to doctor default
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            {item.resolved.treatment === 'DEFERRED' && (
-                              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
-                                <label className="flex items-center gap-2">
-                                  Start month
-                                  <input
-                                    type="month"
-                                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
-                                    value={item.resolved.deferral?.startMonth ?? ''}
-                                    onChange={(e) =>
-                                      saveBillOverride(item.bill, 'DEFERRED', {
-                                        startMonth: e.target.value,
-                                        months: item.resolved.deferral?.months ?? 12,
-                                        includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
-                                      })
-                                    }
-                                  />
-                                </label>
-                                <label className="flex items-center gap-2">
-                                  Months
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
-                                    value={item.resolved.deferral?.months ?? 12}
-                                    onChange={(e) =>
-                                      saveBillOverride(item.bill, 'DEFERRED', {
-                                        startMonth: item.resolved.deferral?.startMonth ?? '',
-                                        months: Number(e.target.value),
-                                        includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
-                                      })
-                                    }
-                                  />
-                                </label>
-                                <label className="flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={item.resolved.deferral?.includeInOperatingKPIs ?? true}
-                                    onChange={(e) =>
-                                      saveBillOverride(item.bill, 'DEFERRED', {
-                                        startMonth: item.resolved.deferral?.startMonth ?? '',
-                                        months: item.resolved.deferral?.months ?? 12,
-                                        includeInOperatingKPIs: e.target.checked,
-                                      })
-                                    }
-                                  />
-                                  Include in operating KPIs
-                                </label>
-                              </div>
-                            )}
-
-                            {item.payments.length > 0 && (
-                              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2">
-                                <div className="text-[11px] font-semibold text-slate-300 mb-1">Payments</div>
-                                <div className="space-y-1 text-[11px] text-slate-300">
-                                  {item.payments.map((pay: any, idx: number) => (
-                                    <div key={idx} className="flex items-center justify-between">
-                                      <span>{pay.date} {pay.description ?? pay.reference ?? 'Payment'}</span>
-                                      <span>{money(pay.amount)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
+                            {group.rule && (
+                              <button
+                                type="button"
+                                onClick={() => clearDoctorRule(group.doctorContactId)}
+                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
+                              >
+                                Clear rule
+                              </button>
                             )}
                           </div>
-                        ))}
+                        </div>
+
+                        {group.rule?.default_treatment === 'DEFERRED' && (
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                            <label className="flex items-center gap-2">
+                              Start month
+                              <input
+                                type="month"
+                                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                                value={group.rule?.deferral_start_month ?? ''}
+                                onChange={(e) =>
+                                  saveDoctorRule(group.doctorContactId, 'DEFERRED', {
+                                    startMonth: e.target.value,
+                                    months: group.rule?.deferral_months ?? 12,
+                                    includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              Months
+                              <input
+                                type="number"
+                                min={1}
+                                className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                                value={group.rule?.deferral_months ?? 12}
+                                onChange={(e) =>
+                                  saveDoctorRule(group.doctorContactId, 'DEFERRED', {
+                                    startMonth: group.rule?.deferral_start_month ?? '',
+                                    months: Number(e.target.value),
+                                    includeInOperatingKPIs: group.rule?.deferral_include_in_operating_kpis ?? true,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={group.rule?.deferral_include_in_operating_kpis ?? true}
+                                onChange={(e) =>
+                                  saveDoctorRule(group.doctorContactId, 'DEFERRED', {
+                                    startMonth: group.rule?.deferral_start_month ?? '',
+                                    months: group.rule?.deferral_months ?? 12,
+                                    includeInOperatingKPIs: e.target.checked,
+                                  })
+                                }
+                              />
+                              Include in operating KPIs
+                            </label>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          {group.bills.map((item: any) => (
+                            <div key={item.billHash} className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-slate-100">{item.bill.reference ?? item.bill.description ?? 'Bill'}</div>
+                                  <div className="text-xs text-slate-400">{item.bill.date}</div>
+                                  <div className="text-xs text-slate-300">Amount: {money(item.bill.amount)}</div>
+                                  <div className="text-[11px] text-slate-400">Status: {item.status}</div>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                  <select
+                                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
+                                    value={item.resolved.treatment}
+                                    onChange={(e) => {
+                                      const next = e.target.value as TxnTreatment
+                                      if (next === 'DEFERRED') {
+                                        saveBillOverride(item.bill, next, {
+                                          startMonth: item.resolved.deferral?.startMonth ?? '',
+                                          months: item.resolved.deferral?.months ?? 12,
+                                          includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
+                                        })
+                                      } else {
+                                        saveBillOverride(item.bill, next)
+                                      }
+                                    }}
+                                  >
+                                    <option value="OPERATING">Operating</option>
+                                    <option value="NON_OPERATING">Non-operating</option>
+                                    <option value="DEFERRED">Deferred</option>
+                                    <option value="EXCLUDE">Exclude</option>
+                                  </select>
+                                  {item.override && (
+                                    <button
+                                      type="button"
+                                      onClick={() => clearBillOverride(item.override.id)}
+                                      className="text-[10px] text-slate-400 hover:text-slate-200"
+                                    >
+                                      Revert to doctor default
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {item.resolved.treatment === 'DEFERRED' && (
+                                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                                  <label className="flex items-center gap-2">
+                                    Start month
+                                    <input
+                                      type="month"
+                                      className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                                      value={item.resolved.deferral?.startMonth ?? ''}
+                                      onChange={(e) =>
+                                        saveBillOverride(item.bill, 'DEFERRED', {
+                                          startMonth: e.target.value,
+                                          months: item.resolved.deferral?.months ?? 12,
+                                          includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label className="flex items-center gap-2">
+                                    Months
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100"
+                                      value={item.resolved.deferral?.months ?? 12}
+                                      onChange={(e) =>
+                                        saveBillOverride(item.bill, 'DEFERRED', {
+                                          startMonth: item.resolved.deferral?.startMonth ?? '',
+                                          months: Number(e.target.value),
+                                          includeInOperatingKPIs: item.resolved.deferral?.includeInOperatingKPIs ?? true,
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.resolved.deferral?.includeInOperatingKPIs ?? true}
+                                      onChange={(e) =>
+                                        saveBillOverride(item.bill, 'DEFERRED', {
+                                          startMonth: item.resolved.deferral?.startMonth ?? '',
+                                          months: item.resolved.deferral?.months ?? 12,
+                                          includeInOperatingKPIs: e.target.checked,
+                                        })
+                                      }
+                                    />
+                                    Include in operating KPIs
+                                  </label>
+                                </div>
+                              )}
+
+                              {item.payments.length > 0 && (
+                                <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2">
+                                  <div className="text-[11px] font-semibold text-slate-300 mb-1">Payments</div>
+                                  <div className="space-y-1 text-[11px] text-slate-300">
+                                    {item.payments.map((pay: any, idx: number) => (
+                                      <div key={idx} className="flex items-center justify-between">
+                                        <span>{pay.date} {pay.description ?? pay.reference ?? 'Payment'}</span>
+                                        <span>{money(pay.amount)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))
-                )}
-              </>
-            )}
+                    ))
+                  )}
+                </>
+              )}
 
-            {consultMode === 'mapped_accounts' && (
-              <div className="space-y-2">
-                <div className="text-xs text-slate-300">
-                  Legacy consult account review (fallback). AP Bills mode is recommended for clean exclusions.
+              {consultMode === 'mapped_accounts' && (
+                <div className="space-y-2">
+                  <div className="text-xs text-slate-300">
+                    Legacy consult account review (fallback). AP Bills mode is recommended for clean exclusions.
+                  </div>
+                  {legacyConsultGroups.length === 0 ? (
+                    <div className="text-xs text-slate-400">No consult transactions matched the current filters.</div>
+                  ) : (
+                    legacyConsultGroups.map(group => (
+                      <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-sm font-semibold text-slate-100">{group.account}</div>
+                        <div className="text-xs text-slate-400">{group.txns.length} transactions</div>
+                      </div>
+                    ))
+                  )}
                 </div>
-                {legacyConsultGroups.length === 0 ? (
-                  <div className="text-xs text-slate-400">No consult transactions matched the current filters.</div>
-                ) : (
-                  legacyConsultGroups.map(group => (
-                    <div key={group.account} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <div className="text-sm font-semibold text-slate-100">{group.account}</div>
-                      <div className="text-xs text-slate-400">{group.txns.length} transactions</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+              )}
 
-            {consultMode === 'all_txns' && (
-              <div className="text-xs text-slate-300">All transactions view is not yet optimized.</div>
-            )}
+              {consultMode === 'all_txns' && (
+                <div className="text-xs text-slate-300">All transactions view is not yet optimized.</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
