@@ -126,16 +126,24 @@ export function Reports() {
     const stamp = new Date()
     setGeneratedAt(stamp)
     const pageBreakTargets = Array.from(element.querySelectorAll<HTMLElement>('.page-break'))
-    const elementWidth = element.scrollWidth
+    const metrics = getPageMetrics(defaults.exportSettings)
+    const elementWidth = metrics.contentWidthPx
     const canvas = await html2canvas(element, {
       scale: 2,
       backgroundColor: '#ffffff',
       windowWidth: elementWidth,
       windowHeight: element.scrollHeight,
-      onclone: sanitizeColorStyles,
+      onclone: doc => {
+        sanitizeColorStyles(doc)
+        const clonedRoot = doc.querySelector<HTMLElement>('.report-root')
+        if (clonedRoot) {
+          clonedRoot.style.transform = 'none'
+          clonedRoot.style.transformOrigin = 'top left'
+          clonedRoot.style.width = `${metrics.contentWidthPx}px`
+        }
+      },
       useCORS: true,
     })
-    const metrics = getPageMetrics(defaults.exportSettings)
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
