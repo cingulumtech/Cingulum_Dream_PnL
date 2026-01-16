@@ -16,6 +16,7 @@ import { Card } from './components/ui'
 import { AppMark } from './components/AppMark'
 import { AuthGate } from './components/AuthGate'
 import { api } from './lib/api'
+import { isReadOnlyRole } from './lib/userRoles'
 import { useAuthStore } from './store/authStore'
 import { ServerSync } from './components/ServerSync'
 import { useContextMenu } from './components/ContextMenu'
@@ -38,7 +39,7 @@ export function App() {
   const { openMenu, pushToast } = useContextMenu()
 
   const isAuthed = status === 'authenticated'
-  const isReadOnly = !!user && user.role === 'viewer'
+  const isReadOnly = !!user && isReadOnlyRole(user.role)
 
   const loadState = useCallback(async () => {
     const data = await api.getState()

@@ -49,6 +49,12 @@ class UserRoleUpdate(BaseModel):
     role: str
 
 
+class UserCreateRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: Optional[str] = None
+
+
 class ImportCreate(BaseModel):
     name: str
     kind: str

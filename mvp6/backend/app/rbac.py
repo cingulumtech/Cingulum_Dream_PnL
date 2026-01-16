@@ -2,6 +2,7 @@ from enum import Enum
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from . import models
+from .user_roles import normalize_user_role
 
 
 class SnapshotRole(str, Enum):
@@ -20,7 +21,7 @@ ROLE_PRIORITY = {
 
 
 def resolve_role(db: Session, snapshot: models.Snapshot, user: models.User) -> SnapshotRole | None:
-    if getattr(user, "role", "viewer") == "super_admin":
+    if normalize_user_role(getattr(user, "role", "view")) == "super_admin":
         return SnapshotRole.owner
     if snapshot.owner_user_id == user.id:
         return SnapshotRole.owner
