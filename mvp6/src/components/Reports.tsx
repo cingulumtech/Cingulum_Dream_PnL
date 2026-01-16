@@ -10,6 +10,7 @@ import { SaveStatusPill } from './SaveStatus'
 import { ComparisonMode, DataSource, getReportData } from '../lib/reportData'
 import { getPageMetrics, pageSizeForJsPdf } from '../lib/reportExport'
 import { useAuthStore } from '../store/authStore'
+import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
 
 export function Reports() {
   const user = useAuthStore(s => s.user)
@@ -23,6 +24,8 @@ export function Reports() {
   const reportConfig = useAppStore(s => s.reportConfig)
   const setReportConfig = useAppStore(s => s.setReportConfig)
   const reportSaveStatus = useAppStore(s => s.reportSaveStatus)
+  const txnOverrides = useAppStore(s => s.txnOverrides)
+  const doctorRules = useAppStore(s => s.doctorRules)
 
   const [builder, setBuilder] = useState<{ dataSource: DataSource; includeScenario: boolean; comparisonMode: ComparisonMode }>(
     reportConfig ?? { dataSource: 'legacy', includeScenario: true, comparisonMode: 'last3_vs_prev3' }

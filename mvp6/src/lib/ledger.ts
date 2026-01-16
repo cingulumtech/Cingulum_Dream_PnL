@@ -158,6 +158,9 @@ export function buildEffectiveLedger(
 export function buildEffectivePl(pl: XeroPL, ledgerRows: EffectiveTxn[], includeNonOperating = true): XeroPL {
   const monthIndex = new Map(pl.months.map((m, idx) => [m, idx]))
   const accountMap: Record<string, number[]> = {}
+  const accountSectionMap = new Map<string, XeroPLAccount['section']>(
+    pl.accounts.map(account => [account.name, account.section])
+  )
 
   ledgerRows.forEach(row => {
     if (!includeNonOperating && row.nonOperating) return
@@ -166,7 +169,9 @@ export function buildEffectivePl(pl: XeroPL, ledgerRows: EffectiveTxn[], include
     if (!accountMap[row.account]) {
       accountMap[row.account] = Array(pl.months.length).fill(0)
     }
-    accountMap[row.account][idx] += row.amount
+    const section = accountSectionMap.get(row.account)
+    const signedAmount = section === 'trading_income' || section === 'other_income' ? -row.amount : row.amount
+    accountMap[row.account][idx] += signedAmount
   })
 
   const accounts: XeroPLAccount[] = pl.accounts.map(account => ({
