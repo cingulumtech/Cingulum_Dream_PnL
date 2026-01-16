@@ -37,13 +37,23 @@ export function pageSizeForJsPdf(pageSize: ExportSettings['pageSize']) {
 export function sanitizeColorStyles(doc: Document) {
   const view = doc.defaultView
   if (!view) return
+  const normalizeColor = (value: string) => {
+    if (!value) return value
+    if (!/color\(|oklch|oklab|lab|lch/i.test(value)) return value
+    const probe = doc.createElement('span')
+    probe.style.color = value
+    doc.body.appendChild(probe)
+    const resolved = view.getComputedStyle(probe).color
+    probe.remove()
+    return resolved || value
+  }
   const elements = Array.from(doc.querySelectorAll<HTMLElement>('*'))
   for (const el of elements) {
     const computed = view.getComputedStyle(el)
     if (!computed) continue
-    const color = computed.color
-    const backgroundColor = computed.backgroundColor
-    const borderColor = computed.borderColor
+    const color = normalizeColor(computed.color)
+    const backgroundColor = normalizeColor(computed.backgroundColor)
+    const borderColor = normalizeColor(computed.borderColor)
     if (color) el.style.color = color
     if (backgroundColor) el.style.backgroundColor = backgroundColor
     if (borderColor) el.style.borderColor = borderColor

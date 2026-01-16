@@ -1206,16 +1206,23 @@ export function Overview() {
               </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-                {[1, 2, 3, 4].map(step => (
+                {([
+                  { id: 1, title: 'Doctor revenue', detail: 'TMS treatment accounts' },
+                  { id: 2, title: 'Consult revenue', detail: 'Non-TMS consults' },
+                  { id: 3, title: 'Review impact', detail: 'Preview removals' },
+                  { id: 4, title: 'Apply scenario', detail: 'Commit changes' },
+                ] as const).map(step => (
                   <button
-                    key={step}
+                    key={step.id}
                     type="button"
-                    onClick={() => setSetupStep(step as 1 | 2 | 3 | 4)}
+                    onClick={() => setSetupStep(step.id)}
                     className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${
-                      setupStep === step ? 'border-indigo-400/40 bg-indigo-500/15 text-slate-50' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                      setupStep === step.id ? 'border-indigo-400/40 bg-indigo-500/15 text-slate-50' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                     }`}
                   >
-                    Step {step}
+                    <div>Step {step.id}</div>
+                    <div className="text-[11px] text-slate-300">{step.title}</div>
+                    <div className="text-[10px] text-slate-500">{step.detail}</div>
                   </button>
                 ))}
               </div>
@@ -1224,9 +1231,9 @@ export function Overview() {
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-100">Select doctor revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Select doctor (TMS treatment) revenue accounts</div>
                       <div className="text-xs text-slate-300 mt-1">
-                        Choose the revenue accounts that represent doctor revenue. Suggested matches are optional.
+                        Choose the revenue accounts that represent doctor/TMS treatment revenue. Suggested matches are optional and can be refined later.
                       </div>
                     </div>
                     <Chip>{tmsDraftAccounts.length} selected</Chip>
@@ -1270,9 +1277,9 @@ export function Overview() {
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-100">Select consult revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Select consult (non-TMS) revenue accounts</div>
                       <div className="text-xs text-slate-300 mt-1">
-                        Choose consult revenue accounts and optionally exclude any that should remain in the base P&amp;L.
+                        Choose consult-only revenue accounts. You can also exclude consults that should remain in the base P&amp;L.
                       </div>
                     </div>
                     <Chip>{consultDraftAccounts.length} selected</Chip>
@@ -1395,7 +1402,7 @@ export function Overview() {
                   onClick={() => setDoctorSelectorOpen(false)}
                 >
                   <motion.div
-                    className="h-full w-full max-w-lg bg-slate-950 border-l border-white/10 p-5"
+                    className="h-full w-full max-w-lg bg-slate-950 border-l border-white/10 p-5 flex flex-col"
                     initial={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     exit={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
@@ -1403,10 +1410,10 @@ export function Overview() {
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-slate-100">Select doctor revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Select doctor (TMS) revenue accounts</div>
                       <Button variant="ghost" size="sm" onClick={() => setDoctorSelectorOpen(false)}>Done</Button>
                     </div>
-                    <div className="mt-4 space-y-3">
+                    <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-3">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
                         <Label>Account filter</Label>
                         {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
@@ -1440,7 +1447,7 @@ export function Overview() {
                         ))}
                       </div>
 
-                      <div className="max-h-72 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
                         {filteredTmsAccounts.map(acc => (
                           <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
                             <input
@@ -1481,7 +1488,7 @@ export function Overview() {
                   onClick={() => setConsultSelectorOpen(false)}
                 >
                   <motion.div
-                    className="h-full w-full max-w-lg bg-slate-950 border-l border-white/10 p-5"
+                    className="h-full w-full max-w-lg bg-slate-950 border-l border-white/10 p-5 flex flex-col"
                     initial={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     exit={{ x: prefersReducedMotion ? 0 : 40, opacity: 0 }}
@@ -1489,10 +1496,10 @@ export function Overview() {
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-slate-100">Select consult revenue accounts</div>
+                      <div className="text-sm font-semibold text-slate-100">Select consult (non-TMS) revenue accounts</div>
                       <Button variant="ghost" size="sm" onClick={() => setConsultSelectorOpen(false)}>Done</Button>
                     </div>
-                    <div className="mt-4 space-y-3">
+                    <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-3">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
                         <Label>Account filter</Label>
                         {(['revenue', 'cogs', 'opex', 'all'] as const).map(filter => (
@@ -1526,7 +1533,7 @@ export function Overview() {
                         ))}
                       </div>
 
-                      <div className="max-h-56 overflow-auto rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+                      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
                         {filteredConsultAccounts.map(acc => (
                           <label key={acc.name} className="flex items-center gap-2 text-xs text-slate-200">
                             <input
@@ -1547,7 +1554,7 @@ export function Overview() {
 
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                         <div className="text-xs font-semibold text-slate-100">Exclude accounts</div>
-                        <div className="mt-2 max-h-28 overflow-auto space-y-2 text-xs text-slate-200">
+                        <div className="mt-2 space-y-2 text-xs text-slate-200">
                           {filteredConsultAccounts.map(acc => (
                             <label key={`exclude-${acc.name}`} className="flex items-center gap-2">
                               <input
@@ -1565,11 +1572,23 @@ export function Overview() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-slate-300">
-                        <Button variant="ghost" size="sm" onClick={() => { setConsultDraftAccounts([]); setConsultExcludedDraft([]) }}>
-                          Reset to none
-                        </Button>
-                        <div>{consultDraftAccounts.length} selected</div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConsultExcludedDraft(Array.from(new Set([...consultDraftAccounts])))}
+                          >
+                            Exclude selected
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConsultExcludedDraft([])}>
+                            Clear exclusions
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setConsultDraftAccounts([]); setConsultExcludedDraft([]) }}>
+                            Reset to none
+                          </Button>
+                        </div>
+                        <div>{consultDraftAccounts.length} selected · {consultExcludedDraft.length} excluded</div>
                       </div>
                     </div>
                   </motion.div>
@@ -1994,8 +2013,8 @@ export function Overview() {
 
     {consultModalOpen ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur">
-        <div className="w-full max-w-6xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
-          <div className="flex items-center justify-between gap-3">
+        <div className="w-full max-w-6xl max-h-[90vh] rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
             <div>
               <div className="text-sm font-semibold text-slate-100">Consult review (Bundle Finder)</div>
               <div className="text-xs text-slate-400">Bills-first view for clean exclusions. Payments nest under each bill.</div>
@@ -2009,7 +2028,7 @@ export function Overview() {
             </button>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-4">
             <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
               <Label>View mode</Label>
               <select
@@ -2225,7 +2244,7 @@ export function Overview() {
             </div>
           </div>
 
-          <div className="mt-4 max-h-[60vh] overflow-auto space-y-4">
+          <div className="space-y-4">
             {consultMode === 'ap_bills' && (
               <>
                 {doctorBillGroups.length === 0 ? (
