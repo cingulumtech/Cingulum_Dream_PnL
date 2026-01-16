@@ -182,7 +182,7 @@ export function TemplateEditor() {
         </div>
         <div className="flex items-center gap-2">
           <Chip tone={metadataChipTone}>
-            Schema {template.schemaVersion || 'unknown'} • v{template.version ?? 1}
+            Schema {template.schemaVersion || 'unknown'} version {template.version ?? 1}
           </Chip>
           <SaveStatusPill status={templateSaveStatus} />
           <Button variant="ghost" onClick={() => undoTemplate()} disabled={!canUndo}>
@@ -201,14 +201,14 @@ export function TemplateEditor() {
           <AlertTriangle className="h-4 w-4 mt-0.5" />
           <div>
             <div className="font-semibold">Validation</div>
-            <ul className="list-disc list-inside text-amber-100/90">
+            <div className="space-y-1 text-amber-100/90">
               {validationIssues.map((i, idx) => (
-                <li key={idx}>
+                <div key={idx}>
                   <span className="uppercase text-[10px] px-2 py-0.5 rounded bg-white/10 mr-2">{i.level}</span>
                   {i.message}
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </div>
       )}

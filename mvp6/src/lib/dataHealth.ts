@@ -32,8 +32,8 @@ export function analyzeDataHealth(pl: XeroPL): DataHealthSummary {
 
   const rangeLabel =
     sortedMonths.length > 1
-      ? `${labelMonth(sortedMonths[0])} → ${labelMonth(sortedMonths[sortedMonths.length - 1])}`
-      : pl.monthLabels[0] ?? '—'
+      ? `${labelMonth(sortedMonths[0])} to ${labelMonth(sortedMonths[sortedMonths.length - 1])}`
+      : pl.monthLabels[0] ?? '-'
 
   const gaps: string[] = []
   for (let i = 0; i < sortedMonths.length - 1; i++) {
@@ -45,7 +45,7 @@ export function analyzeDataHealth(pl: XeroPL): DataHealthSummary {
       for (let step = 1; step < diff; step++) {
         missing.push(labelMonth(addMonths(cur, step)))
       }
-      gaps.push(`${labelMonth(cur)} → ${labelMonth(next)} (${missing.length} month gap${missing.length > 1 ? 's' : ''})`)
+      gaps.push(`${labelMonth(cur)} to ${labelMonth(next)} (${missing.length} month gap${missing.length > 1 ? 's' : ''})`)
     }
   }
 
@@ -66,7 +66,7 @@ export function analyzeDataHealth(pl: XeroPL): DataHealthSummary {
     if (isZero) quietMonths.push(pl.monthLabels[i] ?? `Month ${i + 1}`)
   }
   if (quietMonths.length) {
-    anomalies.push(`No activity detected for ${quietMonths.slice(0, 4).join(', ')}${quietMonths.length > 4 ? '…' : ''}`)
+    anomalies.push(`No activity detected for ${quietMonths.slice(0, 4).join(', ')}${quietMonths.length > 4 ? '...' : ''}`)
   }
 
   return {

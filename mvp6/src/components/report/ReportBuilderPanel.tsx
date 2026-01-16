@@ -35,7 +35,7 @@ export function ReportBuilderPanel(props: BuilderState) {
                 }`}
               >
                 {src === 'legacy' ? 'Legacy P&L (Xero export)' : 'Accounting Atlas (mapped model)'}
-                {recommendedSource === src ? ' • default' : ''}
+                {recommendedSource === src ? ' default' : ''}
               </button>
             ))}
           </div>

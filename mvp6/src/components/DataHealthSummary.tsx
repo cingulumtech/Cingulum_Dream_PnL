@@ -29,11 +29,11 @@ export function DataHealthSummary({ pl, className }: { pl: XeroPL; className?: s
           {summary.gaps.length === 0 ? (
             <div className="mt-1 text-sm text-emerald-200">No gaps</div>
           ) : (
-            <ul className="mt-1 space-y-1 text-sm text-amber-100">
+            <div className="mt-1 space-y-1 text-sm text-amber-100">
               {summary.gaps.map((g, i) => (
-                <li key={i}>• {g}</li>
+                <div key={i}>{g}</div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
 
@@ -42,11 +42,11 @@ export function DataHealthSummary({ pl, className }: { pl: XeroPL; className?: s
           {summary.anomalies.length === 0 ? (
             <div className="mt-1 text-sm text-emerald-200">Clean</div>
           ) : (
-            <ul className="mt-1 space-y-1 text-sm text-rose-100">
+            <div className="mt-1 space-y-1 text-sm text-rose-100">
               {summary.anomalies.map((g, i) => (
-                <li key={i}>• {g}</li>
+                <div key={i}>{g}</div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </div>

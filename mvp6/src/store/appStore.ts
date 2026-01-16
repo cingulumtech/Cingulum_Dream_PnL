@@ -175,8 +175,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   scenario: {
     enabled: false,
     legacyTmsAccountMatchers: ['tms', 'cgtms', 'rTMS', 'transcranial'],
+    legacyTmsAccounts: [],
     includeDoctorConsultsInBundle: false,
     legacyConsultAccountMatchers: ['consult', 'appointment', 'dr ', 'doctor'],
+    legacyConsultAccounts: [],
 
     state: 'NSW/QLD',
 

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { App } from './App'
 import './styles.css'
 import { palette, typography, radii, shadow, blur } from './brand/tokens'
+import { ContextMenuProvider } from './components/ContextMenu'
 
 const hexToRgb = (hex: string) => {
   const normalized = hex.replace('#', '')
@@ -30,9 +31,15 @@ function applyDesignTokens() {
   setRgb('--color-accent-soft', palette.brand.bright)
   setRgb('--color-accent-contrast', palette.brand.glow)
 
+  setRgb('--color-success', palette.signal.positive)
+  setRgb('--color-warn', palette.signal.caution)
+  setRgb('--color-danger', palette.signal.critical)
+
   root.style.setProperty('--font-sans', typography.fontFamily)
   root.style.setProperty('--shadow-soft', shadow.soft)
   root.style.setProperty('--shadow-strong', shadow.strong)
+  root.style.setProperty('--shadow-lift', shadow.lift)
+  root.style.setProperty('--radius-sm', radii.sm)
   root.style.setProperty('--radius-md', radii.md)
   root.style.setProperty('--radius-lg', radii.lg)
   root.style.setProperty('--radius-xl', radii.xl)
@@ -43,6 +50,8 @@ applyDesignTokens()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ContextMenuProvider>
+      <App />
+    </ContextMenuProvider>
   </React.StrictMode>
 )

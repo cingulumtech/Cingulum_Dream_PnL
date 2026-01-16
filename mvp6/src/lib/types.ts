@@ -74,11 +74,13 @@ export type DreamComputed = {
 
 export type ScenarioInputs = {
   enabled: boolean
-  legacyTmsAccountMatchers: string[] // regex-like strings
+  legacyTmsAccountMatchers: string[]
+  legacyTmsAccounts?: string[]
 
   // If consult revenue is folded into the bundle, remove it so we don't double-count.
   includeDoctorConsultsInBundle: boolean
-  legacyConsultAccountMatchers: string[] // regex-like strings
+  legacyConsultAccountMatchers: string[]
+  legacyConsultAccounts?: string[]
 
   // Clinic state affects MRI defaults + suggested bundle prices
   state: 'NSW/QLD' | 'WA' | 'VIC'

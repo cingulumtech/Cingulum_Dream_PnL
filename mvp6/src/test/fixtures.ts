@@ -4,8 +4,10 @@ import { DreamTemplate, ScenarioInputs, XeroPL } from '../lib/types'
 export const baseScenario: ScenarioInputs = {
   enabled: false,
   legacyTmsAccountMatchers: [],
+  legacyTmsAccounts: [],
   includeDoctorConsultsInBundle: false,
   legacyConsultAccountMatchers: [],
+  legacyConsultAccounts: [],
   state: 'NSW/QLD',
   doctorServiceFeePct: 15,
   cbaMonthlyCount: 0,

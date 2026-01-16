@@ -3,7 +3,7 @@ import { SaveStatus } from '../store/appStore'
 
 export function SaveStatusPill({ status }: { status: SaveStatus }) {
   if (status === 'idle') return null
-  const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed'
+  const label = status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : 'Save failed'
   const tone = status === 'saving'
     ? 'border-indigo-400/30 bg-indigo-500/10 text-indigo-100'
     : status === 'saved'

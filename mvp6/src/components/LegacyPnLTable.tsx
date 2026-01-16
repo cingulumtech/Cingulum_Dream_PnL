@@ -7,6 +7,8 @@ import { computeDepAmort, computeXeroTotals } from '../lib/dream/compute'
 import { formatCurrency } from '../lib/format'
 import { DataHealthSummary } from './DataHealthSummary'
 import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
+import { useContextMenu, createCopyMenuItems, buildRowCopyItems } from './ContextMenu'
+import { CopyAffordance } from './CopyAffordance'
 
 const sectionLabels: Record<XeroPLSection, string> = {
   trading_income: 'Trading Income',
@@ -31,6 +33,10 @@ export function LegacyPnLTable() {
     operating_expenses: true,
     unknown: true,
   })
+
+  const { openMenu, pushToast } = useContextMenu()
+  const buildCopyItems = (label: string, value: string, formatted?: string) =>
+    createCopyMenuItems({ label, value, formatted, onCopied: () => pushToast('Copied') })
 
   const effectiveLedger = useMemo(
     () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
@@ -110,12 +116,12 @@ export function LegacyPnLTable() {
       <Card className="p-6 bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-cyan-400/10 border border-indigo-400/30">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">P&amp;L (Legacy)</div>
-            <div className="text-sm text-slate-200">Upload the Profit &amp; Loss export to mirror Xero rows and months.</div>
+            <div className="text-lg font-semibold">P&L (Legacy)</div>
+            <div className="text-sm text-slate-200">Upload the Profit & Loss export to mirror Xero rows and months.</div>
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&amp;L</Button>
-            <Button variant="ghost" onClick={() => setView('overview')}>Go to overview</Button>
+            <Button onClick={() => document.getElementById('pl-upload-input')?.click()}>Upload P&L</Button>
+            <Button variant="secondary" onClick={() => setView('overview')}>Go to overview</Button>
           </div>
         </div>
       </Card>
@@ -126,33 +132,40 @@ export function LegacyPnLTable() {
     <Card className="p-5 overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-lg font-semibold">P&amp;L (Legacy)</div>
+          <div className="text-lg font-semibold">P&L (Legacy)</div>
           <div className="text-sm text-slate-300">Rows mirror Xero accounts. Columns are months.</div>
         </div>
         <div className="w-72">
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search accounts…" />
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search accounts..." />
         </div>
       </div>
 
-      {/* Top-level 12-month totals (same as Atlas P&L) */}
       {totals && netTotals && (
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-xs text-slate-300">12-mo Revenue</div>
-            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.revenue.reduce((a, b) => a + b, 0))}</div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-xs text-slate-300">12-mo COGS</div>
-            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.cogs.reduce((a, b) => a + b, 0))}</div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-xs text-slate-300">12-mo OpEx</div>
-            <div className="text-lg font-semibold tabular-nums">{formatCurrency(totals.opex.reduce((a, b) => a + b, 0))}</div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-xs text-slate-300">12-mo Net</div>
-            <div className="text-lg font-semibold tabular-nums">{formatCurrency(netTotals.net.reduce((a, b) => a + b, 0))}</div>
-          </div>
+          {[
+            { label: '12-mo Revenue', value: totals.revenue.reduce((a, b) => a + b, 0) },
+            { label: '12-mo COGS', value: totals.cogs.reduce((a, b) => a + b, 0) },
+            { label: '12-mo OpEx', value: totals.opex.reduce((a, b) => a + b, 0) },
+            { label: '12-mo Net', value: netTotals.net.reduce((a, b) => a + b, 0) },
+          ].map(card => (
+            <div
+              key={card.label}
+              className="group relative rounded-2xl border border-white/10 bg-white/5 p-3"
+              onContextMenu={(event) =>
+                openMenu({
+                  event,
+                  items: buildCopyItems(card.label, card.value.toString(), formatCurrency(card.value)),
+                  title: card.label,
+                })
+              }
+            >
+              <div className="text-xs text-slate-300">{card.label}</div>
+              <div className="text-lg font-semibold tabular-nums">{formatCurrency(card.value)}</div>
+              <div className="absolute right-2 top-2">
+                <CopyAffordance label={card.label} value={card.value.toString()} formatted={formatCurrency(card.value)} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -196,11 +209,40 @@ export function LegacyPnLTable() {
                       onClick={() => handleActivate(`__acc__:${a.name}`)}
                       tabIndex={0}
                       onKeyDown={e => onRowKey(e, `__acc__:${a.name}`)}
+                      onContextMenu={(event) =>
+                        openMenu({
+                          event,
+                          items: buildRowCopyItems({
+                            label: a.name,
+                            row: [a.name, ...a.values.map(v => v.toString())],
+                            onDrill: () => handleActivate(`__acc__:${a.name}`),
+                            onCopied: () => pushToast('Copied'),
+                          }),
+                          title: 'Account row',
+                        })
+                      }
                     >
-                      <td className="px-3 py-2 text-slate-100">{a.name}</td>
+                      <td className="px-3 py-2 text-slate-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <span>{a.name}</span>
+                        </div>
+                      </td>
                       {a.values.map((v, idx) => (
-                        <td key={idx} className="px-3 py-2 text-right tabular-nums">
-                          {v === 0 ? <span className="text-slate-500">—</span> : formatCurrency(v)}
+                        <td
+                          key={idx}
+                          className="px-3 py-2 text-right tabular-nums group"
+                          onContextMenu={(event) =>
+                            openMenu({
+                              event,
+                              items: buildCopyItems(a.name, v.toString(), formatCurrency(v)),
+                              title: a.name,
+                            })
+                          }
+                        >
+                          <div className="flex items-center justify-end gap-2">
+                            <span>{v === 0 ? <span className="text-slate-500">0</span> : formatCurrency(v)}</span>
+                            <CopyAffordance label={a.name} value={v.toString()} formatted={formatCurrency(v)} />
+                          </div>
                         </td>
                       ))}
                     </tr>
@@ -213,8 +255,21 @@ export function LegacyPnLTable() {
               <tr key={row.label} className="border-t border-white/10">
                 <td className="px-3 py-2 font-semibold text-slate-100 whitespace-nowrap">{row.label}</td>
                 {row.values.map((v, idx) => (
-                  <td key={idx} className="px-3 py-2 text-right tabular-nums font-semibold">
-                    {v === 0 ? <span className="text-slate-500">—</span> : formatCurrency(v)}
+                  <td
+                    key={idx}
+                    className="px-3 py-2 text-right tabular-nums font-semibold group"
+                    onContextMenu={(event) =>
+                      openMenu({
+                        event,
+                        items: buildCopyItems(row.label, v.toString(), formatCurrency(v)),
+                        title: row.label,
+                      })
+                    }
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      <span>{v === 0 ? <span className="text-slate-500">0</span> : formatCurrency(v)}</span>
+                      <CopyAffordance label={row.label} value={v.toString()} formatted={formatCurrency(v)} />
+                    </div>
                   </td>
                 ))}
               </tr>

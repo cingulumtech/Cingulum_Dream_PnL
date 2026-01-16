@@ -152,7 +152,7 @@ export function SettingsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
           <Button onClick={saveAccount} disabled={!canSaveAccount || accountStatus === 'saving'}>
-            {accountStatus === 'saving' ? 'Saving…' : 'Save account changes'}
+            {accountStatus === 'saving' ? 'Saving...' : 'Save account changes'}
           </Button>
           {accountStatus === 'saved' && <span className="text-emerald-200">Account updated.</span>}
           {accountStatus === 'error' && accountError && <span className="text-rose-200">{accountError}</span>}

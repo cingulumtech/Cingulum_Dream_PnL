@@ -7,6 +7,8 @@ import { Button, Card, Chip, Input } from './ui'
 import { formatCurrency, formatPercent } from '../lib/format'
 import { DataHealthSummary } from './DataHealthSummary'
 import { buildEffectiveLedger, buildEffectivePl } from '../lib/ledger'
+import { createCopyMenuItems, buildRowCopyItems, useContextMenu } from './ContextMenu'
+import { CopyAffordance } from './CopyAffordance'
 
 function Row({
   node,
@@ -17,6 +19,8 @@ function Row({
   expanded,
   toggle,
   coveragePct,
+  onOpenMenu,
+  onCopyToast,
 }: {
   node: DreamGroup | DreamLine
   depth: number
@@ -26,6 +30,8 @@ function Row({
   expanded: Set<string>
   toggle: (id: string) => void
   coveragePct: (id: string) => number
+  onOpenMenu: ReturnType<typeof useContextMenu>['openMenu']
+  onCopyToast: () => void
 }) {
   const isGroup = node.kind === 'group'
   const pad = 12 + depth * 14
@@ -44,6 +50,20 @@ function Row({
             isGroup ? toggle(node.id) : onSelect(node.id)
           }
         }}
+        onContextMenu={(event) => {
+          if (isGroup) return
+          const rowValues = getVals(node.id).map(v => v.toString())
+          onOpenMenu({
+            event,
+            items: buildRowCopyItems({
+              label: node.label,
+              row: [node.label, ...rowValues],
+              onDrill: () => onSelect(node.id),
+              onCopied: onCopyToast,
+            }),
+            title: 'Dream line',
+          })
+        }}
       >
         <td className="px-3 py-2" style={{ paddingLeft: pad }}>
           <div className="flex items-center gap-2">
@@ -56,7 +76,7 @@ function Row({
             {!isGroup && (
               <div className="ml-auto flex items-center gap-2">
                 <Chip className="whitespace-nowrap">
-                  {node.mappedAccounts?.length ?? 0} mapped · {coverage !== null ? formatPercent(coverage, { maximumFractionDigits: 1 }) : '0%'}
+                  {node.mappedAccounts?.length ?? 0} mapped and {coverage !== null ? formatPercent(coverage, { maximumFractionDigits: 1 }) : '0%'} coverage
                 </Chip>
                 {(node.mappedAccounts?.length ?? 0) === 0 && <Chip className="whitespace-nowrap" tone="bad">Unmapped</Chip>}
               </div>
@@ -64,8 +84,34 @@ function Row({
           </div>
         </td>
         {Array.from({ length: months }).map((_, i) => (
-          <td key={i} className="px-3 py-2 text-right tabular-nums">
-            {isGroup ? <span className="text-slate-500">—</span> : (vals?.[i] ?? 0) === 0 ? <span className="text-slate-500">—</span> : formatCurrency(vals?.[i] ?? 0)}
+          <td
+            key={i}
+            className="px-3 py-2 text-right tabular-nums group"
+            onContextMenu={(event) => {
+              if (isGroup) return
+              const value = vals?.[i] ?? 0
+              onOpenMenu({
+                event,
+                items: createCopyMenuItems({
+                  label: node.label,
+                  value: value.toString(),
+                  formatted: formatCurrency(value),
+                  onCopied: onCopyToast,
+                }),
+                title: node.label,
+              })
+            }}
+          >
+            <div className="flex items-center justify-end gap-2">
+              {isGroup ? (
+                <span className="text-slate-500">-</span>
+              ) : (vals?.[i] ?? 0) === 0 ? (
+                <span className="text-slate-500">0</span>
+              ) : (
+                formatCurrency(vals?.[i] ?? 0)
+              )}
+              {!isGroup && <CopyAffordance label={node.label} value={(vals?.[i] ?? 0).toString()} formatted={formatCurrency(vals?.[i] ?? 0)} />}
+            </div>
           </td>
         ))}
       </tr>
@@ -83,6 +129,8 @@ function Row({
             expanded={expanded}
             toggle={toggle}
             coveragePct={coveragePct}
+            onOpenMenu={onOpenMenu}
+            onCopyToast={onCopyToast}
           />
         ))}
     </>
@@ -100,6 +148,9 @@ export function DreamPnLTable() {
   const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['rev', 'cogs', 'opex']))
   const [showReconciliation, setShowReconciliation] = useState(false)
+  const { openMenu, pushToast } = useContextMenu()
+  const buildCopyItems = (label: string, value: string, formatted?: string) =>
+    createCopyMenuItems({ label, value, formatted, onCopied: () => pushToast('Copied') })
 
   const effectiveLedger = useMemo(
     () => (gl ? buildEffectiveLedger(gl.txns, txnOverrides, doctorRules) : null),
@@ -293,28 +344,76 @@ export function DreamPnLTable() {
 
       {totals && (
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-3"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('12-mo Revenue', totals.revenue.reduce((a, b) => a + b, 0).toString(), formatCurrency(totals.revenue.reduce((a, b) => a + b, 0))),
+                title: '12-mo Revenue',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">12-mo Revenue</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">
               {formatCurrency(totals.revenue.reduce((a, b) => a + b, 0))}
             </div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="12-mo Revenue" value={totals.revenue.reduce((a, b) => a + b, 0).toString()} formatted={formatCurrency(totals.revenue.reduce((a, b) => a + b, 0))} />
+            </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-3"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('12-mo COGS', totals.cogs.reduce((a, b) => a + b, 0).toString(), formatCurrency(totals.cogs.reduce((a, b) => a + b, 0))),
+                title: '12-mo COGS',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">12-mo COGS</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">
               {formatCurrency(totals.cogs.reduce((a, b) => a + b, 0))}
             </div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="12-mo COGS" value={totals.cogs.reduce((a, b) => a + b, 0).toString()} formatted={formatCurrency(totals.cogs.reduce((a, b) => a + b, 0))} />
+            </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-3"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('12-mo OpEx', totals.opex.reduce((a, b) => a + b, 0).toString(), formatCurrency(totals.opex.reduce((a, b) => a + b, 0))),
+                title: '12-mo OpEx',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">12-mo OpEx</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">
               {formatCurrency(totals.opex.reduce((a, b) => a + b, 0))}
             </div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="12-mo OpEx" value={totals.opex.reduce((a, b) => a + b, 0).toString()} formatted={formatCurrency(totals.opex.reduce((a, b) => a + b, 0))} />
+            </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div
+            className="group relative rounded-2xl border border-white/10 bg-white/5 p-3"
+            onContextMenu={(event) =>
+              openMenu({
+                event,
+                items: buildCopyItems('12-mo Net', totals.net.reduce((a, b) => a + b, 0).toString(), formatCurrency(totals.net.reduce((a, b) => a + b, 0))),
+                title: '12-mo Net',
+              })
+            }
+          >
             <div className="text-xs text-slate-300">12-mo Net</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">
               {formatCurrency(totals.net.reduce((a, b) => a + b, 0))}
+            </div>
+            <div className="absolute right-2 top-2">
+              <CopyAffordance label="12-mo Net" value={totals.net.reduce((a, b) => a + b, 0).toString()} formatted={formatCurrency(totals.net.reduce((a, b) => a + b, 0))} />
             </div>
           </div>
         </div>
@@ -322,10 +421,10 @@ export function DreamPnLTable() {
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="w-80">
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search management lines…" />
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search management lines..." />
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-          <span>Unmapped lines show as “Unmapped” until you map accounts.</span>
+          <span>Unmapped lines show as \"Unmapped\" until you map accounts.</span>
           <Button
             variant="ghost"
             className={`px-3 py-1 text-xs ${showReconciliation ? 'border-indigo-400/40 bg-indigo-500/10' : ''}`}
@@ -360,7 +459,7 @@ export function DreamPnLTable() {
               ))}
             </tbody>
           </table>
-          <div className="px-3 py-2 text-xs text-slate-400">Delta = Dream totals − Legacy totals. Map accounts to close the gap.</div>
+          <div className="px-3 py-2 text-xs text-slate-400">Delta = Dream totals - Legacy totals. Map accounts to close the gap.</div>
         </div>
       )}
 
@@ -376,26 +475,41 @@ export function DreamPnLTable() {
           </thead>
           <tbody>
             {rootFiltered.children.map(child => (
-              <Row
-                key={child.id}
-                node={child}
-                depth={0}
-            months={operatingPl?.months.length ?? 0}
-                getVals={getVals}
-                onSelect={id => setSelectedLineId(id)}
-                expanded={expanded}
-                toggle={toggle}
-                coveragePct={coveragePct}
-              />
-            ))}
+                  <Row
+                    key={child.id}
+                    node={child}
+                    depth={0}
+                    months={operatingPl?.months.length ?? 0}
+                    getVals={getVals}
+                    onSelect={id => setSelectedLineId(id)}
+                    expanded={expanded}
+                    toggle={toggle}
+                    coveragePct={coveragePct}
+                    onOpenMenu={openMenu}
+                    onCopyToast={() => pushToast('Copied')}
+                  />
+                ))}
           </tbody>
           <tfoot className="bg-white/5 sticky bottom-0 z-10 border-t border-white/10">
             {monthlyFooter.map(row => (
               <tr key={row.label} className="border-t border-white/10">
                 <td className="px-3 py-2 font-semibold text-slate-100">{row.label}</td>
                 {row.values.map((v, i) => (
-                  <td key={i} className="px-3 py-2 text-right font-semibold tabular-nums text-slate-100">
-                    {formatCurrency(v)}
+                  <td
+                    key={i}
+                    className="px-3 py-2 text-right font-semibold tabular-nums text-slate-100 group"
+                    onContextMenu={(event) =>
+                      openMenu({
+                        event,
+                        items: buildCopyItems(row.label, v.toString(), formatCurrency(v)),
+                        title: row.label,
+                      })
+                    }
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      {formatCurrency(v)}
+                      <CopyAffordance label={row.label} value={v.toString()} formatted={formatCurrency(v)} />
+                    </div>
                   </td>
                 ))}
               </tr>

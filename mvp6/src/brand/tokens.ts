@@ -1,29 +1,29 @@
 export const palette = {
   brand: {
-    primary: '#40916A',       // pulled from cingulumhealth.com wordmark
-    bright: '#52B788',
-    deep: '#1B4332',
-    glow: '#C1F8DE',
+    primary: '#54A885',
+    bright: '#74C6A5',
+    deep: '#1D3A2C',
+    glow: '#CAF8E6',
   },
   neutral: {
-    canvas: '#0B141C',
-    surface: '#111F2A',
-    raised: '#172C3A',
-    border: '#304654',
-    borderStrong: '#476273',
-    text: '#E8F3F6',
-    subtle: '#B6C7D2',
-    muted: '#90A7B6',
+    canvas: '#090E14',
+    surface: '#101820',
+    raised: '#16222D',
+    border: '#344A58',
+    borderStrong: '#567080',
+    text: '#E7EEF2',
+    subtle: '#B8C9D2',
+    muted: '#8EA2B0',
   },
   signal: {
-    positive: '#22C55E',
-    caution: '#F59E0B',
-    critical: '#F43F5E',
+    positive: '#34B580',
+    caution: '#F3C248',
+    critical: '#E86060',
   },
 }
 
 export const typography = {
-  fontFamily: `'Roboto', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif`,
+  fontFamily: `'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif`,
   weight: {
     normal: 400,
     medium: 500,
@@ -47,6 +47,7 @@ export const radii = {
 export const shadow = {
   soft: '0 12px 40px rgba(5, 16, 24, 0.35)',
   strong: '0 22px 80px rgba(5, 16, 24, 0.55)',
+  lift: '0 16px 45px rgba(10, 22, 32, 0.45)',
 }
 
 export const blur = {

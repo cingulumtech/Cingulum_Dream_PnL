@@ -15,6 +15,9 @@ export default {
         accent: 'rgb(var(--color-accent) / <alpha-value>)',
         accentSoft: 'rgb(var(--color-accent-soft) / <alpha-value>)',
         accentContrast: 'rgb(var(--color-accent-contrast) / <alpha-value>)',
+        success: 'rgb(var(--color-success) / <alpha-value>)',
+        warn: 'rgb(var(--color-warn) / <alpha-value>)',
+        danger: 'rgb(var(--color-danger) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['var(--font-sans)'],
@@ -23,9 +26,11 @@ export default {
         xl: 'var(--radius-xl)',
         lg: 'var(--radius-lg)',
         md: 'var(--radius-md)',
+        sm: 'var(--radius-sm)',
       },
       boxShadow: {
         glass: 'var(--shadow-strong)',
+        lift: 'var(--shadow-lift)',
       },
       backdropBlur: {
         brand: 'var(--blur-strong)',
