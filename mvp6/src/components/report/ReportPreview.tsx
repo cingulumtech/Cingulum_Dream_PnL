@@ -6,21 +6,33 @@ import { getPageMetrics } from '../../lib/reportExport'
 export const REPORT_PREVIEW_PRINT_CSS = `
   @page { size: A4; margin: 12mm; }
   .report-root {
-    width: calc(210mm - 24mm);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: var(--report-page-width);
     max-width: none;
     background: #ffffff;
     color: #0f172a;
   }
-  .report-page {
-    background: #ffffff;
+  .pdf-page {
+    width: var(--report-page-width);
+    height: var(--report-page-height);
+    padding: var(--report-page-padding);
+    box-sizing: border-box;
     border: 1px solid rgba(148, 163, 184, 0.3);
     border-radius: 18px;
     box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+    background: #ffffff;
+    overflow: visible;
   }
   @media print {
     .report-root {
       width: var(--report-content-width);
       max-width: none;
+    }
+    .pdf-page {
+      border: none;
+      box-shadow: none;
     }
   }
 `
@@ -39,6 +51,9 @@ export function ReportPreview({
   const [fitToWidth, setFitToWidth] = useState(true)
   const [zoom, setZoom] = useState(100)
   const [autoScale, setAutoScale] = useState(1)
+  const pageWidthPx = 794
+  const pageHeightPx = 1123
+  const pagePaddingPx = Math.max(24, Math.round((pageWidthPx - metrics.contentWidthPx) / 2))
 
   useEffect(() => {
     if (!fitToWidth) return
@@ -60,13 +75,18 @@ export function ReportPreview({
     return Math.max(0.5, Math.min(1.5, zoom / 100))
   }, [fitToWidth, autoScale, zoom])
 
-  const reportRootStyle = {
-    width: 'calc(210mm - 24mm)',
-    minHeight: '1122px',
+  const scaleWrapStyle = {
+    '--report-page-width': `${pageWidthPx}px`,
+    '--report-page-height': `${pageHeightPx}px`,
+    '--report-page-padding': `${pagePaddingPx}px`,
     '--report-content-width': `${metrics.contentWidthPx}px`,
     transform: `scale(${scale})`,
     transformOrigin: 'top left',
   } as React.CSSProperties
+
+  const reportContent = React.isValidElement(children)
+    ? React.cloneElement(children as React.ReactElement, { ref: previewRef })
+    : <div ref={previewRef}>{children}</div>
   return (
     <Card className="p-3">
       <style>{REPORT_PREVIEW_PRINT_CSS}</style>
@@ -93,12 +113,8 @@ export function ReportPreview({
         </div>
       </div>
       <div ref={containerRef} className="rounded-2xl border border-white/10 bg-slate-950 p-3 overflow-auto max-h-[70vh]">
-        <div
-          ref={previewRef}
-          className="origin-top-left report-root report-page"
-          style={reportRootStyle}
-        >
-          {children}
+        <div className="origin-top-left preview-scale-wrap" style={scaleWrapStyle}>
+          {reportContent}
         </div>
       </div>
     </Card>

@@ -126,63 +126,38 @@ export function Reports() {
     const element = previewRef.current
     const stamp = new Date()
     setGeneratedAt(stamp)
-    const pageBreakTargets = Array.from(element.querySelectorAll<HTMLElement>('.page-break'))
     const metrics = getPageMetrics(defaults.exportSettings)
-    const elementWidth = Math.max(metrics.contentWidthPx, element.scrollWidth)
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      windowWidth: elementWidth,
-      windowHeight: element.scrollHeight,
-      onclone: doc => {
-        sanitizeColorStyles(doc)
-        const clonedRoot = doc.querySelector<HTMLElement>('.report-root')
-        if (clonedRoot) {
-          clonedRoot.style.transform = 'none'
-          clonedRoot.style.transformOrigin = 'top left'
-          clonedRoot.style.width = `${elementWidth}px`
-          clonedRoot.style.maxWidth = 'none'
-          clonedRoot.style.overflow = 'visible'
-        }
-      },
-      useCORS: true,
-    })
+    const pages = Array.from(element.querySelectorAll<HTMLElement>('.pdf-page'))
+    if (!pages.length) {
+      setStatus('No report pages found to export.')
+      return
+    }
     const pdf = new jsPDF('p', 'pt', pageSizeForJsPdf(metrics.pageSize))
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-    const printableWidth = pageWidth - metrics.marginPt * 2
-    const printableHeight = pageHeight - metrics.marginPt * 2
-    const scale = printableWidth / canvas.width
-    const imgWidth = printableWidth
-    const canvasScale = canvas.width / elementWidth
-    const breakpoints = pageBreakTargets
-      .map(node => node.offsetTop * canvasScale)
-      .filter(bp => bp > 0 && bp < canvas.height)
-      .sort((a, b) => a - b)
-    const pageHeightCanvas = printableHeight / scale
-    let pageStart = 0
-
-    while (pageStart < canvas.height - 1) {
-      const pageLimit = pageStart + pageHeightCanvas
-      const candidates = breakpoints.filter(bp => bp > pageStart + 20 && bp < pageLimit - 20)
-      let pageEnd = candidates.length ? candidates[candidates.length - 1] : pageLimit
-      if (pageEnd <= pageStart + 10) {
-        pageEnd = pageLimit
-      }
-      const sliceHeight = Math.min(pageEnd, canvas.height) - pageStart
-      const pageCanvas = document.createElement('canvas')
-      pageCanvas.width = canvas.width
-      pageCanvas.height = sliceHeight
-      const ctx = pageCanvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(canvas, 0, pageStart, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
-        const sliceData = pageCanvas.toDataURL('image/png')
-        if (pageStart > 0) {
-          pdf.addPage()
-        }
-        pdf.addImage(sliceData, 'PNG', metrics.marginPt, metrics.marginPt, imgWidth, sliceHeight * scale)
-      }
-      pageStart = pageEnd
+    for (const [index, page] of pages.entries()) {
+      const canvas = await html2canvas(page, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        onclone: doc => {
+          sanitizeColorStyles(doc)
+          const style = doc.createElement('style')
+          style.textContent = `
+            .no-export { display: none !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            [style*="position: sticky"], [style*="position:sticky"],
+            [style*="position: fixed"], [style*="position:fixed"] {
+              position: static !important;
+              top: auto !important;
+            }
+          `
+          doc.head.appendChild(style)
+        },
+        useCORS: true,
+      })
+      const imgData = canvas.toDataURL('image/png')
+      if (index > 0) pdf.addPage()
+      pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight)
     }
     pdf.save('Investor_Report.pdf')
     setStatus('Report generated.')
