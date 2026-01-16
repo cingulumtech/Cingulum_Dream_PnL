@@ -641,26 +641,18 @@ export function Overview() {
     [legacyConsultGroups]
   )
 
-  if (!operatingPl || !baseTotals) {
-    return (
-      <Card className="p-5">
-        <div className="text-sm text-slate-300">
-          Start by uploading a Profit &amp; Loss export. Then map accounts once, and the app becomes \"decision-grade\".
-        </div>
-      </Card>
-    )
-  }
+  const rows = operatingPl && baseTotals
+    ? operatingPl.monthLabels.map((label, i) => {
+        const row: any = {
+          month: label,
+          current: baseTotals.net[i] ?? 0,
+        }
+        if (scenario.enabled && scenarioTotals) row.scenario = scenarioTotals.net[i] ?? 0
+        return row
+      })
+    : []
 
-  const rows = operatingPl.monthLabels.map((label, i) => {
-    const row: any = {
-      month: label,
-      current: baseTotals.net[i] ?? 0,
-    }
-    if (scenario.enabled && scenarioTotals) row.scenario = scenarioTotals.net[i] ?? 0
-    return row
-  })
-
-  const currentTotal = sum(baseTotals.net)
+  const currentTotal = baseTotals ? sum(baseTotals.net) : 0
   const scenarioTotal = scenarioTotals ? sum(scenarioTotals.net) : null
   const delta = scenarioTotal == null ? 0 : scenarioTotal - currentTotal
 
@@ -695,6 +687,16 @@ export function Overview() {
     })
     return items
   }, [currentTotal, scenarioTotal, delta, pushToast])
+
+  if (!operatingPl || !baseTotals) {
+    return (
+      <Card className="p-5">
+        <div className="text-sm text-slate-300">
+          Start by uploading a Profit &amp; Loss export. Then map accounts once, and the app becomes \"decision-grade\".
+        </div>
+      </Card>
+    )
+  }
 
   const best = (arr: number[]) => (arr.length ? Math.max(...arr) : 0)
   const worst = (arr: number[]) => (arr.length ? Math.min(...arr) : 0)
