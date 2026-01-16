@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import clsx from 'clsx'
 
 type AppMarkProps = {
@@ -16,7 +16,14 @@ export function AppMark({ layout = 'row', size = 'md', caption }: AppMarkProps) 
     <div className={clsx(layout === 'stacked' ? 'flex flex-col gap-2' : 'flex items-center gap-3')}>
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center rounded-[var(--radius-lg)] bg-surfaceStrong/70 border border-border/70 p-2 shadow-glass">
-          <img src={LOGO_URL} alt="Cingulum Health" className={`${logoSize} w-auto`} />
+          <img
+            src={logoSrc}
+            alt="Cingulum Health"
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
+            onError={() => setLogoSrc(FALLBACK_LOGO)}
+            className={`${logoSize} w-auto`}
+          />
         </div>
         <div className="leading-tight">
           <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Cingulum Health</div>
