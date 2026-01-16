@@ -106,12 +106,18 @@ export function DreamPnLTable() {
     [gl, txnOverrides, doctorRules]
   )
   const effectivePl = useMemo(
-    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, true) : pl),
-    [pl, effectiveLedger]
+    () =>
+      pl && effectiveLedger
+        ? buildEffectivePl(pl, effectiveLedger, true, gl?.txns.map(row => row.account))
+        : pl,
+    [pl, effectiveLedger, gl]
   )
   const operatingPl = useMemo(
-    () => (pl && effectiveLedger ? buildEffectivePl(pl, effectiveLedger, false) : pl),
-    [pl, effectiveLedger]
+    () =>
+      pl && effectiveLedger
+        ? buildEffectivePl(pl, effectiveLedger, false, gl?.txns.map(row => row.account))
+        : pl,
+    [pl, effectiveLedger, gl]
   )
 
   const computed = useMemo(() => (operatingPl ? computeDream(operatingPl, template) : null), [operatingPl, template])
